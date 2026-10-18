@@ -63,3 +63,20 @@ Metrics + 1-hop on the dev slice by **23:00**; on the lake by **01:00** (WS4 rea
 ## If blocked
 
 `BLOCKED: <reason>` at the top of `status/WS3.md`, then stop.
+
+## Addendum (orchestrator, 22:30 UTC-5): persons out of the ring, one community check
+
+1. **Drop `per:` neighbours from `topic_context_1hop`** (and from the NPMI top-20 selection, so each
+   topic still gets up to 20 non-person neighbours). Persons never reach the lake's ring, the API or
+   the UI. Keep `per:` nodes in `node_metrics_weekly` only as graph structure (they are not served).
+   Re-run the full profile and report the new row counts.
+2. **Ranked topics** are now `ranked_universe` in `contracts/taxonomy.yaml` (PR #8): every org except
+   `org_deny`, plus `thm:TECH_*`. The ring can keep covering every org/thm node (the API filters).
+3. **Community continuity:** try once matching on nodes present in both weeks, restricted to the top
+   10% by weighted degree, Jaccard >= 0.3. Report the birth/continue split. If continuity stays
+   under 50% of community-weeks, leave `community_event` as computed and say the agents must not use
+   it; do not iterate further tonight (graph views are last).
+4. CI does not install extras; leave `ci.yml` as it is (Actions minutes).
+5. Same gate; commit; update `status/WS3.md`. The push waits for the maintainer.
+
+Deadline: **00:30**.
