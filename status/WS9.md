@@ -8,6 +8,8 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 2026-10-18 05:30 UTC-5 · branch `feat/ws9-final-data` · committed locally, the orchestrator pushes.
 
+Previous: 2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 redeploy of `develop` e4518d2) · committed locally, the orchestrator pushes.
+
 Previous: 2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
@@ -48,6 +50,70 @@ lands it).
      titles.
 3. Items 3 (the "medido" label on audience fit) and 4 (the raw markdown in the trust panel) went to
    Grok's design lane.
+
+## Redeploy of `develop` e4518d2 (orchestrator's order, ~04:50 UTC-5)
+
+Run from `../radar-worktrees/deploy-develop`, a detached checkout of `origin/develop` at e4518d2: graph
+lenses and full screen, cards, briefs, evidence, feedback endpoint, LangSmith on Cloud Run.
+
+- `uv sync --extra api --extra graph`, then
+  `RADAR_PROFILE=full uv run --extra graph python -m graph.export_views` (12 s, measured):
+  - temporal: 1,000 nodes and 44,005 edges over 13 weeks (2026-07-20..2026-10-12), 3.79 MB;
+  - story of `org:marsh mclennan` 2026-W42, plus 14 other stories.
+- `.env` here lacked `NETLIFY_SITE_ID` (the script's precondition); added from the WS8 `.env`
+  (git-ignored). The LangSmith secret `radar-langsmith-key` exists and the Cloud Run service
+  account can read it (checked).
+- `make redeploy-all ARGS=--run`, **3 min 17 s** (measured):
+  - scores stable;
+  - Cloud Run revision **`radar-api-00005-8sm`** (09:49 UTC), built with Cloud Build;
+  - static export, web build;
+  - Netlify production deploy (575 files);
+  - `make demo-check`: **7/7 passed**.
+- `make demo-check ARGS=--chat`: **8/8 passed** (chat turn 8.95 s, 8 trace steps, 3 cards; measured).
+- **Feedback:** a chat turn returned `trace_id` `01a14e6c-1306-71c0-99db-b85e9400ced6` (10.8 s).
+  `POST /api/feedback` on it answered **202**, `{"recorded": true}`, in 0.54 s (measured). Its
+  comment says "deploy check 2026-10-18 (not a user rating)", so it can be filtered out of the real
+  usefulness scores.
+- **Public site** (https://radar-senal-temprana.netlify.app), walked in a **headed** Chrome window
+  over the DevTools protocol, the same approach as `graph/views/measure.mjs`. Screenshots are in
+  `lake/submission/shots/` (not in git).
+  - `00_site_full.png`, `01_cards.png`: the cards with the "Confianza" button, view tabs and the
+    Brief and Evidencia expanders.
+  - `02_brief.png`: the #1 brief with "verificado por el Auditor" and its cited numbers.
+  - `03_evidence.png`: 5 evidence articles.
+  - `04_trust.png`: the trust panel (BigQuery 380.75 GB in 66 jobs, Jev 981 calls, the
+    label-quality report verbatim).
+  - `05_temporal.png`: the GPU temporal graph; `window.__metrics`: ANGLE Metal on the M1 Pro, first
+    frame 1.24 s, 1,000 nodes, 3,463 edges in W42, week switch 3.5 ms (measured).
+  - `06_story.png`: "Historia 1-salto" switches the temporal graph to the Historia lens focused on
+    the #1 topic.
+- All the static data files answer 200 (views, briefs, per-topic evidence, `evidence/backtest.json`,
+  `label_quality.json`, `ledgers.json`). The page logs 404s only for evidence of the UI's default
+  context entities (nvidia, google, microsoft, openai group, TECH_AUTOMATION), which are not in a
+  top 10 and so have no evidence file. Harmless, but console noise.
+
+**Found in the checks (for the orchestrator; nothing changed here):**
+
+1. **The Cloud Run image does not ship the briefs or the evidence.**
+   - `deploy/push_lake.py` `TABLES` (used by `cloudrun_stage.py`) still lists the original 7.
+     `topic_briefs_weekly`, `topic_evidence_weekly`, `topic_sources_weekly` and
+     `topic_subtopic_weekly` exist in the lake but not in the image.
+   - The live chat's `get_topic_brief` and `get_topic_evidence` return "not available". A chat
+     about Marsh & McLennan called only `get_top10` and `get_topic_series`.
+   - The cards are fine: they read the static files.
+   - Fix: add the four tables to `TABLES` and rerun `make deploy-cloudrun` (~2.5 min). One line in
+     `deploy/`; I can do it on your word.
+2. **The #1 topic's evidence is one wire story five times.** `org:marsh mclennan` W42's 5 evidence
+   articles are the same syndicated title from five outlets.
+   - It passed WS4's guard (pattern share 0.66 < 0.9, 39 sources) because the copies carry varied
+     co-mentions.
+   - The evidence rule (one per outlet) does not dedupe identical titles.
+   - Two candidate fixes: S14 keeps one article per title, and WS4 adds a title-duplication signal
+     to the guard. Both are cheap (S14 about 1.1 GiB).
+3. **The card labels audience fit as measured.** "Encaje LatAm: 65% (medido)" on the card, while its
+   own bullet and the contract call it an estimate (regla v1). WS5, one word.
+4. The trust panel shows `label_quality.md` as raw markdown (tables as pipes). Readable, but it
+   looks unfinished in the video.
 
 ## WS9b: demo hardening
 
