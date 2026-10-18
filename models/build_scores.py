@@ -58,6 +58,23 @@ def _graph(key: str) -> pl.DataFrame | None:
     )
 
 
+def labels_and_mapped() -> tuple[dict[str, str], set[str]]:
+    """Spanish labels (taxonomy, then Wikidata) and the topics with an es or pt article."""
+    wd = _wikidata()
+    labels: dict[str, str] = dict(SUBTOPICS)
+    mapped: set[str] = set()
+    if wd is not None:
+        has = wd.filter(pl.col("article_es").is_not_null() | pl.col("article_pt").is_not_null())
+        mapped = set(has["topic_id"].to_list())
+        for r in wd.filter(pl.col("label_es").is_not_null()).iter_rows(named=True):
+            labels.setdefault(r["topic_id"], r["label_es"])
+    return labels, mapped
+
+
+def label(labels: dict[str, str], topic_id: str) -> str:
+    return labels.get(topic_id, topic_id.split(":", 1)[-1])
+
+
 def units() -> str:
     """`topic` when WS1's `topic_daily` is in the active profile, else `subtopic`."""
     return "topic" if gold("topic_daily").exists() else "subtopic"
@@ -119,16 +136,21 @@ def _inputs(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None,
     return roll, own, universe.membership(scores.FIT_SUBTOPICS), daily["dt"].min()
 
 
+def scored_units(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None]:
+    """Scored unit-weeks after the warm-up, the unit's own rolling frame and its membership."""
+    roll, own, mem, start = _inputs(unit)
+    scored = scores.score(scores.weekly_panel(roll), mem, graph=_graph("unit_id"))
+    scored = scored.filter(pl.col("asof") >= start + dt.timedelta(days=WARMUP_DAYS))
+    return scored, own, mem
+
+
 def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[dict[str, Any]]:
     """Every record of `topic_scores_weekly` for the active profile and unit.
 
     Subtopics: all 12 every week. Topics: the ranked universe only (rows with a rank).
     """
     unit = unit or units()
-    roll, own, mem, start = _inputs(unit)
-    panel = scores.weekly_panel(roll)
-    scored = scores.score(panel, mem, graph=_graph("unit_id"))
-    scored = scored.filter(pl.col("asof") >= start + dt.timedelta(days=WARMUP_DAYS))
+    scored, own, mem = scored_units(unit)
     if unit == "topic":
         scored = scored.filter(pl.col("rank").is_not_null())
     if mem is not None:
@@ -143,14 +165,7 @@ def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[
             pl.lit(None, pl.List(pl.String)).alias("subtopics"),
         )
     onset_tab = window.onset_table(own)
-    wd = _wikidata()
-    mapped: set[str] = set()
-    labels: dict[str, str] = dict(SUBTOPICS)
-    if wd is not None:
-        has = wd.filter(pl.col("article_es").is_not_null() | pl.col("article_pt").is_not_null())
-        mapped = set(has["topic_id"].to_list())
-        for r in wd.filter(pl.col("label_es").is_not_null()).iter_rows(named=True):
-            labels.setdefault(r["topic_id"], r["label_es"])
+    labels, mapped = labels_and_mapped()
     records = []
     for (week,), wk in scored.group_by("week", maintain_order=True):
         asof = wk["asof"][0]
@@ -179,7 +194,7 @@ def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[
                 {
                     "week": week,
                     "topic_id": u,
-                    "label_es": labels.get(u, u.split(":", 1)[-1]),
+                    "label_es": label(labels, u),
                     "subtopics": list(row["subtopics"] or []),
                     "primary_subtopic": row["primary_subtopic"] or universe.NO_SUBTOPIC,
                     "emergence_pct": row["emergence_pct"],

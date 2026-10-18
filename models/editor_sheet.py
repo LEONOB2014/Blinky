@@ -95,9 +95,8 @@ def render(week: str, its: list[dict], labels: dict[str, str]) -> str:
 def write(week: str = WEEK) -> list[dict]:
     radar, base = lists(week)
     its = items(radar, base)
-    labels = dict(build_scores.SUBTOPICS)
-    rec = {r["topic_id"]: r["label_es"] for r in build_scores.build()}
-    labels |= rec
+    names, _ = build_scores.labels_and_mapped()
+    labels = {it["topic_id"]: build_scores.label(names, it["topic_id"]) for it in its}
     if profile() != "full":
         print(render(week, its, labels))  # noqa: T201
         return its

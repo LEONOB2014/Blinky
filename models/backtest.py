@@ -40,7 +40,7 @@ from typing import Any
 
 import polars as pl
 
-from models import build_scores, features, scores
+from models import build_scores
 from radar.paths import REPO_ROOT, gold, profile
 
 TOP_K = 10
@@ -256,17 +256,8 @@ def evaluate(
 
 
 def scored_units() -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    """Scored unit-weeks, raw-count growth and the rolling frame for the active profile."""
-    totals = features.load_totals()
-    if build_scores.units() != "subtopic":
-        raise NotImplementedError("topic units need the topic -> subtopic mapping (status/WS4.md)")
-    daily = features.subtopic_daily()
-    roll = features.rolling(daily, totals)
-    weights = {s: {s: 1.0} for s in daily["unit_id"].unique().to_list()}
-    weights["ai_all"] = {}
-    s = scores.score(scores.weekly_panel(roll), weights, graph=build_scores._graph("unit_id"))
-    start = totals["dt"].min() + dt.timedelta(days=build_scores.WARMUP_DAYS)
-    s = s.filter(pl.col("asof") >= start)
+    """Scored unit-weeks, raw-count growth and the rolling frame for the active profile's units."""
+    s, roll, _ = build_scores.scored_units(build_scores.units())
     allg = roll.filter(pl.col("group") == "all").sort("unit_id", "dt")
     allg = allg.with_columns(
         ((pl.col("n_7d") + 1) / (pl.col("n_7d").shift(7).over("unit_id") + 1))
@@ -338,7 +329,12 @@ def render(res: Result) -> str:
         f"- Units in the ranked universe: {res.n_units}; with an es or pt Wikipedia article: "
         f"{res.n_mapped_units} (measured). Unmapped unit-weeks, not ranked by the backtest: "
         f"{res.n_unmapped_rows} (measured).",
+        f"- Coverage: {res.n_mapped_units} / {res.n_units} ranked units have an es or pt "
+        f"Wikipedia article ({_pct(res.n_mapped_units / max(res.n_units, 1))}, measured); the "
+        "backtest ranks those only.",
         f"- Evaluable weeks: {len(res.weeks)} (measured): {', '.join(res.weeks) or 'none'}.",
+        "- Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build (no lake table "
+        "maps gkg_id to topics yet); the backtest does not use them.",
     ]
     for w, why in sorted(res.excluded.items()):
         lines.append(f"  - {w} excluded: {why}.")
