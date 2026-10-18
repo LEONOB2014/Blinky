@@ -60,6 +60,17 @@ and agents run on Google Cloud Run. The public chat is rate-limited.
 |---|---|
 | ![A question to the Media Master updates the view](docs/media/radar-chat.gif) | ![Top-10 rail, graph and chat dock](docs/media/radar-default.png) |
 
+| A topic's card: decision, signals, brief, evidence | How far to trust the radar |
+|---|---|
+| ![Card detail with the decision and its reasons](docs/media/radar-card.png) | ![Trust panel with the backtest and filter quality](docs/media/radar-trust.png) |
+
+<details>
+<summary>Full-screen graph</summary>
+
+![The temporal graph in full screen](docs/media/radar-fullscreen.png)
+
+</details>
+
 ## Status
 
 <sub>Updated 2026-10-18 07:30 UTC-5 for v0.2.0. Every number is measured unless marked otherwise.</sub>
