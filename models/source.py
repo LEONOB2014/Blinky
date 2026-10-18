@@ -151,8 +151,11 @@ MIN_EDGE_N = 3  # bq_sql/s4_aggregates.sql S4b keeps co-mentions with n >= 3
 def ai_new_nbr_rate(edges: pl.DataFrame) -> pl.DataFrame:
     """`new_nbr_rate` per node and ISO week, WS3's rule on `edges_ai_weekly`: the share of this
     week's neighbours that were not neighbours in any of the NEW_NBR_WEEKS weeks before (NULL
-    unless all of them are in the table). Language buckets are summed; edges need n >= 3."""
-    if "lang_bucket" in edges.columns or edges.select("wk", "x", "y").is_duplicated().any():
+    unless all of them are in the table). The "all" language bucket is used when present, else
+    the buckets are summed; edges need n >= 3."""
+    if "lang_bucket" in edges.columns:
+        if (edges["lang_bucket"] == "all").any():  # S16 writes an "all" row: summing would double
+            edges = edges.filter(pl.col("lang_bucket") == "all")
         edges = edges.group_by("wk", "x", "y").agg(pl.col("n").sum())
     edges = edges.filter(pl.col("n") >= MIN_EDGE_N)
     prefixed = pl.col("x").str.starts_with("ai:")  # S16 may write bare lexicon ids

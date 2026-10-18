@@ -95,6 +95,15 @@ def test_new_neighbour_rate_follows_ws3s_rule_on_the_ai_edges():
     assert got[("ai:lab:openai", "2026-W37")] is None  # look-back not complete
     assert ("ai:infra:gpu", "2026-W41") not in got
     assert all(u.startswith("ai:") for u in rate["unit_id"])
+    # S16's "all" bucket is used alone: summing it with the per-language rows would double n
+    totals = (
+        edges.group_by("wk", "x", "y")
+        .agg(pl.col("n").sum())
+        .with_columns(pl.lit("all").alias("lang_bucket"))
+    )
+    with_all = pl.concat([edges, totals.select(edges.columns)])
+    key = ["unit_id", "week"]
+    assert source.ai_new_nbr_rate(with_all).sort(key).equals(rate.sort(key))
 
 
 def test_the_new_neighbour_look_back_matches_ws3():
