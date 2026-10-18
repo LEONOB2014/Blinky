@@ -901,6 +901,13 @@ def export_temporal(
     ids = deg["e"].to_list()
     idx = {v: i for i, v in enumerate(ids)}
     kept = kept.filter(pl.col("x").is_in(ids) & pl.col("y").is_in(ids)).sort("wk", "x", "y")
+    # Edge state compares with the previous week at the same n / NPMI thresholds,
+    # before top-k pruning. Pruning that week made surviving edges look new.
+    prev_n_unpruned: dict[int, dict[tuple[str, str], int]] = {wi: {} for wi in range(len(weeks))}
+    for wk_dt, u_id, v_id, n_val in kept.select("wk", "x", "y", "n").iter_rows():
+        wi = widx[wk_dt]
+        pair = (u_id, v_id) if u_id < v_id else (v_id, u_id)
+        prev_n_unpruned[wi][pair] = int(n_val)
     kept = _prune_top_k_per_node(kept, top_k)
 
     ring_of: dict[str, str] = {}
@@ -1004,14 +1011,9 @@ def export_temporal(
     edges_by_week: dict[int, list[tuple[str, str, int, float]]] = {
         wi: [] for wi in range(len(weeks))
     }
-    edge_n_by_week_pair: dict[int, dict[tuple[str, str], int]] = {
-        wi: {} for wi in range(len(weeks))
-    }
     for wk_dt, u_id, v_id, n_val, npmi_val in kept.select("wk", "x", "y", "n", "npmi").iter_rows():
         wi = widx[wk_dt]
-        pair = (u_id, v_id) if u_id < v_id else (v_id, u_id)
         edges_by_week[wi].append((u_id, v_id, int(n_val), float(npmi_val)))
-        edge_n_by_week_pair[wi][pair] = int(n_val)
 
     # Also check w_0 - 7 days in edges_lf so week 0 edge_state is accurate when prior week exists.
     week0_prev_map: dict[tuple[str, str], int] = {}
@@ -1030,7 +1032,6 @@ def export_temporal(
             .select("wk", "x", "y", "n", "npmi")
             .collect()
         )
-        df_prev0 = _prune_top_k_per_node(df_prev0, top_k)
         for u_id, v_id, n_val in df_prev0.select("x", "y", "n").iter_rows():
             pair = (u_id, v_id) if u_id < v_id else (v_id, u_id)
             week0_prev_map[pair] = int(n_val)
@@ -1063,7 +1064,7 @@ def export_temporal(
         if wi == 0:
             prev_map = week0_prev_map
         elif weeks[wi] - weeks[wi - 1] == timedelta(weeks=1):
-            prev_map = edge_n_by_week_pair[wi - 1]
+            prev_map = prev_n_unpruned[wi - 1]
         st, gr = _edge_state_and_growth(int(n_val), prev_map.get(pair))
         edge_states.append(st)
         edge_n_growths.append(gr)

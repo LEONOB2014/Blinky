@@ -220,3 +220,44 @@ def test_temporal_and_story_carry_addendum3_properties(dev):
         assert attrs["edge_state"] in valid_states
         assert isinstance(attrs["n_growth"], float)
         assert isinstance(attrs["cross_ring"], bool)
+
+
+def test_edge_state_uses_the_unpruned_previous_week():
+    """An exported edge that lost top-k last week is not new if it still cleared n and NPMI."""
+    prev = date(2026, 10, 5)
+    cur = date(2026, 10, 12)
+    rows = [
+        # Previous week: a-c clears the thresholds but is not a top-1 edge for a or for c.
+        (prev, "org:a", "org:b", 50, 0.9),
+        (prev, "org:c", "org:d", 40, 0.85),
+        (prev, "org:a", "org:c", 25, 0.3),
+        # Current week: a-c is a top edge, so the export keeps it.
+        (cur, "org:a", "org:c", 30, 0.95),
+        (cur, "org:a", "org:b", 20, 0.2),
+        (cur, "org:c", "org:d", 20, 0.2),
+    ]
+    edges = pl.DataFrame(
+        {
+            "wk": [row[0] for row in rows],
+            "x": [row[1] for row in rows],
+            "y": [row[2] for row in rows],
+            "n": [row[3] for row in rows],
+            "npmi": [row[4] for row in rows],
+        }
+    )
+    metrics = pl.DataFrame(schema={"wk": pl.Date, "entity_id": pl.Utf8})
+    out = export_temporal(edges, metrics, max_nodes=10, min_n=5, min_npmi=0.1, top_k=1, span=2)
+    ids = [node["id"] for node in out["nodes"]]
+    edges_out = out["edges"]
+    found = None
+    for source, target, week_i, state in zip(
+        edges_out["source"],
+        edges_out["target"],
+        edges_out["week"],
+        edges_out["edge_state"],
+        strict=True,
+    ):
+        pair = {ids[source], ids[target]}
+        if pair == {"org:a", "org:c"} and week_i == 1:
+            found = state
+    assert found == "persisting"
