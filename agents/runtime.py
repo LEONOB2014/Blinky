@@ -595,6 +595,14 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
 
 _TONE_Q = re.compile(r"tono|emoci|sentimiento|[aá]nimo|negativ|positiv", re.I)
 _WINDOW_Q = re.compile(r"ventana|espa[nñ]ol|portugu|llega|a punto|d[ií]as quedan", re.I)
+_BRIDGE_Q = re.compile(
+    r"puente|conect|cruza|otros? (dominios?|sectores?)|cl[ií]ma|salud|educaci|empleo", re.I
+)
+_MOMENTUM_Q = re.compile(r"impulso|acelera|sube m[aá]s r[aá]pido|ganando", re.I)
+_NOVELTY_Q = re.compile(
+    r"nuev[oa]s? (conexion|relacion|v[ií]nculo)|(conexion|relacion|v[ií]nculo)\w* nuev|qu[eé] cambi",
+    re.I,
+)
 
 
 def view_lens(question: str, entity: str | None) -> str:
@@ -603,6 +611,12 @@ def view_lens(question: str, entity: str | None) -> str:
         return "tone"
     if _WINDOW_Q.search(question):
         return "window"
+    if _NOVELTY_Q.search(question):
+        return "novelty"
+    if _MOMENTUM_Q.search(question):
+        return "momentum"
+    if _BRIDGE_Q.search(question) and not entity:
+        return "bridge"
     return "segment" if entity else "decision"
 
 
@@ -616,6 +630,9 @@ def _lens_caption(lens: str, entity: str | None, leader: str | None) -> str:
     return {
         "tone": "Los temas de la semana, coloreados por tono",
         "window": "Los temas de la semana según cuánto falta para que lleguen al español",
+        "bridge": "Los temas que conectan la IA con otros dominios (tamaño = cuánto conectan)",
+        "momentum": "Los temas que más ganan centralidad esta semana",
+        "novelty": "Las conexiones nuevas de esta semana",
     }.get(
         lens,
         f"Los temas de la semana por decisión del radar; el n.º 1 es {name}"
