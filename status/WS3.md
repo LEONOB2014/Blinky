@@ -6,7 +6,44 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 09:56 UTC-5 · `feat/ws3-ai-graph` (community counts on the AI cards) · committed locally; the orchestrator pushes
+2026-10-18 12:04 UTC-5 · `feat/ws3-ai-graph-expressive` (end-to-end matrix of the AI graph, all pass) · committed locally (claude-work), not pushed
+
+## End-to-end matrix of the AI graph (12:04 UTC-5, claude-work)
+
+`graph/views/e2e_ai_matrix.mjs` drives headed Chrome (WebGL, ANGLE Metal on the M1 Pro, Retina viewport
+1440x900) against a local build in AI mode (views from `export_views --ai` at ec78ba4, API with
+`RADAR_SOURCE=ai`); `graph/views/e2e_ai_matrix.py` turns the run into this table. A cell passes with 0
+console errors or warnings, 0 non-finite node positions (`window.__metrics.nan_positions`), a drawn canvas
+(labels and legend hidden for the screenshot; at least 0.4% of pixels marked), the week's top 10 all
+labelled, and the week badge on the week set. Cells show the top-10 labels. All *measured*, run finished at 12:01 UTC-5:
+
+| Lens | W30 | W31 | W32 | W33 | W34 | W35 | W36 | W37 | W38 | W39 | W40 | W41 | W42 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Radar | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Historia | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Puente | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Momento | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Novedad | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Comunidades | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Emoción | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Ventana | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Familia | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+| Postura | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 | pass 10/10 |
+
+- **130 of 130 cells pass**: 0 errors, 0 non-finite positions, lowest drawn share 0.008, 10/10 of the
+  top 10 labelled in every lens and week. The only log line of the run is a 404 for `favicon.ico`.
+- **Play** (13 weeks): Familia ends at 2026-W42 at 116 fps, Postura at 2026-W42 at 121 fps; 0 errors.
+- **Selection** (rail "Lo más grande"): Nvidia, OpenAI, Anthropic and Agentes de IA at W42 and at W30 all
+  open in Historia with the topic labelled and its neighbourhood (11-24 labels); 0 errors.
+- **Fixed on the way** (`TemporalGraph.tsx`, AI mode only): the first run labelled only 6-9 of the top 10 in
+  71 cells, because the 26-label cap stopped placement before the remaining top-10 labels (PageRank put
+  other topics first); must-show labels are now exempt from the cap. The checker compares full names
+  (the label tooltip), since long labels are shortened on the graph.
+- **Note:** an earlier claim of "no page errors" in my visual checks was not verified (the harness only
+  kept exceptions without the prefix my filter looked for); this matrix records exceptions, console errors
+  and warnings, and browser log errors explicitly.
+
+Previous: 2026-10-18 09:56 UTC-5 · `feat/ws3-ai-graph` (community counts on the AI cards) · committed locally; the orchestrator pushes
 
 ## Done
 
