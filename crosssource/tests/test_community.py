@@ -5,7 +5,9 @@ import datetime as dt
 import polars as pl
 import pytest
 
-from crosssource import community
+pytest.importorskip("defusedxml")
+
+from crosssource import community  # noqa: E402
 
 RFS_PAGE = """<h2>Fall 2026</h2><div>Startup Jobs</div><div>Log in</div>
 <h3>Multiplayer AI</h3><div>Ada</div><div>Lovelace</div>
