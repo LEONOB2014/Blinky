@@ -65,3 +65,17 @@ full topic list from `topic_daily` by **01:30**.
 ## If blocked
 
 `BLOCKED: <reason>` at the top of `status/WS6.md`, then stop.
+
+## Addendum (orchestrator, 22:30 UTC-5): resolve the ranked universe first
+
+The ranked unit is now `ranked_universe` in `contracts/taxonomy.yaml` (PR #8): every `org:` topic
+except `org_deny`, plus `thm:TECH_*`, with at least 20 ring-1 articles in some week of `topic_daily`.
+Generic GKG themes (`TAX_*`, `WB_*`, ...) are no longer ranked, so do not spend requests on them.
+
+1. Reorder the queue: the ranked-universe topics first, by total ring-1 articles descending; then the
+   dev-slice topics; skip non-ranked `thm:` topics. Keep the cache; do not restart from scratch.
+2. Write `topic_wikidata` and `wiki_pageviews_daily` to `lake/gold/` as soon as the first 1,000 ranked
+   topics are done (WS4's backtest waits on it), then again at the end.
+3. Report: ranked topics attempted, exact / alias / none, pageview rows, failed requests (measured).
+
+Deadline: first write by **00:30**.
