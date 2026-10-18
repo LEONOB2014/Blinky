@@ -244,3 +244,12 @@ and say so.
 
 Acceptance: `bun run build` passes; screenshots of the three cards; if a data file is missing, the card
 says "pendiente" instead of failing.
+
+## Correction (orchestrator, 02:35 UTC-5): how to reheat the layout in cosmos.gl 3.5.1
+
+Addendum 2 named `simulationAlpha` as a config field: it is not one (the current build fails with
+TS2353 at `TemporalGraph.tsx:688`). In the installed `index.d.ts`: reheat with `graph.start(alpha)`
+(for example 0.3 for a gentle rearrangement), or apply new colours/sizes/strengths and call
+`graph.render(simulationAlpha, transitionDuration)`, which also animates the transition (for example
+`render(0.3, 400)`). Stop with `graph.pause()` once settled (`graph.progress` / `isSimulationRunning`).
+Keep `bun run build` passing before each commit.
