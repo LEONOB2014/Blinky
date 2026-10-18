@@ -1,6 +1,6 @@
 # BRIEF: the Spanish adaptation brief per top-10 topic (Editor agent)
 
-Account: **Claude #4 (claude-cacho)**, after the Auditor fix · Branch: `feat/ws0-spanish-briefs` · Worktree: `../radar-worktrees/feat-ws0-spanish-briefs`
+Account: **Claude #2 (claude-work)** (reassigned 03:30: claude-cacho runs the backtest) · Branch: `feat/ws0-spanish-briefs` · Worktree: `../radar-worktrees/feat-ws0-spanish-briefs`
 Written by the orchestrator, 2026-10-18 02:35 UTC-5. Read `AGENTS.md`, `agents/README.md`, then this file.
 
 ## Goal
