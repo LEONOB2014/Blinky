@@ -364,6 +364,103 @@ def ai_lexicon_entries() -> dict[str, dict[str, Any]]:
     }
 
 
+# The AI community sensor (crosssource/community.py): what researchers, practitioners, builders,
+# critics and the media publish, matched to the lexicon. An unvalidated signal: most feeds keep a
+# short history, so it never enters the backtest. Item titles stay in the lake; only counts here.
+COMMUNITY_CATEGORIES_ES = {
+    "research": "investigación",
+    "practitioners": "practicantes",
+    "builders": "constructores y aceleradoras",
+    "vision": "visión y estrategia",
+    "media": "medios especializados",
+    "critics": "críticos",
+}
+COMMUNITY_TOP = 3
+
+
+def get_community_signal(
+    topic_id: str | None = None, week: str | None = None, category: str | None = None
+) -> dict[str, Any]:
+    """Measured community counts for a week: items and topics per category, the top topics of
+    each category, and (for the critics) the topics whose lexicon stance is critic. Optionally
+    for one topic or one category. Never item titles."""
+    path = _gold("community_topic_weekly")
+    if not path.exists():
+        return _unavailable("community_topic_weekly")
+    if category is not None and category not in COMMUNITY_CATEGORIES_ES:
+        return {"available": False, "reason": f"categoría desconocida: {category}"}
+    c = pl.read_parquet(path)
+    weeks = sorted(c["week"].unique().to_list())
+    label = week if week in weeks else weeks[-1]
+    c = c.filter(pl.col("week") == label)
+    if topic_id is not None:
+        c = c.filter(pl.col("topic_id") == topic_id)
+    if category is not None:
+        c = c.filter(pl.col("category") == category)
+    if c.is_empty():
+        what = topic_id or category or "la comunidad"
+        return {
+            "available": False,
+            "reason": f"sin publicaciones de la comunidad sobre {what} en {label}",
+        }
+    lex = ai_lexicon_entries()
+
+    def name(t: str) -> str:
+        return lex.get(t, {}).get("label_es", t.split(":")[-1])
+
+    per_cat = (
+        c.group_by("category")
+        .agg(
+            pl.col("n_items").sum().alias("n_items"), pl.col("topic_id").n_unique().alias("n_temas")
+        )
+        .sort(["n_items", "category"], descending=[True, False])
+    )
+    top: dict[str, list[dict[str, Any]]] = {}
+    for cat in per_cat["category"].to_list():
+        rows = c.filter(pl.col("category") == cat).sort(
+            ["n_items", "topic_id"], descending=[True, False]
+        )
+        top[cat] = [
+            {"topic_id": r["topic_id"], "label_es": name(r["topic_id"]), "n_items": int(r["n_items"]),
+             "n_sources": int(r["n_sources"])}
+            for r in rows.head(COMMUNITY_TOP).to_dicts()
+        ]  # fmt: skip
+    out: dict[str, Any] = {
+        "available": True,
+        "week": label,
+        "no_validada": "señal no validada: la mayoría de las fuentes guarda poco historial, por eso "
+        "nunca entra en el backtest",
+        "por_categoria": [
+            {
+                "category": r["category"],
+                "category_es": COMMUNITY_CATEGORIES_ES[r["category"]],
+                "n_items": int(r["n_items"]),
+                "n_temas": int(r["n_temas"]),
+            }
+            for r in per_cat.to_dicts()
+        ],  # fmt: skip
+        "top_por_categoria": top,
+    }
+    if category == "critics":  # plus the lexicon's critic camp, whoever writes about it
+        all_week = pl.read_parquet(path).filter(pl.col("week") == label)
+        critic_ids = [t for t, e in lex.items() if e.get("stance") == "critic"]
+        camp = (
+            all_week.filter(pl.col("topic_id").is_in(critic_ids))
+            .group_by("topic_id")
+            .agg(pl.col("n_items").sum())
+            .sort(["n_items", "topic_id"], descending=[True, False])
+        )
+        out["temas_de_postura_critica"] = [
+            {
+                "topic_id": r["topic_id"],
+                "label_es": name(r["topic_id"]),
+                "n_items": int(r["n_items"]),
+            }
+            for r in camp.head(COMMUNITY_TOP).to_dicts()
+        ]
+    return out
+
+
 LEADERS_LIMIT = 15
 
 
@@ -897,6 +994,21 @@ TOOLS: dict[str, Tool] = {
                 "type": "object",
                 "properties": {"topic_id": {"type": "string"}, "week": WEEK},
                 "required": ["topic_id"],
+            },
+        ),
+        Tool(
+            "get_community_signal",
+            get_community_signal,
+            "Lo que publica la comunidad IA (investigación, practicantes, constructores y "
+            "aceleradoras, visión, medios, críticos) por categoría y tema esta semana: conteos "
+            "medidos, señal no validada; nunca títulos.",
+            {
+                "type": "object",
+                "properties": {
+                    "topic_id": {"type": "string"},
+                    "week": WEEK,
+                    "category": {"type": "string", "enum": list(COMMUNITY_CATEGORIES_ES)},
+                },
             },
         ),
         Tool(

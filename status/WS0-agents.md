@@ -4,7 +4,53 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 07:45 UTC-5 · week tracing and Editor duration (fix/agents-week-and-editor) · committed locally; the orchestrator lands it.
+2026-10-18 10:15 UTC-5 · AI community in the agents; release eval v0.3.0 grounding 0.964 (measured) · committed locally; the orchestrator pushes.
+
+## AI community in the agents and the v0.3 release eval (10:15 UTC-5, branch `feat/agents-community`, claude-cacho; committed locally, the orchestrator pushes)
+
+- **Tool `get_community_signal(topic_id, week, category)`** (Signal analyst; in
+  `contracts/agents.yaml`) reads `community_topic_weekly`. It returns measured item and topic counts
+  per category and the top 3 topics of each. For the critics it adds the lexicon's critic-stance
+  topics across the community. It never returns item titles.
+- **Routing:** "¿qué discute la comunidad IA?", "¿qué piden las aceleradoras / YC?" (builders
+  category) and "¿qué dicen los críticos / quién se opone?" (critics category) go to the Signal
+  analyst alone. Singular "comunidad" only, so q13's "comunidades de temas" (graph communities)
+  does not match.
+- **The line:** code writes "La comunidad IA esta semana (…; señal no validada: no entra en el
+  backtest)" or "Los críticos de la IA esta semana …" from the counts. Every number is traced by the
+  Auditor (tested). There is no decision line, no coverage line and no decision format; the model
+  answers in 2-3 lines from that line.
+- **Thin critics signal:** 3 critic items in W42 (*measured*); the answer says so through the
+  counts.
+- **Eval set:** `questions_v3.yaml` (dataset `radar-agents-v3`) = v2's 25 unchanged plus q26-q28
+  (community, accelerators, critics). v1 and v2 stay frozen.
+- **Tests:** 8 new. `make test` 349 passed, `make check` clean.
+
+**Release eval** `release-v0.3.0-b9bb8af7`: v3, 28 x 3, at ed0e481 (before the two community fixes),
+no lost runs. All *measured*; brackets are the min-max of the three repetition means.
+
+| Experiment | grounding | usefulness v1 | usefulness_v2 | decisions / routing | entities | tokens/turn |
+|---|---|---|---|---|---|---|
+| ai-v2-5ef01c19 (v2, 25 x 3) | 0.987 [0.96-1.00] | 0.737 [0.72-0.75] | 0.587 [0.55-0.64] | 1.000 / 1.000 | 0.960 | 6,183 |
+| **release-v0.3.0 (v3, 28 x 3)** | **0.964 [0.93-1.00]** | 0.658 [0.62-0.69] | 0.619 [0.60-0.64] | 1.000 / 1.000 | 0.964 | 6,359 |
+| release-v0.3.0, the same 25 questions only | 0.973 | 0.717 | 0.663 | | | |
+
+- **Grounding:** above the 0.95 bar. 3 of 84 runs missed: q26 "60 segundos" and q16 "1.500
+  palabras" (invented formats again), and q02 "149 en otros idiomas" (a derived sum).
+- **Entities:** the misses are q14's 3 runs (`ai:infra:energy`; v2 keeps no entity there).
+- **Community questions in the release run** were judged poor (usefulness_v2 0.17 / 0.25 / 0.33 on
+  q26 / q27 / q28). The answers used the decision format and drifted to the emergence top 10.
+  - **d470c9a:** answer from the community line only, no decision format.
+  - **56c2a18:** Signal analyst only; q26 had also reached the Cartographer.
+  - **Rerun** of q26-q28 x 3 after both: grounding 9/9; usefulness_v2 0.25 -> 0.417 -> **0.500
+    [0.42-0.58]**; v1 0.167.
+  - **Why v1 stays low:** that judge has no tool data and calls "señal no validada" and the 2026
+    dates invented. q27 can only partly answer, because the counts say what builders publish about,
+    not what accelerators ask for.
+- **Not rerun:** the full 28 x 3 after the two community fixes. They change only community
+  questions, and no v2 question matches the community route (checked).
+- **Nebius spend,** *estimate*: agent tokens 654,513 (*measured*: 534,171 release + 62,205 +
+  58,137 reruns); judge tokens not recorded; about $0.28 at assumed list rates, under the $0.50 cap.
 
 ## Week tracing and the Editor's duration (07:45 UTC-5, branch `fix/agents-week-and-editor`, committed locally; the orchestrator lands it)
 
