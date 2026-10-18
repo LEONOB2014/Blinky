@@ -1,3 +1,11 @@
+HANDOFF (orchestrator, 02:25 UTC-5): claude-extend reached its weekly limit; the orchestrator
+continues this lane. State: syndication guard and secondary backtest merged (PR #25). Primary backtest
+(exact Wikidata matches) coverage at 02:23: published radar 282/440 (64.1%), gate without guard
+263/440, no gate 261/440, raw-count growth 191/440 (43.4%), persistence 427/440 (measured); precision
+withheld below 90%. WS6 is fetching the 336 missing topics (exact by 03:15, all by 03:45). Next: rerun
+`RADAR_PROFILE=full POLARS_MAX_THREADS=4 uv run --extra models python -m models.backtest` after each WS6
+write (peak 1.32 GB, 9 s, measured), final run at >= 90%.
+
 # WS4 status
 
 READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.parquet` was rebuilt

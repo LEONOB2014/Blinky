@@ -1,6 +1,6 @@
 # Backtest: the radar's weekly top 10
 
-Generated 2026-10-18 01:50 UTC-5 by `models/backtest.py` on the `full` profile. Every number below is **measured** on the lake unless marked otherwise. Protocol: `docs/designs/radar-build-plan.md` (Evaluation, Backtest) and the module docstring. The score weights and thresholds are hand-set (estimate), not fitted to either label. The syndication guard (Addendum 5) was added after WS9 saw syndicated topics in the 2026-W42 top 10; its thresholds come from WS1's source distributions, not from either label, but its design is not blind to the data. Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build (no lake table maps gkg_id to topics yet); the backtest does not use them.
+Generated 2026-10-18 02:22 UTC-5 by `models/backtest.py` on the `full` profile. Every number below is **measured** on the lake unless marked otherwise. Protocol: `docs/designs/radar-build-plan.md` (Evaluation, Backtest) and the module docstring. The score weights and thresholds are hand-set (estimate), not fitted to either label. The syndication guard (Addendum 5) was added after WS9 saw syndicated topics in the 2026-W42 top 10; its thresholds come from WS1's source distributions, not from either label, but its design is not blind to the data. Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build (no lake table maps gkg_id to topics yet); the backtest does not use them.
 
 The primary label (es+pt Wikipedia pageviews) is not reportable yet (coverage). The secondary label (es+pt GDELT article growth) is the fallback card when pageviews are missing.
 
@@ -12,11 +12,11 @@ Label coverage of each ranker's top 10, over evaluable weeks:
 
 | Ranker | Labelled / needed topic-weeks | Coverage |
 |---|---|---|
-| Radar, with the eligibility gate and the syndication guard (published) | 142/440 | 32.3% (measured) |
-| Radar, with the eligibility gate, without the syndication guard | 132/440 | 30.0% (measured) |
-| Radar, without the gate (Priority alone) | 130/440 | 29.5% (measured) |
-| Baseline: raw-count growth | 96/440 | 21.8% (measured) |
-| Baseline: persistence (the label's own last 2 weeks) | 429/440 | 97.5% (measured) |
+| Radar, with the eligibility gate and the syndication guard (published) | 282/440 | 64.1% (measured) |
+| Radar, with the eligibility gate, without the syndication guard | 263/440 | 59.8% (measured) |
+| Radar, without the gate (Priority alone) | 261/440 | 59.3% (measured) |
+| Baseline: raw-count growth | 191/440 | 43.4% (measured) |
+| Baseline: persistence (the label's own last 2 weeks) | 427/440 | 97.0% (measured) |
 
 **Not reported:** coverage is below 90.0% for at least one ranker, so precision@10 could move by more than 10.0% once the missing labels arrive. Rerun `RADAR_PROFILE=full uv run python -m models.backtest` after the next WS6 write.
 
@@ -28,11 +28,11 @@ Label coverage of each ranker's top 10, over evaluable weeks:
 
 | Ranker | Labelled / needed topic-weeks | Coverage |
 |---|---|---|
-| Radar, with the eligibility gate and the syndication guard (published) | 139/440 | 31.6% (measured) |
-| Radar, with the eligibility gate, without the syndication guard | 132/440 | 30.0% (measured) |
-| Radar, without the gate (Priority alone) | 113/440 | 25.7% (measured) |
-| Baseline: raw-count growth | 80/440 | 18.2% (measured) |
-| Baseline: persistence (the label's own last 2 weeks) | 429/440 | 97.5% (measured) |
+| Radar, with the eligibility gate and the syndication guard (published) | 284/440 | 64.5% (measured) |
+| Radar, with the eligibility gate, without the syndication guard | 262/440 | 59.5% (measured) |
+| Radar, without the gate (Priority alone) | 232/440 | 52.7% (measured) |
+| Baseline: raw-count growth | 177/440 | 40.2% (measured) |
+| Baseline: persistence (the label's own last 2 weeks) | 427/440 | 97.0% (measured) |
 
 **Not reported:** coverage is below 90.0% for at least one ranker, so precision@10 could move by more than 10.0% once the missing labels arrive. Rerun `RADAR_PROFILE=full uv run python -m models.backtest` after the next WS6 write.
 
