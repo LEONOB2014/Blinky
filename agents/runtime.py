@@ -19,7 +19,7 @@ from langsmith import traceable
 from langsmith.run_helpers import get_current_run_tree
 from langsmith.utils import ContextThreadPoolExecutor
 
-from agents import tools
+from agents import tools, trust
 from agents.llm import ChatModel, NebiusChat
 from radar.paths import lake
 
@@ -674,43 +674,25 @@ _TRUST_HEDGE = re.compile(
 )
 
 
-def _pct(x: float) -> str:
-    return f"{x:.1f}".replace(".", ",") + "%"
-
-
 def trust_line(turn: Turn) -> str:
-    """How far to trust the radar, written by code from get_backtest's parsed headline."""
+    """How far to trust the radar, written by code from get_backtest's parsed headline, with the
+    same sentences as the UI's trust summary (agents/trust.py)."""
     found = {r["tool"]: r["result"] for r in turn.tool_results if r["result"].get("available")}
     summary = (found.get("get_backtest") or {}).get("resumen")
     if not summary:
         return ""
-    radar, raw = summary["radar_publicado"], summary["crecimiento_de_menciones"]
-    lo, hi = radar["ic95_pct"]
     weeks = (
         f" de {summary['semanas_evaluadas']} semanas" if summary.get("semanas_evaluadas") else ""
     )
-    beats = {
-        "la persistencia (repetir lo que ya subió)": summary["supera_persistencia_en_peor_caso"],
-        f"la regla simple de crecimiento de menciones ({_pct(raw['precision_pct'])})": summary[
-            "supera_crecimiento_en_peor_caso"
-        ],
-    }
-    yes = [k for k, v in beats.items() if v]
-    no = [k for k, v in beats.items() if v is False]
     text = (
-        f"Qué tan confiable es el radar (backtest{weeks}; acierto = {summary['etiqueta']}): su "
-        f"top 10 publicado acierta el {_pct(radar['precision_pct'])} de las veces (intervalo del "
-        f"95%: {_pct(lo)} a {_pct(hi)}), frente a un {_pct(summary['tasa_base_pct'])} de un tema "
-        f"al azar."
+        f"Qué tan confiable es el radar (backtest{weeks}; acierto = {summary['etiqueta']}): "
+        + trust.precision_sentence(summary)
     )
-    if yes:
-        text += f" Supera a {' y a '.join(yes)} incluso en el peor caso"
-        text += f"; no supera a {' ni a '.join(no)}." if no else "."
-    elif no:
-        text += f" No supera a {' ni a '.join(no)}."
+    if beats := trust.beats_sentence(summary):
+        text += f" {beats}"
     if (found.get("get_filter_quality") or {}).get("etiquetas_humanas_pendientes"):
-        text += " Las etiquetas humanas del filtro de noticias aún están pendientes."
-    return text + " Úsalo como señal temprana, no como garantía."
+        text += f" {trust.HUMAN_LABELS_PENDING}"
+    return f"{text} {trust.EARLY_SIGNAL}"
 
 
 def trust_claims(answer: str, turn: Turn) -> list[str]:
