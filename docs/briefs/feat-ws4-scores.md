@@ -187,3 +187,20 @@ were wrong on W42 rows (your own finding), and a wrong alias gives a topic anoth
 Run the primary backtest on `match = exact` topics only; report the alias-included run as a separate,
 clearly labelled row. Pageviews for the priority topics finish around 02:25 (estimate, one request per
 6.5 s, 0 HTTP 429 so far).
+
+## Addendum 5b (orchestrator, 01:40 UTC-5): use the pattern share, not the source count
+
+WS1c is READY (01:30): `lake/gold/topic_sources_weekly.parquet`, 270,888 topic-weeks (measured).
+Its finding overrides the example thresholds in Addendum 5: **source counts do not catch syndication**
+(Euronext: 86 sources, top source share 0.01, but `top_theme_pattern_share` 0.97). Use:
+
+- `top_theme_pattern_share` as the syndication signal: >= 0.9 removes exactly the 5 single-pattern W42
+  topics (Euronext 0.97, Adani 0.96, Kioxia 0.94, Sterling 0.92, Ministry of Science 0.91). It also
+  flags 24.7% of all ranked topic-weeks (16.3% of past top 10s), so apply it as a **penalty or a gate on
+  headlining only** (like the semillas), not as a removal from the ranking, and state the threshold as an
+  estimate.
+- `top_source_share` for the other failure, one outlet dominating (`org:yahoo` 0.60).
+- Distributions (p10 / median / p90): pattern share 0.21 / 0.45 / 1.00; top source share 0.024 / 0.10 /
+  0.34 (see `status/WS1.md` on `feat/ws1-topic-sources`).
+
+Then rebuild, re-run the backtests with and without the guard, and write `READY FOR REDEPLOY`.
