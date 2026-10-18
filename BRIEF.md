@@ -70,3 +70,14 @@ Items 1-4 by **06:45**; 5-7 by **07:30**.
    (tables as pipes). Render them properly: either a small markdown-table renderer for the existing
    `evidence/*.json`, or the key numbers as a compact table (coverage, precision@10 with interval,
    baselines, base rate; filter precision/recall vs the model panel, "verificación humana pendiente").
+
+## Addendum (orchestrator, 05:30 UTC-5): review of FINDING-004 and the rail
+
+10. **FINDING-004 follow-up (high):** the no-WebGL image is a full-page screenshot of the OLD UI (old
+    cards, `GET /api/radar`, a nested chat): in a demo it looks broken. Use a graph-only render: the
+    canvas alone (for example `lake/views/temporal.png` from the smoke test if it shows only the graph,
+    or a fresh headed-Chrome capture of just the graph element at the default lens), cropped to the
+    graph, with the legend. Verified by the orchestrator in a Chrome window without WebGL.
+11. **FINDING-002 follow-up (medium):** the rail's one-line reason still shows internal terms
+    ("z_7d 13.5, cuota 7d ..."). Show a plain reason instead, e.g. "Crece 10x frente a la semana pasada"
+    or the decision's plain sentence; keep the raw line in the detail and "Detalles técnicos".
