@@ -4,7 +4,31 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 01:45 UTC-5 · addendum 2 step 1 done · committed locally; the orchestrator pushes.
+2026-10-18 04:55 UTC-5 · final regression eval on `develop` done (chore/final-eval) · committed locally; the orchestrator pushes.
+
+## Final regression check (04:55 UTC-5, branch `chore/final-eval`, committed locally; the orchestrator pushes)
+
+- `final-develop` on `develop` 7634781 (briefs, evidence tools and graph lenses merged).
+  25 questions x 3 repetitions, concurrency 4, all *measured*.
+- Results against auditor-cards-r3 (spread in brackets):
+
+  | Metric | auditor-cards-r3 | final-develop |
+  |---|---|---|
+  | usefulness v1 | 0.500 [0.47-0.55] | 0.457 [0.43-0.48] |
+  | usefulness_v2 | 0.550 | 0.567 [0.51-0.60] |
+  | grounding | 1.000 | 0.973 [0.92-1.00] |
+  | decisions, routing, entities | 1.000 | 0.987 each |
+  | latency | 12.6 s | 7.8 s |
+  | tokens per turn | 5,812 | 5,824 |
+
+- **Decisions, routing and entities:** each lost the same single run, a q11 run that hit a DNS error
+  before any agent ran. Over the 74 completed runs, all three are 1.00.
+- **Grounding** is the only metric outside the old spread: 2 of 75 runs.
+  - The model made up an "nPMI > 0.85" threshold (q12) and a "$114.23" cost (q20).
+  - The Auditor caught and labelled both.
+  - Neither tool path changed in the diff, so this is sampling, not a regression from the merge.
+- **Usefulness v1:** dips, but the spreads overlap.
+- Verdict: no regression attributable to the merged changes. Detail in `agents/README.md`.
 
 ## Done
 
