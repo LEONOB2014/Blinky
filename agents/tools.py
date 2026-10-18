@@ -116,6 +116,35 @@ def labels_es() -> dict[str, str]:
     return {"ai_all": "IA en general"} | {k: v["label_es"] for k, v in tax["subtopics"].items()}
 
 
+@functools.cache
+def _ai_lexicon() -> tuple[tuple[str, tuple[re.Pattern[str], ...]], ...]:
+    """Each AI lexicon entry as (topic id, its name matchers): the entry's patterns, its GDELT org
+    aliases and its Spanish label, all whole-word and case-insensitive (contracts/ai_lexicon.yaml)."""
+    lex = yaml.safe_load((REPO_ROOT / "contracts" / "ai_lexicon.yaml").read_text(encoding="utf-8"))
+    out = []
+    for e in lex["entries"]:
+        names = [*(e.get("gdelt_orgs") or []), e["label_es"]]
+        matchers = [re.compile(p, re.I) for p in e["patterns"]]
+        matchers += [re.compile(rf"(?<!\w){re.escape(n.lower())}(?!\w)", re.I) for n in names]
+        out.append((f"ai:{e['id']}", tuple(matchers)))
+    return tuple(out)
+
+
+def ai_topic_in(text: str) -> str | None:
+    """The AI lexicon topic a text names ('¿Qué está pasando con Nvidia?' -> 'ai:infra:nvidia'),
+    only among topics the AI run scored; the longest match wins, ties go to the lexicon order."""
+    path = gold("topic_scores_weekly")
+    scored = set(_known_topics(str(path), path.stat().st_mtime)) if path.exists() else None
+    best: tuple[int, str] | None = None
+    for topic_id, matchers in _ai_lexicon():
+        if scored is not None and topic_id not in scored:
+            continue
+        span = max((len(m.group(0)) for p in matchers if (m := p.search(text))), default=0)
+        if span and (best is None or span > best[0]):
+            best = (span, topic_id)
+    return best[1] if best else None
+
+
 def _cap(z: float | None) -> float | str | None:
     if z is None:
         return None
