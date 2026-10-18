@@ -1,7 +1,8 @@
 """Build `topic_scores_weekly`: every ranked unit x ISO week, its scores, window chip and decision.
 
     uv run python -m models.build_scores                     # dev slice, subtopics, no write
-    RADAR_PROFILE=full uv run python -m models.build_scores  # writes lake/gold/topic_scores_weekly
+    RADAR_PROFILE=full uv run python -m models.build_scores  # topics -> topic_scores_weekly,
+                                                             # subtopics -> subtopic_scores_weekly
 
 Every record is validated against `contracts/topic_scores_weekly.schema.json` before writing.
 """
@@ -18,7 +19,7 @@ from typing import Any
 import polars as pl
 import yaml
 
-from models import decision, features, scores, window
+from models import decision, features, scores, universe, window
 from radar.contracts import validate_records
 from radar.paths import REPO_ROOT, gold, profile
 
@@ -96,24 +97,52 @@ def why(row: dict[str, Any], win: window.Window) -> list[str]:
     return out[:5]
 
 
-def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[dict[str, Any]]:
-    """Every record of `topic_scores_weekly` for the active profile."""
-    unit = unit or units()
+def _inputs(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None, dt.date]:
+    """Rolling frame (with `ai_all`), the unit's own rolling frame, membership and span start."""
     totals = features.load_totals()
+    sub = features.subtopic_daily()
     if unit == "subtopic":
-        daily = features.subtopic_daily()
-        weights = {s: {s: 1.0} for s in daily["unit_id"].unique().to_list()}
+        roll = features.rolling(sub, totals)
+        weights = {s: {s: 1.0} for s in sub["unit_id"].unique().to_list()}
         weights["ai_all"] = {}
-    else:
-        raise NotImplementedError(
-            "topic units need a topic -> subtopic mapping, which no contract provides yet "
-            "(see status/WS4.md)"
+        mem = scores.static_membership(scores.weekly_panel(roll), weights).with_columns(
+            pl.col("unit_id").alias("primary_subtopic"),
+            pl.concat_list(pl.col("unit_id")).alias("subtopics"),
         )
-    roll = features.rolling(daily, totals)
+        return roll, roll, mem, sub["dt"].min()
+    daily = features.topic_daily()
+    own = features.rolling(daily, totals)
+    # ai_all is the base for the fit's LatAm / es+pt shares; it is never ranked
+    base = features.rolling(sub.filter(pl.col("unit_id") == "ai_all"), totals)
+    base = base.filter(pl.col("dt").is_between(own["dt"].min(), own["dt"].max()))
+    roll = pl.concat([own, base], how="vertical_relaxed")
+    return roll, own, universe.membership(scores.FIT_SUBTOPICS), daily["dt"].min()
+
+
+def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[dict[str, Any]]:
+    """Every record of `topic_scores_weekly` for the active profile and unit.
+
+    Subtopics: all 12 every week. Topics: the ranked universe only (rows with a rank).
+    """
+    unit = unit or units()
+    roll, own, mem, start = _inputs(unit)
     panel = scores.weekly_panel(roll)
-    scored = scores.score(panel, weights, graph=_graph("unit_id"))
-    scored = scored.filter(pl.col("asof") >= totals["dt"].min() + dt.timedelta(days=WARMUP_DAYS))
-    onset_tab = window.onset_table(roll)
+    scored = scores.score(panel, mem, graph=_graph("unit_id"))
+    scored = scored.filter(pl.col("asof") >= start + dt.timedelta(days=WARMUP_DAYS))
+    if unit == "topic":
+        scored = scored.filter(pl.col("rank").is_not_null())
+    if mem is not None:
+        scored = scored.join(
+            mem.select("unit_id", "week", "primary_subtopic", "subtopics"),
+            on=["unit_id", "week"],
+            how="left",
+        )
+    else:
+        scored = scored.with_columns(
+            pl.lit(None, pl.String).alias("primary_subtopic"),
+            pl.lit(None, pl.List(pl.String)).alias("subtopics"),
+        )
+    onset_tab = window.onset_table(own)
     wd = _wikidata()
     mapped: set[str] = set()
     labels: dict[str, str] = dict(SUBTOPICS)
@@ -122,16 +151,20 @@ def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[
         mapped = set(has["topic_id"].to_list())
         for r in wd.filter(pl.col("label_es").is_not_null()).iter_rows(named=True):
             labels.setdefault(r["topic_id"], r["label_es"])
-    primary = {u: max(w, key=w.get) for u, w in weights.items() if w}
     records = []
     for (week,), wk in scored.group_by("week", maintain_order=True):
         asof = wk["asof"][0]
-        chips = window.chips(onset_tab, primary, asof, min_onsets=min_onsets)
+        # the lag pool is every topic with the same primary subtopic this week, ranked or not
+        pool = {}
+        if mem is not None:
+            m = mem.filter(pl.col("week") == week, pl.col("primary_subtopic").is_not_null())
+            pool = dict(zip(m["unit_id"], m["primary_subtopic"], strict=True))
+        chips = window.chips(onset_tab, pool, asof, min_onsets=min_onsets) if pool else {}
         for row in wk.iter_rows(named=True):
             u = row["unit_id"]
             for c in NULLABLE:
                 row[c] = _num(row[c])
-            win = chips[u]
+            win = chips.get(u, window.Window("sin_estimacion", None, None, 0))
             dec, _ = decision.decide(
                 decision.Inputs(
                     eligible=row["eligible"],
@@ -147,8 +180,8 @@ def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[
                     "week": week,
                     "topic_id": u,
                     "label_es": labels.get(u, u.split(":", 1)[-1]),
-                    "subtopics": sorted(weights[u]),
-                    "primary_subtopic": primary[u],
+                    "subtopics": list(row["subtopics"] or []),
+                    "primary_subtopic": row["primary_subtopic"] or universe.NO_SUBTOPIC,
                     "emergence_pct": row["emergence_pct"],
                     "stage": row["stage"],
                     "saturation": row["saturation"],
@@ -173,24 +206,38 @@ def to_frame(records: list[dict[str, Any]]) -> pl.DataFrame:
     return pl.DataFrame(records, infer_schema_length=None)
 
 
+def out_path(unit: str) -> Path:
+    """Topics are `topic_scores_weekly` (what the API and the agents rank). Once topics exist, the
+    12-subtopic table keeps the same contract in `subtopic_scores_weekly` (the agents' overview)."""
+    if unit == "subtopic" and units() == "topic":
+        return gold("subtopic_scores_weekly")
+    return gold("topic_scores_weekly")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--unit", choices=["subtopic", "topic"], default=None)
+    ap.add_argument("--unit", choices=["subtopic", "topic"], default=None, help="default: both")
     ap.add_argument("--out", type=Path, default=None, help="default: the lake on the full profile")
     args = ap.parse_args(argv)
-    records = build(args.unit)
-    errors = validate_records("topic_scores_weekly", records)
-    if errors:
-        print("\n".join(errors[:20]), file=sys.stderr)  # noqa: T201
-        return 1
-    df = to_frame(records)
-    out = args.out or (gold("topic_scores_weekly") if profile() == "full" else None)
-    weeks = df["week"].n_unique()
-    print(f"{len(records)} rows, {weeks} weeks, {df['topic_id'].n_unique()} units, valid")  # noqa: T201
-    if out is not None:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        df.write_parquet(out)
-        print(f"wrote {out}")  # noqa: T201
+    todo = (
+        [args.unit]
+        if args.unit
+        else (["topic", "subtopic"] if units() == "topic" else ["subtopic"])
+    )
+    for unit in todo:
+        records = build(unit)
+        errors = validate_records("topic_scores_weekly", records)
+        if errors:
+            print("\n".join(errors[:20]), file=sys.stderr)  # noqa: T201
+            return 1
+        df = to_frame(records)
+        out = args.out or (out_path(unit) if profile() == "full" else None)
+        n_units = df["topic_id"].n_unique()
+        print(f"{unit}: {len(records)} rows, {df['week'].n_unique()} weeks, {n_units} units, valid")  # noqa: T201
+        if out is not None:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            df.write_parquet(out)
+            print(f"wrote {out}")  # noqa: T201
     return 0
 
 

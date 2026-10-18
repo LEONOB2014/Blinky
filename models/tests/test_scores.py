@@ -134,7 +134,7 @@ def test_framing_angle_follows_the_rule_table(w42):
 def test_ineligible_units_have_no_rank(roll):
     weights = {u: {u: 1.0} for u in roll["unit_id"].unique().to_list()}
     panel = scores.weekly_panel(roll).with_columns(
-        pl.when(pl.col("unit_id") == "agents").then(5.0).otherwise(pl.col("n_7d")).alias("n_7d")
+        pl.when(pl.col("unit_id") == "agents").then(5).otherwise(pl.col("n7raw")).alias("n7raw")
     )
     s = scores.score(panel, weights).filter(pl.col("week") == WEEK, pl.col("unit_id") == "agents")
     assert s["rank"].to_list() == [None]

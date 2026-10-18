@@ -77,14 +77,24 @@ def subtopic_daily() -> pl.DataFrame:
 
 
 def topic_daily() -> pl.DataFrame:
-    """WS1's `topic_daily` (entity and theme topics) as unit series.
+    """WS1's `topic_daily` (entity and theme topics) as unit series, ranked universe only.
 
-    The contract carries mean tone and polarity but not the tail counts, so `n_pos_x`/`n_neg_x`
-    (and with them controversy) are NULL at topic level; tone sums are rebuilt from the means.
+    Only topics in the taxonomy's ranked universe that reach the weekly article minimum in at
+    least one ISO week are kept (the rest can never be ranked). The contract carries mean tone and
+    polarity but not the tail counts, so `n_pos_x`/`n_neg_x` (and with them controversy) are NULL
+    at topic level; tone sums are rebuilt from the means.
     """
+    from models import universe  # local: universe reads the taxonomy, features stays generic
+
     d = _as_date(pl.read_parquet(gold("topic_daily")))
     if "segment" in d.columns:
         d = d.filter(pl.col("segment") == "ai")
+    d = d.filter(universe.in_universe("topic_id"))
+    weekly = d.group_by("topic_id", pl.col("dt").dt.strftime("%G-W%V").alias("w")).agg(
+        pl.col("n_articles").sum()
+    )
+    keep = weekly.filter(pl.col("n_articles") >= universe.MIN_ARTICLES_WEEK)["topic_id"].unique()
+    d = d.filter(pl.col("topic_id").is_in(keep.implode()))
     tone_ok = pl.col("mean_tone").is_not_null()
     return (
         d.group_by("topic_id", "lang_bucket", "dt")
@@ -144,7 +154,10 @@ def rolling(
     per-stream view S8 computes.
     """
     groups = groups or LANG_GROUPS
-    gt = group_totals(totals, groups)
+    # the calendar is the input's own span: days before its first row are not zero, they are
+    # outside the table (topic_daily starts a year after daily_totals)
+    lo, hi = daily["dt"].min(), daily["dt"].max()
+    gt = group_totals(totals.filter(pl.col("dt").is_between(lo, hi)), groups)
     extra = [c for c in ("n_latam",) if c in daily.columns]
     parts = []
     for name, members in groups.items():
@@ -278,8 +291,8 @@ def rolling(
     f = f.sort([*by, "dt"])
     return f.select(
         key, "group", "dt", "is_missing", "n", "n_all", "share", "n_sources", "n_latam_7d",
-        "n_7d", "share_7d", "z_dow", "z_7d", "z_dow_r", "z_7d_r", "growth_7d_log", "accel_7d",
-        "mean_tone_7d", "extremity_7d", "mean_polarity_7d", "positive_share_7d",
+        "n7raw", "n_7d", "share_7d", "z_dow", "z_7d", "z_dow_r", "z_7d_r", "growth_7d_log",
+        "accel_7d", "mean_tone_7d", "extremity_7d", "mean_polarity_7d", "positive_share_7d",
         "negative_share_7d", "controversy_7d", "tone_shift_7d",
     )  # fmt: skip
 

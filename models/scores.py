@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import polars as pl
 
+from models import universe
 from models.features import self_z
 
 # The scores read the robust z (features.SD_FLOOR_REL); below, `z_7d` and `z_dow_7d` mean it.
 Z, ZDOW = "z_7d_r", "z_dow_r"
 
-# Ranked universe: >= 20 articles in the last 7 days (design, "What is ranked").
-MIN_ARTICLES_7D = 20
+# Ranked universe: >= `min_articles_week` (taxonomy, 20) ring-1 articles in the ISO week, counted
+# on the as-of day's 7-day window (design, "What is ranked"; Addendum 2).
+MIN_ARTICLES_7D = universe.MIN_ARTICLES_WEEK
 NOT_RANKED = {"ai_all"}  # the whole AI stream is the baseline, never a topic
 
 # Emergence components (MASTER_PLAN §12, score 1); each becomes a within-week percentile and the
@@ -119,10 +121,10 @@ def weekly_panel(roll: pl.DataFrame, key: str = "unit_id") -> pl.DataFrame:
     days = asof_days(r)
     at = r.join(days, left_on="dt", right_on="asof")
     allg = at.filter(pl.col("group") == "all").select(
-        key, "week", pl.col("dt").alias("asof"), "n_7d", "share_7d", pl.col(Z).alias("z_7d"),
-        "z_dow_7d", "growth_7d_log", "accel_7d", "mean_tone_7d", "positive_share_7d",
-        "negative_share_7d", "n_latam_7d", "hot_days_28", "share_7d_max56", *CHARGE_TERMS,
-        "z_tone_shift",
+        key, "week", pl.col("dt").alias("asof"), "n7raw", "n_7d", "share_7d",
+        pl.col(Z).alias("z_7d"), "z_dow_7d", "growth_7d_log", "accel_7d", "mean_tone_7d",
+        "positive_share_7d", "negative_share_7d", "n_latam_7d", "hot_days_28", "share_7d_max56",
+        *CHARGE_TERMS, "z_tone_shift",
     )  # fmt: skip
     espt = at.filter(pl.col("group") == "espt").select(
         key, "week", pl.col("n_7d").alias("n_7d_espt"), pl.col("onset_days_7").alias("espt_onset_7")
@@ -135,18 +137,39 @@ def _pct(col: str) -> pl.Expr:
     return (pl.col(col).rank("average") / pl.col(col).count()).over("week")
 
 
+def static_membership(
+    panel: pl.DataFrame, subtopics: dict[str, dict[str, float]], key: str = "unit_id"
+) -> pl.DataFrame:
+    """A membership frame from fixed subtopic weights (a subtopic maps to itself)."""
+    rows = [
+        {key: u, "fit_subtopic": float(sum(w for s, w in ws.items() if s in FIT_SUBTOPICS))}
+        for u, ws in subtopics.items()
+    ]
+    fit = pl.DataFrame(rows, schema={key: pl.String, "fit_subtopic": pl.Float64})
+    return panel.select(key, "week").unique().join(fit, on=key, how="left")
+
+
 def score(
     panel: pl.DataFrame,
-    subtopics: dict[str, dict[str, float]],
+    subtopics: dict[str, dict[str, float]] | pl.DataFrame | None,
     key: str = "unit_id",
     graph: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """The scores per unit x week.
 
-    `subtopics` maps a unit to its subtopic weights (shares of its articles; a subtopic maps to
-    itself). `graph` is WS3's `node_metrics_weekly` keyed by `key` and `week` (optional).
+    `subtopics` is either fixed subtopic weights per unit (shares of its articles; a subtopic maps
+    to itself), or a membership frame with `key`, `week` and `fit_subtopic` (the business and
+    education share of the unit's articles that week, `universe.membership`), or None (no
+    subtopics known: the fit uses the unit's own series only). `graph` is WS3's
+    `node_metrics_weekly` keyed by `key` and `week` (optional).
     """
     p = panel
+    if isinstance(subtopics, dict):
+        subtopics = static_membership(panel, subtopics, key)
+    if subtopics is not None:
+        p = p.join(subtopics.select(key, "week", "fit_subtopic"), on=[key, "week"], how="left")
+    else:
+        p = p.with_columns(pl.lit(None, pl.Float64).alias("fit_subtopic"))
     if graph is not None:
         p = p.join(graph.select(key, "week", "new_nbr_rate"), on=[key, "week"], how="left")
     else:
@@ -158,13 +181,7 @@ def score(
     )
     p = p.filter(~pl.col(key).is_in(list(NOT_RANKED))).join(base, on="week", how="left")
     p = p.with_columns(
-        (pl.col("n_7d").fill_null(0) >= MIN_ARTICLES_7D).alias("eligible"),
-        pl.col(key)
-        .map_elements(
-            lambda u: float(sum(w for s, w in subtopics.get(u, {}).items() if s in FIT_SUBTOPICS)),
-            return_dtype=pl.Float64,
-        )
-        .alias("fit_subtopic"),
+        (pl.col("n7raw").fill_null(0) >= MIN_ARTICLES_7D).alias("eligible"),
     )
     # percentiles are taken over the ranked universe of the week only
     ranked = p.filter("eligible")
