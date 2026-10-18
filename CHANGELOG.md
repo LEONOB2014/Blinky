@@ -6,6 +6,139 @@ All notable changes to this project are documented here. The format follows
 Entries are generated from Conventional Commits by commitizen; see
 [docs/development/releasing.md](docs/development/releasing.md).
 
+## v0.2.0 (2026-10-18)
+
+### Highlights (every number measured unless marked)
+
+- **Live radar on the full lake.** UI on Netlify, API and agents on Google Cloud Run; the public chat is rate-limited; the static fallback carries every panel except chat, plus the evidence and trust numbers.
+- **GDELT loop.** 4.03M AI, IT and AI × domain articles segmented, Nov 2025 → Oct 2026; 384.3 GB billed over 69 BigQuery jobs, inside the free tier.
+- **What is ranked.** Organisations and `TECH_*` themes with ≥ 20 AI articles a week (median 376 topics a week), gated to established or exact-Wikidata entities and guarded against wire syndication.
+- **Backtest, both labels, with their limits.** Wikipedia es+pt pageview growth (exact matches, 43 weeks): published radar precision@10 29.2% (24.4–34.0) vs base rate 25.4%; beats persistence even in the worst case (+6.4, 0.7–12.0) but not raw-count growth (31.7%). GDELT es+pt growth: 13.3% vs base 6.7%, a tie with persistence; median lead 3.0 weeks (2.0–4.0).
+- **Article classifier.** Two-family teacher panel (96.8% agreement), local student F1 0.964 against the panel; Jev (TypeSafe) only for doubtful articles, $0.044 spent. Human verification of the 300-row sheet pending.
+- **Agents.** Eight agents on Qwen3-30B; code computes every decision; a deterministic Auditor; LangSmith traces and a frozen 25-question set (3 repetitions): release eval on develop: grounding 1.000 (75/75 runs), routing 1.000, usefulness (judge that sees the data) 0.383 → 0.663 (0.63–0.70); the decision, evidence and graph-construction lines are written by code; readers' thumbs up/down recorded per turn.
+- **Spanish briefs.** One brief per top-10 topic (20 for W41–W42), 20/20 pass the Auditor, with up to 5 evidence articles per topic, one per outlet and one per title (0 duplicate titles over 240 topic-weeks).
+- **GPU graph.** cosmos.gl temporal graph (13 weeks, 1,000 nodes, 120 fps on an M1 Pro) and sigma.js story view; question-driven lenses (decision, ring, bridge, momentum, novelty, community, tone, window) with per-week betweenness, sector crossing and edge state; a one-screen demo layout (top-10 rail, graph, chat dock) and a graph image for browsers without WebGL.
+
+### Feat
+
+- **deploy**: stage the briefs, evidence, sources and subtopic tables
+- give the agents the evidence articles of a named topic
+- **contracts**: mock topic_briefs_weekly from the first agent run
+- let the editor read the pre-written brief first
+- write a spanish brief per top-10 topic, checked by the auditor
+- **deploy**: trace the live agents and accept feedback on cloud run
+- **api**: record readers' thumbs up or down on a chat turn in langsmith
+- show the decision line when asked or for a named topic
+- show the decision line only when a decision is asked
+- add a v2 usefulness judge that sees the tool data
+- **deploy**: add the ordered final redeploy with a dry run
+- **deploy**: carry the trust evidence in the static fallback
+- **deploy**: write each top topic's evidence for the static site
+- **bq**: pick up to five evidence articles per ranked topic-week
+- **contracts**: add topic_briefs_weekly and topic_evidence_weekly (#28)
+- **backtest**: report precision with bounds below the coverage rule
+- append es/pt pageviews for the ws4 missing topics
+- **crosssource**: fetch daily wikipedia pageviews
+- **entity**: resolve topics against wikidata
+- **web**: add brief evidence and trust cards
+- **web**: keep named topics on the gpu story lens
+- **web**: drive the graph lens from view_command color_by
+- **web**: add split view, full-screen graph mode, and query-driven lenses
+- **graph**: compute graph lens properties and re-export top-10 stories
+- **contracts**: add the bridge, momentum and novelty graph lenses (#27)
+- **contracts**: let the cartographer pick the graph lens per question (#26)
+- **submission**: check the public site and api before the demo
+- **contracts**: copy the topic_sources_weekly mock from the dev slice
+- add the topic sources dev cut to the dev slice
+- **bq**: measure source diversity and copy patterns per topic-week
+- **contracts**: add topic_sources_weekly and the brief for the syndication guard
+- give every routed specialist real data
+- ask specialists for short plain-spanish notes
+- give the agents numbers already formatted for executives
+- answer out-of-scope questions honestly by code
+- write the decision line in code and answer in plain spanish
+- repeat eval runs and summarize each evaluator's spread
+- **backtest**: use exact wikidata matches for the primary label
+- **scores**: hold syndicated and one-outlet weeks out of the top 10
+- **backtest**: add the secondary-label run and the coverage gate
+- **api**: rate limit the public chat per client and per day
+- **deploy**: package the api for cloud run with its lake tables
+- **deploy**: serve a static export when the api is unreachable
+- **deploy**: run the api on modal over a volume of lake tables
+- **scores**: gate the top 10 to established or wikidata topics
+- **backtest**: run the backtest and editor sheet on the topic universe
+- **scores**: rank the taxonomy's topic universe with weekly subtopics
+- **scores**: add the blind editor-test sheet and the models readme
+- **backtest**: add the precision@10 and lead-time backtest
+- **scores**: add the six scores, the window chip and the decision
+- **web**: add cosmos.gl temporal graph and sigma story graph components
+- **viz**: prune temporal edges top-k and export top-10 stories
+- **graph**: export the temporal and story views and smoke-test them
+- **contracts**: add the hand-filled 30x social posts sheet (#17)
+- trace the agents in langsmith and evaluate them on a frozen set
+- **contracts**: add the topic mocks and deny two news outlets
+- add the topic dev cut of the ranked universe to the dev slice
+- **bq**: add the weekly topic to subtopic table and export it
+- **web**: pick the radar week and load a card's timeline and ring
+- **labels**: generate 300-row blind gold sheet and label quality report
+- **labels**: train calibrated student with active learning and jev cascade
+- **labels**: implement multi-family teacher panel and label 4k sample
+- **labels**: sample stratified articles and active-learning pool
+- **api**: serve radar endpoints over duckdb and add contract-driven web ui
+- **ingest**: export the gold tables to the lake, checked by contract
+- **bq**: segment articles into rings and build ring-1 topic series
+- **ingest**: run bq_sql scripts through a dry-run guard and the ledger
+- **tgnn**: add edgebank and persistence link-prediction baselines
+- **graph**: add weekly node metrics and the 1-hop context ring
+- **contracts**: define the ranked universe and topic_subtopic_weekly (#8)
+- add the multi-agent runtime with the media master and a code auditor
+- **contracts**: add the wikipedia and graph-metric contracts
+- add the real dev slice, the dev and full profiles and mocks from it
+- **bq**: widen the s2 net to all ict news and large tech companies
+- **contracts**: add the data, agent and api contracts
+
+### Fix
+
+- write the outlet count by code and flag a wrong one
+- narrow the latam claim check and trace thousands separators
+- drop echoed decision lines and audit unbacked latam claims
+- **bq**: treat titles with a site suffix as the same evidence story
+- **design**: refresh the no-webgl graph image
+- **design**: collapse the idle chat dock to a pill
+- **design**: give the graph its full width
+- **design**: close the trust panel on escape
+- **design**: raise the chat decision card contrast
+- **design**: keep the graph clear of the chat dock
+- **deploy**: stage the graph view metadata for get_graph_facts
+- write how the graph is built by code, from the view and the ring
+- **deploy**: keep the graph image across the static wipe
+- read dates whole when the auditor traces numbers
+- name the topic in the evidence block as the scores do
+- answer outlet counts, list evidence by code and forbid stories
+- read the cost ledger on the trust route only when asked about cost
+- **bq**: keep one evidence article per normalized title
+- let only percentages match a share in the auditor
+- give the agents the real cost and ring thresholds to cite
+- veto decisions no card shows and count entity false positives
+- resolve topics named in a question only as whole words
+- **deploy**: clear ARGS before the live check in the redeploy
+- **deploy**: count one container start per cold start
+- **graph**: classify edge state against the unpruned previous week
+- **web**: show degree growth as a ratio
+- **web**: type the measured reheat samples
+- refuse only social-metric questions, not radar forecasts
+- **deploy**: take the image packages from pyproject
+- **scores**: floor the z-score sd so low-volume baselines do not inflate it
+- make the agents work on the full lake
+- **graph**: drop person neighbours from the 1-hop ring
+- **api**: serve the radar on the full lake and guard persons and deny-listed orgs
+
+### Perf
+
+- **scores**: build topics in chunks so the full lake fits in 1.1 GB
+- **tgnn**: stream weeks and count memory hits once per node
+- **graph**: stream weeks so the full lake fits in memory
+
 ## v0.1.0 (2026-10-17)
 
 ### Highlights
