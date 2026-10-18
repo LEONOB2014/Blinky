@@ -6,13 +6,66 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 05:30 UTC-5 · branch `feat/ws9-final-data` · committed locally, the orchestrator pushes.
+2026-10-18 05:34 UTC-5 · branch `docs/ws9-predeploy-check` (pre-deploy check of `develop` e830a28, no deploy) · committed locally, not pushed.
+
+Previous: 2026-10-18 05:30 UTC-5 · branch `feat/ws9-final-data` · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 redeploy of `develop` e4518d2) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+
+## Pre-deploy check of `develop` e830a28 (orchestrator's order, 05:38; no deploy)
+
+The `deploy-develop` checkout was moved to `origin/develop` e830a28. Its API ran locally on
+**port 8011** (`RADAR_PROFILE=full`, LangSmith tracing off so the test questions stay out of the
+traces) over the shared lake, and was stopped afterwards (checked: 8011 free).
+
+**Result: 3 checks; 2 pass outright. The chat check passes the Auditor 4/4 but fails on content
+2 of 4.**
+
+1. `RADAR_API_URL=http://127.0.0.1:8011 scripts/demo_check.py`: **7/7 PASS** (measured). The site
+   checks still read the live Netlify site; local `/api/radar` equals Netlify's static top 10.
+2. **Chat, 4 questions that need the new tables** (Marsh McLennan, the W42 #1):
+
+   | # | Question | Tools that ran (data available) | Auditor | Answers from the tool data? |
+   |---|---|---|---|---|
+   | 1 | ¿Qué contenido preparo esta semana sobre Marsh McLennan? | `get_topic_brief`, `get_topic_evidence`, scores, series | pass | **pass**: the brief's format, angle, 92 and 65 |
+   | 2 | ¿Qué artículos respaldan a Marsh McLennan…? | `get_topic_evidence` (5 articles, 5 outlets), scores | pass | **fail**: names no article and no outlet; answers about growth instead |
+   | 3 | ¿Cuántos medios distintos cubren a Marsh McLennan…? | scores, series, evidence; **no tool reads `topic_sources_weekly`** | pass | **fail, wrong fact**: "44 medios distintos". 44 is the article count; the measured outlet count is 39. |
+   | 4 | ¿En qué subtemas de IA cae Marsh McLennan…? | scores (`subtopics`), series, evidence; **no tool reads `topic_subtopic_weekly`** | pass | **pass**: inversión y mercados, chips e infraestructura, from the scores row |
+
+   - Auditor 4/4 (no veto: "todos los números de la respuesta tienen fuente"); content 2/4 (judged
+     by reading each answer against its tool results).
+   - "más del 900%" in answer 3 traces to the scores' "cuota 7d más de 10 veces", so it is not
+     invented.
+   - Latency 12.5 / 8.0 / 6.5 / 6.5 s.
+   - **Spend:** 29,946 tokens in total for the 4 turns. At Qwen3-30B rates this is well under the
+     $0.10 limit (estimate: under $0.01).
+3. `deploy/export_static.py` into a scratch folder: **PASS**. 212 evidence files, 240 topic-weeks,
+   1,191 articles, **0 topic-weeks with duplicate titles** (measured).
+
+**Defects (for the orchestrator; nothing changed here):**
+
+- **D1, no tool for two of the four new tables.** `topic_sources_weekly` and `topic_subtopic_weekly`
+  are now staged in the image (PR #44), but no agent tool reads them.
+  - "¿cuántos medios?" gets a wrong number: the article count presented as the outlet count. The
+    Auditor cannot catch it, because 44 is a real number in the data.
+  - Fix: a `get_topic_sources(topic_id, week)` tool returning `n_articles`, `n_sources` and the top
+    source shares, added to the Signal analyst's plan for named topics. Subtopics already come from
+    the scores row, so `topic_subtopic_weekly` (per-subtopic article shares) is optional.
+- **D2, evidence is fetched but not shown.** For an evidence question the Media Master does not list
+  the outlets, dates or titles that `get_topic_evidence` returned. Fix: route "artículos /
+  evidencia / fuentes / medios" questions to a code-written evidence block (outlet, date, language,
+  title), as the decision line is written by code.
+- **D3, the same invented framing in every answer.** All four end with a made-up story ("cómo la
+  firma está redefiniendo la gestión de riesgos en América Latina", "cómo las aseguradoras usan IA
+  en riesgos financieros"). No tool data supports it, and the number-only Auditor cannot see it.
+  Answer 1 also reads the subtopic categories as the company's business ("su expansión en mercados
+  de financiamiento e infraestructura de chips"), the overclaim the briefs' prompt now forbids. Fix:
+  the same rules in the Media Master's prompt (no causes or narratives beyond the data; subtopics
+  are categories).
 
 ## Final data fixes (orchestrator's decisions on the 05:00 findings), branch `feat/ws9-final-data`
 
