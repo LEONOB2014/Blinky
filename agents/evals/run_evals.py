@@ -23,6 +23,7 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 from langsmith import Client
+from langsmith.evaluation import evaluate_existing
 
 from agents.llm import NebiusChat
 from agents.runtime import _DECISION_WORDS, _git_sha, run_turn
@@ -102,14 +103,28 @@ def routing(outputs: dict[str, Any], reference_outputs: dict[str, Any]) -> dict[
 
 
 def entity_resolved(outputs: dict[str, Any], reference_outputs: dict[str, Any]) -> dict[str, Any]:
-    """The named entity reached a tool as its graph id."""
-    entity = reference_outputs.get("entity")
-    if not entity:
-        return {"key": "entity_resolved", "score": None}
-    args = json.dumps([s.get("arguments") for s in _steps(outputs)], ensure_ascii=False)
-    views = json.dumps(outputs.get("view_commands") or [], ensure_ascii=False)
-    hit = entity in args or entity in views
-    return {"key": "entity_resolved", "score": 1 if hit else 0}
+    """1 when the turn resolved exactly the entity the question names, including none.
+
+    The resolved entity is the one the code route recorded on the Media Master's delegate step; a
+    topic resolved when the question names none, or a different one, scores 0 (false positives
+    counted, since 2026-10-18 02:00: earlier experiments scored only the 6 entity questions).
+    """
+    expected = reference_outputs.get("entity")
+    resolved = next(
+        (
+            (s.get("arguments") or {}).get("entity")
+            for s in _steps(outputs)
+            if s["agent"] == "media_master"
+            and s["action"] == "delegate"
+            and "entity" in (s.get("arguments") or {})
+        ),
+        None,
+    )
+    return {
+        "key": "entity_resolved",
+        "score": 1 if resolved == expected else 0,
+        "comment": f"expected={expected} resolved={resolved}",
+    }
 
 
 def latency_s(outputs: dict[str, Any]) -> dict[str, Any]:
@@ -136,27 +151,77 @@ def _judge() -> NebiusChat:
     return NebiusChat(temperature=0.0, model=JUDGE_MODEL)
 
 
-def usefulness(inputs: dict[str, Any], outputs: dict[str, Any]) -> dict[str, Any]:
+def _verdict(key: str, system: str, user: str) -> dict[str, Any]:
+    """One judge call; a 1-5 score scaled to 0-1, or None when the output is not parseable."""
     reply = _judge().chat(
-        [
-            {"role": "system", "content": JUDGE_PROMPT},
-            {
-                "role": "user",
-                "content": f"Pregunta: {inputs['question']}\n\nRespuesta: {outputs.get('answer_es')}",
-            },
-        ],
-        [],
+        [{"role": "system", "content": system}, {"role": "user", "content": user}], []
     )
     match = re.search(r"\{.*\}", reply.content or "", re.S)
     try:
         verdict = json.loads(match.group(0)) if match else {}
         score = int(verdict["score"])
     except (ValueError, KeyError, TypeError):
-        return {"key": "usefulness", "score": None, "comment": "judge output not parseable"}
-    return {"key": "usefulness", "score": (score - 1) / 4, "comment": verdict.get("reason")}
+        return {"key": key, "score": None, "comment": "judge output not parseable"}
+    return {"key": key, "score": (score - 1) / 4, "comment": verdict.get("reason")}
 
 
-EVALUATORS = [grounding, decision_faithful, routing, entity_resolved, latency_s, tokens, usefulness]
+def usefulness(inputs: dict[str, Any], outputs: dict[str, Any]) -> dict[str, Any]:
+    """Judge v1: sees only the question and the answer (kept for comparison with past runs)."""
+    return _verdict(
+        "usefulness",
+        JUDGE_PROMPT,
+        f"Pregunta: {inputs['question']}\n\nRespuesta: {outputs.get('answer_es')}",
+    )
+
+
+# Judge v2: v1 could not see the data, so it called real numbers "no verificables" and 2026 dates
+# "future". v2 gets today's date and the tool results the answer was built from, and scores only
+# usefulness to the executive given that data (grounding is checked by code, not by the judge).
+JUDGE_V2_PROMPT = (
+    "Eres un editor jefe de un medio de negocios en LatAm. Hoy es {today}. Un asistente respondió "
+    "la pregunta de un ejecutivo con los datos reales del radar que te muestro (ya verificados por "
+    "código: no juzgues si los números o las fechas son verificables). Evalúa SOLO qué tan útil es "
+    "la respuesta para ese ejecutivo, dados esos datos: (1) responde exactamente lo que se pregunta, "
+    "(2) es clara y accionable, (3) está en español natural y sin jerga interna, (4) es breve "
+    "(máximo 8 líneas), (5) usa bien los datos, sin exagerarlos ni decir lo que no dicen. Si los "
+    "datos no cubren lo que se pregunta, una respuesta honesta que lo diga y ofrezca una "
+    "alternativa útil es correcta. Devuelve SOLO un JSON: "
+    '{{"score": <entero 1-5>, "reason": "<una frase>"}}.'
+)
+TOOL_DATA_CHARS = 4000
+
+
+def tool_data(outputs: dict[str, Any], limit: int = TOOL_DATA_CHARS) -> str:
+    """The tool results the answer was built from (the trace's trimmed summaries), capped."""
+    lines = [
+        f"- {s.get('tool')}: {s.get('result_summary')}"
+        for s in _steps(outputs)
+        if s.get("action") == "tool_result" and s.get("result_summary")
+    ]
+    text = "\n".join(lines) or "(ninguna herramienta: respuesta sin datos del radar)"
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def usefulness_v2(inputs: dict[str, Any], outputs: dict[str, Any]) -> dict[str, Any]:
+    today = dt.datetime.now(dt.UTC).astimezone(dt.timezone(dt.timedelta(hours=-5))).date()
+    return _verdict(
+        "usefulness_v2",
+        JUDGE_V2_PROMPT.format(today=today.isoformat()),
+        f"Pregunta: {inputs['question']}\n\nDatos del radar:\n{tool_data(outputs)}\n\n"
+        f"Respuesta: {outputs.get('answer_es')}",
+    )
+
+
+EVALUATORS = [
+    grounding,
+    decision_faithful,
+    routing,
+    entity_resolved,
+    latency_s,
+    tokens,
+    usefulness,
+    usefulness_v2,
+]
 KEYS = [e.__name__ for e in EVALUATORS]
 
 
@@ -211,11 +276,24 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--repetitions", type=int, default=1, help="runs per question")
     parser.add_argument("--change", default="", help="what this experiment changes (metadata)")
+    parser.add_argument(
+        "--rescore", metavar="EXPERIMENT", help="add usefulness_v2 to an existing experiment"
+    )
     args = parser.parse_args()
     load_dotenv(REPO_ROOT / ".env")
     os.environ.setdefault("LANGSMITH_TRACING", "true")
     os.environ.setdefault("LANGSMITH_PROJECT", "radar-agents")
     client = Client()
+    if args.rescore:
+        results = evaluate_existing(
+            args.rescore,
+            evaluators=[usefulness_v2],
+            max_concurrency=args.concurrency,
+            client=client,
+            metadata={"rescored_with": "usefulness_v2"},
+        )
+        _report(f"{args.rescore}.v2", _rows(results), args.repetitions)
+        return
     dataset = ensure_dataset(client)
     results = client.evaluate(
         target,
@@ -233,14 +311,18 @@ def main() -> None:
             "scores_file_mtime": _scores_mtime(),
         },
     )
-    rows = _rows(results)
-    summary = summarize(rows, args.repetitions)
-    out = lake() / "evals" / f"{results.experiment_name}.json"
+    _report(results.experiment_name, _rows(results), args.repetitions)
+
+
+def _report(name: str, rows: list[dict[str, Any]], repetitions: int) -> None:
+    """Writes lake/evals/<name>.json (summary + per-question rows) and prints the summary."""
+    summary = summarize(rows, repetitions)
+    out = lake() / "evals" / f"{name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False, indent=1, default=str)
     )
-    print(results.experiment_name)
+    print(name)
     for k, v in summary.items():
         if v["mean"] is not None:
             print(

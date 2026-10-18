@@ -469,14 +469,22 @@ def decision_line(turn: Turn, entity: str | None, question: str) -> str:
 
 
 _WORD = re.compile(r"[\wáéíóúñü&.-]+", re.I)
+_NON_NAME = re.compile(r"[^\w&.-]+")
 
 
 def _entity_in_question(question: str, week: str | None) -> str | None:
     """The graph topic a question names: a full node name in the text ('google' -> 'org:google'),
     else the longest 1-3 word phrase that resolves to one ('OpenAI' -> GDELT's 'org:openai inc')."""
-    q = question.lower()
+    # whole words only: a plain substring test found 'org:a co' inside "ha costado"
+    padded = f" {_NON_NAME.sub(' ', question.lower())} "
     names = tools.graph_nodes(week)
-    hits = [n for n in names if len(n.split(":", 1)[1]) > 3 and n.split(":", 1)[1] in q]
+    hits = [
+        n
+        for n in names
+        if len(n.split(":", 1)[1].replace(" ", "")) > 3
+        and n.split(":", 1)[1] not in labels_stop()
+        and f" {n.split(':', 1)[1]} " in padded
+    ]
     if hits:
         return max(hits, key=len)
     words = _WORD.findall(question)
@@ -521,6 +529,10 @@ def labels_stop() -> frozenset[str]:
             "muéstrame",
             "muestrame",
             "ahora",
+            # 'el tema principal' is not 'org:principal group'; LinkedIn is where 30X publishes,
+            # not the topic of the question
+            "principal",
+            "linkedin",
         ]
     )
 
@@ -687,7 +699,7 @@ def run_turn(
     turn = Turn(conversation_id or uuid.uuid4().hex[:12])
     if refusal := out_of_scope(question):
         turn.log("media_master", "answer", result_summary="fuera de alcance (ruta por código)")
-        answer, bad, decision_vetoed = _audit(turn, refusal, question)
+        answer, bad, decision_vetoed = _audit(turn, refusal, question, [])
         turn.answer_es = answer
         response = turn.as_response()
         _tag_run(["out_of_scope"], bad, decision_vetoed, week)
@@ -708,7 +720,12 @@ def run_turn(
             [_delegate_spec(a) for a in SPECIALISTS],
         )
     else:
-        turn.log("media_master", "delegate", result_summary=f"ruta por código: {', '.join(needed)}")
+        turn.log(
+            "media_master",
+            "delegate",
+            arguments={"entity": entity},  # the topic the question names (None when none)
+            result_summary=f"ruta por código: {', '.join(needed)}",
+        )
         signals = _run_tool(turn, "signal_analyst", "get_top10", week=week)
         ctx = {
             "week": week,
@@ -766,14 +783,14 @@ def run_turn(
         )
         body = (reply.content or "").strip()
         answer = f"{line}\n\n{body}" if line else body
-    answer, bad, decision_vetoed = _audit(turn, answer, question)
-    turn.answer_es = answer
     # cards only when the question is about what to publish, not about cost or freshness
     turn.decision_cards = (
         cards_from_scores(turn)
         if {"signal_analyst", "audience_strategist", "editor"} & set(needed or SPECIALISTS)
         else []
     )
+    answer, bad, decision_vetoed = _audit(turn, answer, question, turn.decision_cards)
+    turn.answer_es = answer
     for card in turn.decision_cards:
         card["auditor_ok"] = not bad
     response = turn.as_response()
@@ -788,14 +805,35 @@ def run_turn(
     process_inputs=lambda i: {"answer": i["answer"], "question": i["question"]},
     process_outputs=lambda o: {"answer": o[0], "untraced_numbers": o[1], "decision_vetoed": o[2]},
 )
-def _audit(turn: Turn, answer: str, question: str) -> tuple[str, list[str], bool]:
-    """The deterministic Auditor: veto decisions no code computed, flag numbers no tool returned."""
-    decision_vetoed = not _decisions_by_code(turn) and bool(_DECISION_WORDS.search(answer))
+def _decision_code(phrase: str) -> str:
+    p = phrase.lower()
+    if p.startswith("publicar"):
+        return "publicar_ahora"
+    if p.startswith("no es"):
+        return "no_es_tema_caliente"
+    return "preparar"
+
+
+def _audit(
+    turn: Turn, answer: str, question: str, cards: list[dict[str, Any]]
+) -> tuple[str, list[str], bool]:
+    """The deterministic Auditor: veto decisions no card carries, flag numbers no tool returned.
+
+    A decision phrase stands only when this turn emits a decision card with that decision; a
+    decision in the scores that no card shows (q22: "No se recomienda publicar ahora" on a trust
+    question) is replaced by "decisión pendiente".
+    """
+    shown = {c["decision"] for c in cards}
+    checked = _DECISION_WORDS.sub(
+        lambda m: m.group(0) if _decision_code(m.group(0)) in shown else "decisión pendiente",
+        answer,
+    )
+    decision_vetoed = checked != answer
     if decision_vetoed:
         turn.log(
-            "auditor", "veto", result_summary="decisión sin cálculo de código: se marca pendiente"
+            "auditor", "veto", result_summary="decisión sin tarjeta de decisión: se marca pendiente"
         )
-        answer = _DECISION_WORDS.sub("decisión pendiente", answer)
+        answer = checked
     bad = untraced_numbers(answer, turn.tool_results, question)
     if bad:
         turn.log("auditor", "veto", result_summary=f"números sin fuente: {', '.join(bad)}")
