@@ -108,3 +108,62 @@ compressed, about 3.7 GB free (measured), and WS4's score rebuild (2.3 GB) has p
    `pl.scan_parquet` (never the whole 37.8M rows), and report the measured peak (`/usr/bin/time -l`).
 3. In the browser, measure with only the radar tab open; if fps or memory suffer, ship the light export
    and say so.
+
+## Addendum 2 (orchestrator, 02:10 UTC-5): query-driven lenses and a full-screen graph
+
+The G phase is done and measured (120 fps sweep, 26-33 ms story renders). The maintainer wants the
+graph to behave like Graphistry: the layout, colours, sizes and edge widths change with each question,
+and the graph gets the screen it deserves. Everything below uses the installed `@cosmos.gl/graph@3.5.1`
+(its API was checked: `setPointColors`, `setPointSizes`, `setLinkColors` (RGBA: alpha = intensity),
+`setLinkWidths`, `setLinkStrength` (per link), `setPointClusters` + `setPointClusterStrength`,
+`setPinnedPoints`, `focusedPointIndex`, `zoomToPointByIndex`, `fitViewByPointIndices`,
+`linkColorInterpolateFromEndpoints`, `curvedLinks`, `simulationGravity` / `Repulsion` / `LinkSpring`
+/ `LinkDistance` / `Friction` / `Decay`, `simulationAlpha`) and sigma 3 reducers.
+
+### Must (in this order)
+
+1. **Re-export first.** The stories were exported before WS4's syndication guard (01:36): re-run
+   `RADAR_PROFILE=full uv run --extra graph python -m graph.export_views` so the 10 stories follow the
+   current top 10. Keep the reference stories (Nvidia, Microsoft, Google, OpenAI, TECH_AUTOMATION).
+2. **Layout: split view + full screen.**
+   - Default: cards and chat on the left (~35%), the graph on the right (~65%), draggable divider.
+   - Full-screen graph mode: a button and the `F` key; a floating chat box and a collapsible card
+     drawer over the graph; `Esc` returns. When the Cartographer emits a `view_command`, the graph
+     expands automatically (the user can collapse it).
+   - A legend for the active lens and the `caption_es` on top. Spanish throughout.
+3. **Lenses driven by `view_command`** (`color_by`, `highlight`, `focus_topic`, `filter`, `week`): one
+   function per lens that sets colours, sizes, link colours/widths/strengths and focus, then briefly
+   re-runs the simulation from the current positions (reheat with `simulationAlpha`, then freeze), so
+   the graph visibly rearranges per question, like Graphistry's play:
+   - **Radar** (default, "¿qué sube?"): size = weekly PageRank (or emergence), colour = decision, a
+     halo on the top 10; edge width = log(co-mentions), edge alpha = NPMI; the top 10's links get a
+     higher `setLinkStrength`, the rest fade.
+   - **Story** ("¿qué pasa con X?"): pin X at the centre, its links strong and bright, neighbours
+     coloured by ring (IA / IT / IA × dominio), everything else near-transparent; `zoomToPointByIndex`.
+     When X is not in the temporal graph, open the sigma story view as today.
+   - **Temporal** ("muéstrame la semana / los 90 días"): today's frozen sweep, no re-layout.
+4. **Edges that speak:** width from co-mentions, intensity (alpha) from NPMI, gradient from endpoint
+   colours, curved links if it stays above 60 fps.
+5. Keep the measured limit: live re-layout only on the pruned graph (< 50k links); measure fps during
+   a re-layout and the time to settle.
+
+### Nice (only if the must list is done and measured)
+
+- **Emotion** lens: colour = tone (diverging blue-red), size = emotional charge.
+- **Window** lens: colour = window chip state, clusters by state with `setPointClusters`.
+- Animated transitions between lenses (interpolate colours/sizes over ~400 ms).
+
+### Contract note
+
+If a lens needs a value that `view_command` cannot express, use the existing fields first (`color_by`
+values: `decision`, `ring`, `tone`, `window`); if that is not enough, write it in the status and the
+orchestrator changes the contract. The orchestrator will make the Cartographer emit `color_by` per
+question type.
+
+### Acceptance
+
+`make check && make test` and `bun run build` pass; screenshots (headed Chrome) of: split view, full
+screen, Radar lens, Story lens for the #1 topic, one chat question that rearranges the graph; fps
+during re-layout and time to settle, in `status/WS5.md`.
+
+Deadline: must list by **05:00**; nice items by **06:00** or dropped.
