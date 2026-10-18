@@ -29,6 +29,8 @@ interface LabelItem {
   idx: number;
   id: string;
   text: string;
+  /** The full name (tooltip) when `text` is shortened. */
+  fullText: string;
   x: number;
   y: number;
   priority: number;
@@ -61,6 +63,17 @@ const LAYOUT_SAMPLE_INDEXES = [0, 100, 250, 500, 750, 999];
 const FIT_PAD = 0.08;
 /** Rendered label height in CSS px (the global button min-height). */
 const LABEL_H = 36;
+/** AI graph limits: links at most 3 px and 0.85 alpha in any lens; nodes at most 24 px. */
+const AI_LINK_MAX_W = 3;
+const AI_LINK_MAX_ALPHA = 0.85;
+const AI_NODE_MAX = 24;
+/** AI graph labels longer than this are shortened with "…" (full name in the tooltip). */
+const AI_LABEL_MAX_CHARS = 28;
+
+function labelTexts(full: string, shorten: boolean): { text: string; fullText: string } {
+  if (!shorten || full.length <= AI_LABEL_MAX_CHARS) return { text: full, fullText: full };
+  return { text: `${full.slice(0, AI_LABEL_MAX_CHARS - 1).trimEnd()}…`, fullText: full };
+}
 /** Height of an AI-graph label (frameless text, min-height reset in .graph-label-ai). */
 const AI_LABEL_H = 20;
 /** The AI graph always labels this many volume leaders of the displayed week (/api/leaders). */
@@ -322,12 +335,17 @@ export function TemporalGraph({
       } catch {
         live = [];
       }
+      // Measured for the end-to-end check: node positions the renderer holds that are not finite.
+      let nonFinite = 0;
+      for (const v of live) if (!Number.isFinite(v)) nonFinite += 1;
+      window.__metrics = { ...window.__metrics, nan_positions: nonFinite, n_positions: live.length / 2 };
       const focusIdx = focusTopicIdx;
       const neighbours =
         focusIdx !== null
           ? new Set(weekLinkMapRef.current[w]?.incidentMap.get(focusIdx) ?? [])
           : null;
 
+      const aiLabelsMode = Boolean(d._meta.params.ai_only);
       const candidates: LabelItem[] = [];
       const mustShow = new Set<number>();
       for (let i = 0; i < d.nodes.length; i++) {
@@ -368,7 +386,7 @@ export function TemporalGraph({
         candidates.push({
           idx: i,
           id: node.id,
-          text: displayName(node.label_es || node.label || node.id),
+          ...labelTexts(displayName(node.label_es || node.label || node.id), aiLabelsMode),
           x: sx,
           y: sy,
           priority,
@@ -519,7 +537,7 @@ export function TemporalGraph({
         const ring = node.ring ?? "ai_domain";
 
         // The AI graph has ~100 nodes, so size spans a wider range (sqrt keeps mid-sized visible).
-        let sz = d._meta.params.ai_only ? 6 + 26 * Math.sqrt(imp) : 3.5 + imp * 8.5;
+        let sz = d._meta.params.ai_only ? 5 + 19 * Math.sqrt(imp) : 3.5 + imp * 8.5;
         let r = 100 / 255;
         let gCol = 116 / 255;
         let b = 139 / 255;
@@ -754,7 +772,7 @@ export function TemporalGraph({
           }
         }
 
-        sizes[i] = sz;
+        sizes[i] = d._meta.params.ai_only ? Math.min(sz, AI_NODE_MAX) : sz;
         colors[i * 4] = r;
         colors[i * 4 + 1] = gCol;
         colors[i * 4 + 2] = b;
@@ -771,13 +789,14 @@ export function TemporalGraph({
         const isCross = wMap.crossRing[e];
 
         const aiGraph = Boolean(d._meta.params.ai_only);
-        // AI graph: few edges (~150 a week), so strength must read at a glance: width log-scaled
-        // on co-mentions (3..504 -> ~2.8..9 px), alpha by NPMI (0.1..0.7 -> 0.25..0.95).
+        // AI graph: thin, translucent links; strength reads through brightness more than
+        // thickness. Width on co-mentions (n = 3 -> 1 px, n = 500 -> 2.6 px), alpha by NPMI
+        // (0.1..0.7 -> 0.10..0.65).
         let width = aiGraph
-          ? Math.min(9, 0.6 + 1.6 * Math.log1p(nVal))
+          ? Math.min(2.6, 0.35 + 0.45 * Math.log1p(nVal))
           : Math.max(0.45, Math.min(2.8, Math.log(nVal + 1) * 0.45));
         let alpha = aiGraph
-          ? 0.25 + 0.7 * Math.min(1, Math.max(0, (npmiVal - 0.1) / 0.6))
+          ? 0.1 + 0.55 * Math.min(1, Math.max(0, (npmiVal - 0.1) / 0.6))
           : Math.max(0.12, Math.min(0.85, npmiVal));
         // Resting links stay weak. Each lens raises a different class, so two
         // lenses pull the same nodes toward different neighbours.
@@ -957,6 +976,11 @@ export function TemporalGraph({
           strength = Math.max(strength, 1.35);
         }
 
+        if (aiGraph) {
+          // Lens overrides keep their bright colours, but no fat bars.
+          width = Math.min(width, AI_LINK_MAX_W);
+          alpha = Math.min(alpha, AI_LINK_MAX_ALPHA);
+        }
         linkWidths[e] = width;
         linkStrength[e] = strength;
         linkColors[e * 4] = lr;
@@ -1299,12 +1323,16 @@ export function TemporalGraph({
     weekLinkMapRef.current = linkMapByWeek;
 
     // AI graph: the sizes and widths set per lens are meant as screen pixels. cosmos otherwise
-    // scales points by the zoom (~0.3 here, so 6-32 px rendered as 2-10 px), fades every link
-    // longer than 150 px to 25% (most AI edges), and curves them; the v0.2 graph keeps those.
+    // scales points by the zoom (~0.3 here, so 5-24 px rendered as 2-8 px) and fades every link
+    // longer than 150 px to 25% (most AI edges); the v0.2 graph keeps those. The AI graph keeps
+    // fine curves (the Graphistry look), with thin translucent links set per lens.
     const aiStyle: Partial<GraphConfig> = data._meta.params.ai_only
       ? {
           scalePointsOnZoom: false,
-          curvedLinks: false,
+          curvedLinks: true,
+          curvedLinkSegments: 19,
+          curvedLinkWeight: 0.8,
+          curvedLinkControlPointDistance: 0.5,
           linkVisibilityDistanceRange: [100000, 200000],
           linkVisibilityMinTransparency: 1,
         }
@@ -1798,7 +1826,7 @@ export function TemporalGraph({
                 }}
                 onClick={() => onSelectTopic?.(lbl.id)}
                 onMouseEnter={(ev) => handleNodeHover(lbl.idx, ev)}
-                title={lbl.text}
+                title={lbl.fullText}
               >
                 {lbl.text}
               </button>
