@@ -4,7 +4,162 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 06:50 UTC-5 · release eval v0.2.0 on develop 822169c: grounding 1.000, usefulness_v2 0.663 (measured) · committed locally; the orchestrator lands it.
+2026-10-18 10:55 UTC-5 · trust reads the AI backtest under RADAR_SOURCE=ai (fix/agents-trust-ai) · committed locally; the orchestrator pushes.
+
+## Trust on the AI run (10:55 UTC-5, branch `fix/agents-trust-ai`, claude-cacho; committed locally, the orchestrator pushes)
+
+- **The problem:** under `RADAR_SOURCE=ai` the chat's trust answer, the Confianza panel's summary
+  and the static export read `reports/backtest.md`. That is v0.2's backtest of GDELT orgs (29,2% vs
+  25,4%), stated about a different ranking (MASTER_PLAN §5).
+- **The fix:** `agents/trust.backtest_report` picks `reports/backtest_ai.md` under
+  `RADAR_SOURCE=ai`, else v0.2's report. `get_backtest`, `trust_summary` and `deploy/evidence.py`
+  all go through it.
+  - The AI report's primary label is below the coverage rule, so the line states the **secondary
+    label**: 25,6% (22,3% a 28,8%) vs a 25,4% base. It beats persistence and not raw-count growth
+    (27,2%). It adds that the primary label only has bounds.
+  - Without the variable the v0.2 line is unchanged. Tests cover both sources; every number is
+    traced (*measured*).
+- **Rerun** `trust-ai-2a5d95c7` (q22, q23 x 3 on v3, *measured*):
+  - grounding 6/6, routing 1.000, usefulness v1 0.833, usefulness_v2 0.875 [0.75-1.00];
+  - every q22 answer cites 25,6% and the coverage rule; none says 29,2% or "puedes confiar".
+  - q23 (filter quality) gets no trust line by design. Two of its answers name an odd week
+    ("2025-W10"), a minor model slip not caught by the Auditor (a week number under 12).
+- **Spend:** 35,311 agent tokens (*measured*), about $0.02 (*estimate*).
+
+## AI community in the agents and the v0.3 release eval (10:15 UTC-5, branch `feat/agents-community`, claude-cacho; committed locally, the orchestrator pushes)
+
+- **Tool `get_community_signal(topic_id, week, category)`** (Signal analyst; in
+  `contracts/agents.yaml`) reads `community_topic_weekly`. It returns measured item and topic counts
+  per category and the top 3 topics of each. For the critics it adds the lexicon's critic-stance
+  topics across the community. It never returns item titles.
+- **Routing:** "¿qué discute la comunidad IA?", "¿qué piden las aceleradoras / YC?" (builders
+  category) and "¿qué dicen los críticos / quién se opone?" (critics category) go to the Signal
+  analyst alone. Singular "comunidad" only, so q13's "comunidades de temas" (graph communities)
+  does not match.
+- **The line:** code writes "La comunidad IA esta semana (…; señal no validada: no entra en el
+  backtest)" or "Los críticos de la IA esta semana …" from the counts. Every number is traced by the
+  Auditor (tested). There is no decision line, no coverage line and no decision format; the model
+  answers in 2-3 lines from that line.
+- **Thin critics signal:** 3 critic items in W42 (*measured*); the answer says so through the
+  counts.
+- **Eval set:** `questions_v3.yaml` (dataset `radar-agents-v3`) = v2's 25 unchanged plus q26-q28
+  (community, accelerators, critics). v1 and v2 stay frozen.
+- **Tests:** 8 new. `make test` 349 passed, `make check` clean.
+
+**Release eval** `release-v0.3.0-b9bb8af7`: v3, 28 x 3, at ed0e481 (before the two community fixes),
+no lost runs. All *measured*; brackets are the min-max of the three repetition means.
+
+| Experiment | grounding | usefulness v1 | usefulness_v2 | decisions / routing | entities | tokens/turn |
+|---|---|---|---|---|---|---|
+| ai-v2-5ef01c19 (v2, 25 x 3) | 0.987 [0.96-1.00] | 0.737 [0.72-0.75] | 0.587 [0.55-0.64] | 1.000 / 1.000 | 0.960 | 6,183 |
+| **release-v0.3.0 (v3, 28 x 3)** | **0.964 [0.93-1.00]** | 0.658 [0.62-0.69] | 0.619 [0.60-0.64] | 1.000 / 1.000 | 0.964 | 6,359 |
+| release-v0.3.0, the same 25 questions only | 0.973 | 0.717 | 0.663 | | | |
+
+- **Grounding:** above the 0.95 bar. 3 of 84 runs missed: q26 "60 segundos" and q16 "1.500
+  palabras" (invented formats again), and q02 "149 en otros idiomas" (a derived sum).
+- **Entities:** the misses are q14's 3 runs (`ai:infra:energy`; v2 keeps no entity there).
+- **Community questions in the release run** were judged poor (usefulness_v2 0.17 / 0.25 / 0.33 on
+  q26 / q27 / q28). The answers used the decision format and drifted to the emergence top 10.
+  - **d470c9a:** answer from the community line only, no decision format.
+  - **56c2a18:** Signal analyst only; q26 had also reached the Cartographer.
+  - **Rerun** of q26-q28 x 3 after both: grounding 9/9; usefulness_v2 0.25 -> 0.417 -> **0.500
+    [0.42-0.58]**; v1 0.167.
+  - **Why v1 stays low:** that judge has no tool data and calls "señal no validada" and the 2026
+    dates invented. q27 can only partly answer, because the counts say what builders publish about,
+    not what accelerators ask for.
+- **Not rerun:** the full 28 x 3 after the two community fixes. They change only community
+  questions, and no v2 question matches the community route (checked).
+- **Nebius spend,** *estimate*: agent tokens 654,513 (*measured*: 534,171 release + 62,205 +
+  58,137 reruns); judge tokens not recorded; about $0.28 at assumed list rates, under the $0.50 cap.
+
+## Week tracing and the Editor's duration (07:45 UTC-5, branch `fix/agents-week-and-editor`, committed locally; the orchestrator lands it)
+
+Two leftovers from trust-calibration's grounding misses:
+
+1. **Weeks (q21).**
+   - "semana 42 de 2026" was flagged although the tools return `2026-W42`: the Auditor read 42 as a
+     loose number.
+   - Now a week named in the answer ("semana 42", year optional) is matched whole against the ISO
+     weeks in the tool data. An untraced week is still flagged ("semana 43 de 2026", "semana 42 de
+     2025"), and numbers beside it are still checked. "semana 1" and the like are skipped, as small
+     counts are.
+2. **Durations (q02, q13).**
+   - The Editor's role said "un guion de 30-45 s". Every role is in the Media Master's prompt, so
+     answers on other routes wrote "video de 35 segundos", a number no tool returned.
+   - The role now says the format comes from the brief already written, with no invented
+     durations. The "Qué hacer" instruction says the same.
+   - A first rewording named the brief field ("format_es"), and 2 of 3 q02 answers then wrote
+     "format_es: …" with an invented value. The field name was removed (deaec3f), and a test keeps
+     it out of the prompt.
+- **Tests:** 2 new. `make test` 295 passed, `make check` clean.
+
+**Rerun,** all *measured*, against trust-calibration (3 runs per question):
+
+| Question | grounding before -> after | usefulness_v2 before -> after | answers with a duration |
+|---|---|---|---|
+| q02 (rerun on deaec3f) | 2/3 -> 3/3 | 0.83 -> 1.00 | 3 -> 0 |
+| q13 (e389542) | 3/3 -> 3/3 | 0.33 -> 0.42 | 3 -> 0 |
+| q21 (e389542) | 2/3 -> 3/3 | 0.75 -> 0.58 | 0 -> 0 |
+
+- **Weeks:** none of the three q21 runs named a week this time, so the fix was not exercised live;
+  the unit test covers it.
+- **q21** still volunteers the cost (the Scout reads the ledger for freshness, by design).
+- **q13's "Qué hacer"** still frames a story about insurers (the known D3 limit).
+- **Nebius spend,** *estimate*: agent tokens 68,214 (*measured*: 49,342 + 18,872); judge tokens not
+  recorded, roughly 24 calls x ~4k on Qwen3-235B; about $0.03 at assumed list rates, under the
+  $0.05 cap.
+
+## Trust calibration (07:40 UTC-5, branch `fix/agents-trust-calibration`, committed locally; the orchestrator lands it)
+
+claude-work found the live trust answer saying "Puedes confiar en el radar" while the published top
+10's precision@10 is 29.2% (24.4-34.0) against a 25.4% base rate. It beats persistence but not
+raw-count growth.
+
+- **Data for the line:**
+  - `get_backtest` now parses the primary table of `reports/backtest.md` into a `resumen`:
+    published precision, 95% interval, worst and best case, base rate, raw-count growth and
+    persistence, and whether each worst-case advantage holds. It returns `None` if the table is
+    missing, so no line is written from a guess.
+  - `get_filter_quality` says whether human labels are pending (`label_quality.md` still references
+    the teacher panel, "Pre-Human-Tally").
+- **The line:** on trust questions code writes it: "su top 10 publicado acierta el 29,2% de las
+  veces (intervalo del 95%: 24,4% a 34,0%), frente a un 25,4% de un tema al azar. Supera a la
+  persistencia … incluso en el peor caso; no supera a la regla simple de crecimiento de menciones
+  (31,7%). Las etiquetas humanas … aún están pendientes. Úsalo como señal temprana, no como
+  garantía."
+- **Model instruction:** it is told not to state unconditional trust.
+- **Auditor (deterministic):** on the trust route (where `get_backtest` ran) it flags "puedes
+  confiar", "es (muy) confiable / preciso", "alta precisión" and similar. It skips them when negated
+  or hedged right after ("con cautela", "solo como señal", "pero"), logs a veto and appends a
+  warning.
+- **Tests:** 10 new in `agents/tests/test_trust_calibration.py`. `make test` 293 passed, `make check`
+  clean.
+
+**Eval,** all *measured*. Brackets are the min-max of the three repetition means.
+
+| Experiment | Questions | grounding | routing | usefulness v1 | usefulness_v2 | tokens/turn |
+|---|---|---|---|---|---|---|
+| release-v0.2.0 (822169c) | 25 x 3 | 1.000 [1.00-1.00] | 1.000 | 0.597 [0.51-0.65] | 0.663 [0.63-0.70] | 6,355 [6,328-6,369] |
+| trust-calibration-q (3906efc) | q22, q23 x 3 | 1.000 | 1.000 | 0.792 | 0.833 | 5,880 |
+| **trust-calibration (3906efc)** | 25 x 3 | 0.960 [0.92-1.00] | 1.000 | **0.707** [0.69-0.73] | **0.750** [0.74-0.76] | 6,358 [6,353-6,368] |
+
+- **Trust answers:**
+  - "puedes confiar" appears in 0 of 75 answers, against 3 of 75 in the release eval (all on q22).
+  - The Auditor's trust warning fired 0 times: the model followed the line.
+  - Per question (usefulness_v2, 3 runs each): q22 0.25 -> 1.00, q23 0.33 -> 0.83.
+- **usefulness_v2** is above the release eval's range. Most of the gain is q22 and q23. q09 (0.25 ->
+  0.50) and q11 (0.75 -> 1.00) use routes this change does not touch, so read them as noise.
+- **Grounding** is 72 of 75, within the old range at the low end. None of the three misses is on the
+  trust route:
+  - q21: "semana 42 de 2026" is correct, but the Auditor does not tie "semana 42" to "2026-W42", a
+    false positive like the earlier ISO-date one.
+  - q05: "z_7d > 80", an invented threshold.
+  - q02: "video de 35 segundos", from the Editor's role text (known).
+- **Other counts:** double decision lines 0, LatAm warnings 0, outlet-count warnings 0.
+- **Nebius spend,** *estimate*:
+  - agent tokens 512,144 (*measured*: 35,281 trust subset + 476,863 full, Qwen3-30B);
+  - judge tokens not recorded, roughly 162 calls x ~4k on Qwen3-235B;
+  - about $0.22 at assumed list rates, under the $0.30 cap.
 
 ## Release eval v0.2.0 (06:50 UTC-5, branch `docs/agents-release-eval`, committed locally; the orchestrator lands it)
 

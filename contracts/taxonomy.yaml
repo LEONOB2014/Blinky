@@ -60,6 +60,11 @@ ranked_entity_types: [org, thm]
 # So: every org except the deny-list, plus themes whose prefix is allow-listed. The Curator (WS2)
 # tunes both lists; a change is a contract change.
 ranked_universe:
+  # v0.3: the ranked unit is the AI lexicon (contracts/ai_lexicon.yaml): topic_id 'ai:<entry id>', built by
+  # bq_sql/s15_topic_ai_daily.sql. GDELT orgs count only through an entry's gdelt_orgs aliases. The keys
+  # below describe the v0.2 universe (topic_daily), kept for the backtest comparison.
+  source: ai_lexicon
+  lexicon: contracts/ai_lexicon.yaml
   min_articles_week: 20
   org: true
   thm_prefixes: [TECH_]

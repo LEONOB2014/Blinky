@@ -2,6 +2,8 @@
 
 Implements every path in `contracts/api.yaml`:
 - `GET /api/radar`
+- `GET /api/community`
+- `GET /api/leaders`
 - `GET /api/topic/{topic_id}/timeline`
 - `GET /api/topic/{topic_id}/context`
 - `GET /api/freshness`
@@ -29,7 +31,7 @@ from pydantic import BaseModel, Field
 
 from agents.llm import ChatModel, NebiusChat, model_config
 from agents.runtime import run_turn
-from agents.tools import week_bounds
+from agents.tools import LEADERS_LIMIT, get_leaders, week_bounds
 from radar.contracts import CONTRACTS_DIR, load_schema
 from radar.paths import REPO_ROOT, gold, profile
 
@@ -50,6 +52,14 @@ app.add_middleware(
 )
 
 _SCORE_PROPS = frozenset(load_schema("topic_scores_weekly")["properties"].keys())
+_COMMUNITY_FIELDS = (
+    "topic_id",
+    "week",
+    "category",
+    "n_items",
+    "n_sources",
+    "score",
+)
 _WINDOW_PROPS = frozenset(
     load_schema("topic_scores_weekly")["properties"]["window"]["properties"].keys()
 )
@@ -65,6 +75,22 @@ _FRESHNESS_TABLES: tuple[tuple[str, str], ...] = (
 
 
 PERSON_PREFIX = "per:"  # persons are never served (privacy guard, whatever the lake holds)
+
+# The AI lexicon run writes parallel tables. The default stays the v0.2 GDELT ranking.
+_AI_TABLES = {
+    "topic_scores_weekly": "topic_ai_scores_weekly",
+    "topic_daily": "topic_ai_daily",
+}
+
+
+def _lake_table(name: str) -> str:
+    """Table the API reads. `RADAR_SOURCE=ai` uses the lexicon run when that file exists."""
+    if os.environ.get("RADAR_SOURCE") != "ai":
+        return name
+    alt = _AI_TABLES.get(name)
+    if alt is not None and gold(alt).exists():
+        return alt
+    return name
 
 
 @lru_cache(maxsize=1)
@@ -137,16 +163,18 @@ def get_radar(
     week: Annotated[str | None, Query(pattern=r"^[0-9]{4}-W[0-9]{2}$")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> list[dict[str, Any]]:
-    """Weekly top ranked topics from WS4's `topic_scores_weekly` table.
+    """Weekly top ranked topics.
 
-    Rows may be subtopics (``agents``) or ``org:``/``thm:`` topics. Deny-listed orgs from the
-    taxonomy's ``ranked_universe.org_deny`` are never returned. The table is small and DuckDB
-    1.5.6 cannot filter the Polars-written file ("PlainSkip not implemented"), so it is scanned
-    with Polars and the week filter pushed down.
+    The ranked unit is the AI lexicon when ``topic_ai_scores_weekly`` is present, and the
+    v0.2 org and subtopic table otherwise. Rows stay inside ``topic_scores_weekly`` (no
+    community fields). Deny-listed orgs from ``ranked_universe.org_deny`` are never returned.
+    The table is small and DuckDB 1.5.6 cannot filter the Polars-written file ("PlainSkip
+    not implemented"), so it is scanned with Polars and the week filter pushed down.
     """
-    path = gold("topic_scores_weekly")
+    table = _lake_table("topic_scores_weekly")
+    path = gold(table)
     if not path.exists():
-        reason = f"topic_scores_weekly not available yet in profile {profile()} (pending WS4)"
+        reason = f"{table} not available yet in profile {profile()} (pending WS4)"
         response.headers["X-Radar-Empty-Reason"] = reason
         response.headers["X-Radar-Status"] = "pending-ws4"
         return []
@@ -181,12 +209,76 @@ def get_radar(
     return rows
 
 
+@app.get("/api/community")
+def get_community(
+    response: Response,
+    week: Annotated[str | None, Query(pattern=r"^[0-9]{4}-W[0-9]{2}$")] = None,
+) -> list[dict[str, Any]]:
+    """One week of ``community_topic_weekly``.
+
+    Unvalidated sensor. It is not merged into ``/api/radar``. A missing parquet is an empty
+    list plus the same empty-state headers the radar uses.
+    """
+    path = gold("community_topic_weekly")
+    if not path.exists():
+        reason = (
+            f"community_topic_weekly not available yet in profile {profile()} "
+            "(pending the community sensor)"
+        )
+        response.headers["X-Radar-Empty-Reason"] = reason
+        response.headers["X-Radar-Status"] = "pending-community"
+        return []
+
+    lf = pl.scan_parquet(path)
+    if week is None:
+        week = lf.select(pl.col("week").max()).collect().item()
+    df = (
+        lf.filter((pl.col("week") == week) & pl.col("topic_id").str.starts_with("ai:"))
+        .select([pl.col(name) for name in _COMMUNITY_FIELDS])
+        .sort(["topic_id", "category"])
+        .collect()
+    )
+    if df.is_empty():
+        response.headers["X-Radar-Empty-Reason"] = f"no community rows for week {week}"
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw in df.to_dicts():
+        row = {key: _clean_value(raw[key]) for key in _COMMUNITY_FIELDS}
+        row["n_items"] = int(row["n_items"])
+        row["n_sources"] = int(row["n_sources"])
+        rows.append(row)
+    return rows
+
+
+@app.get("/api/leaders")
+def get_leaders_endpoint(
+    response: Response,
+    week: Annotated[str | None, Query(pattern=r"^[0-9]{4}-W[0-9]{2}$")] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = LEADERS_LIMIT,
+) -> dict[str, Any]:
+    """The week's AI leaders by volume (`agents.tools.get_leaders`), the giants the emergence top
+    10 leaves out by design. Only under `RADAR_SOURCE=ai`: the v0.2 GDELT ranking has no leaders
+    list, so it returns no rows and says why in `X-Radar-Empty-Reason`."""
+    empty = {"week": week, "days_with_data": None, "prev_week_days_with_data": None, "rows": []}
+    if os.environ.get("RADAR_SOURCE") != "ai":
+        response.headers["X-Radar-Empty-Reason"] = "leaders need RADAR_SOURCE=ai (AI lexicon run)"
+        return empty
+    out = get_leaders(week, limit)
+    if not out.get("available"):
+        response.headers["X-Radar-Empty-Reason"] = out.get("reason") or "no AI leaders"
+        return empty
+    rows = [r for r in out["rows"] if not is_person(r["topic_id"])]
+    return {k: out[k] for k in ("week", "days_with_data", "prev_week_days_with_data")} | {
+        "rows": rows
+    }
+
+
 @app.get("/api/topic/{topic_id}/timeline")
 def get_topic_timeline(topic_id: str) -> list[dict[str, Any]]:
     """Daily series of one topic by language (`topic_daily.schema.json`)."""
     if is_person(topic_id):
         return []
-    topic_daily_path = gold("topic_daily")
+    topic_daily_path = gold(_lake_table("topic_daily"))
     if topic_daily_path.exists():
         file_path = str(topic_daily_path)
         rows = _query_rows(

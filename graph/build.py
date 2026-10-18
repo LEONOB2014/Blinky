@@ -2,6 +2,12 @@
 
     RADAR_PROFILE=full uv run python -m graph.build           # writes lake/gold/*.parquet
     uv run python -m graph.build --out <dir>                  # dev: writes only where asked
+    RADAR_PROFILE=full uv run python -m graph.build --ai-only # only the ai: rows of the ring
+
+``topic_context_1hop`` also holds the ring of the AI radar's topics (``ai:<id>``), built by the
+same rule from the all-language bucket of ``edges_ai_weekly`` with that graph's own weekly hubs.
+``--ai-only`` replaces just those rows in the existing table, without rebuilding v0.2 from the
+~440 MB ``edges_weekly``. ``node_metrics_weekly`` stays the v0.2 graph's.
 
 Every row is validated against its contract before anything is written; a violation aborts the
 run. The per-week summary (nodes, edges, communities, hubs, ring rows) goes to stdout as a
@@ -52,6 +58,39 @@ def build(edges: pl.DataFrame | pl.LazyFrame) -> tuple[pl.DataFrame, pl.DataFram
     return metrics, ring
 
 
+def ai_edges(edges_ai: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
+    """The all-language bucket of ``edges_ai_weekly`` in the columns of ``edges_weekly``."""
+    return (
+        edges_ai.lazy()
+        .filter(pl.col("lang_bucket") == "all")
+        .select("wk", "x", "y", "n", "n_src", "nx", "ny", "n_docs", "npmi")
+    )
+
+
+def build_ai_ring(edges_ai: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+    """The ring of every ``ai:`` topic, validated: same rule, hubs from the AI graph itself."""
+    lf = ai_edges(edges_ai)
+    metrics = node_metrics(lf)
+    ring = pl.concat(
+        [
+            context_1hop(
+                lf.filter(pl.col("wk") == wk).collect(),
+                metrics.filter(pl.col("wk") == wk),
+                prefixes=("ai:",),
+            )
+            for wk in edge_weeks(lf)
+        ]
+    )
+    validate("topic_context_1hop", ring)
+    return ring
+
+
+def with_ai_ring(ring: pl.DataFrame, ai_ring: pl.DataFrame) -> pl.DataFrame:
+    """``ring`` with its ``ai:`` rows replaced by ``ai_ring`` (v0.2 rows untouched)."""
+    kept = ring.filter(~pl.col("topic_id").str.starts_with("ai:"))
+    return pl.concat([kept, ai_ring.select(kept.columns).cast(kept.schema)])
+
+
 def summary(
     edges: pl.DataFrame | pl.LazyFrame, metrics: pl.DataFrame, ring: pl.DataFrame
 ) -> pl.DataFrame:
@@ -80,14 +119,32 @@ def markdown(df: pl.DataFrame) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", type=Path, help="output directory (full default: lake/gold)")
+    parser.add_argument(
+        "--ai-only", action="store_true", help="replace only the ai: rows of topic_context_1hop"
+    )
     args = parser.parse_args(argv)
 
     out = args.out
     if out is None and paths.profile() == "full":
         out = paths.lake() / "gold"
 
+    ai_path = paths.gold("edges_ai_weekly")
+    if args.ai_only:
+        ai_ring = build_ai_ring(pl.scan_parquet(ai_path))
+        ring = with_ai_ring(pl.read_parquet(paths.gold("topic_context_1hop")), ai_ring)
+        if out is not None:
+            ring.write_parquet(out / "topic_context_1hop.parquet")
+        n_topics = ai_ring["topic_id"].n_unique()
+        sys.stdout.write(
+            f"profile={paths.profile()} written_to={out}: {ai_ring.height} ai: rows "
+            f"({n_topics} topics, {ai_ring['wk'].n_unique()} weeks), {ring.height} rows in all\n"
+        )
+        return 0
+
     edges = pl.scan_parquet(paths.gold("edges_weekly"))
     metrics, ring = build(edges)
+    if ai_path.exists():
+        ring = with_ai_ring(ring, build_ai_ring(pl.scan_parquet(ai_path)))
     if out is not None:
         out.mkdir(parents=True, exist_ok=True)
         metrics.write_parquet(out / "node_metrics_weekly.parquet")

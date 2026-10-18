@@ -23,7 +23,11 @@ export interface TemporalGraphMeta {
     min_npmi_exclusive: number;
     top_k_per_node: number;
     top_labels: number;
+    ai_only?: boolean;
   };
+  default_color_by?: string;
+  family_legend?: Array<{ id: string; label_es: string; color: string }>;
+  stance_legend?: Array<{ id: string; label_es: string; color: string }>;
   n_nodes: number;
   n_labeled_nodes: number;
   n_edges: number;
@@ -37,6 +41,9 @@ export interface TemporalNodeEntry {
   label: string;
   label_es: string;
   etype: string;
+  family?: string | null;
+  family_es?: string | null;
+  stance?: string | null;
   ring: "ai" | "it" | "ai_domain";
   domain?: string | null;
   x: number;
@@ -90,6 +97,9 @@ export interface StoryNodeAttributes {
   n?: number;
   npmi?: number;
   etype: "org" | "thm" | "loc" | string;
+  family?: string | null;
+  family_es?: string | null;
+  stance?: string | null;
   betweenness?: number | null;
   cross_ring_share?: number | null;
   community_week?: number | null;
@@ -177,6 +187,9 @@ export interface StoriesIndexData {
 }
 
 export interface GraphWindowMetrics {
+  /** AI graph: volume leaders labelled for the displayed week. */
+  leader_labels?: number;
+  leaders_week?: string;
   renderer?: string;
   t_fetch_ms?: number;
   t_parse_ms?: number;

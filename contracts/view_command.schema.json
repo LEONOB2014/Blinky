@@ -46,9 +46,11 @@
         "window",
         "bridge",
         "momentum",
-        "novelty"
+        "novelty",
+        "family",
+        "postura"
       ],
-      "description": "the lens: decision (the radar's decision per topic), segment (ring: ai / it / ai_domain), tone, arousal, community (within one week only), window (the window chip's state), bridge (topics that connect AI with other domains), momentum (rising this week), novelty (new connections this week)"
+      "description": "the lens: decision (the radar's decision per topic), segment (ring: ai / it / ai_domain), tone, arousal, community (within one week only), window (the window chip's state), bridge (topics that connect AI with other domains), momentum (rising this week), novelty (new connections this week), family (lexicon family), postura (promoter / critic / neutral, size = absolute GDELT tone)"
     },
     "filter": {
       "type": "object",

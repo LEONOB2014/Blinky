@@ -74,15 +74,15 @@ deploy-cloudrun-local: deploy-cloudrun-stage ## Build and run the Cloud Run imag
 	docker build -t radar-api:local build/cloudrun
 	docker run --rm -p 18080:8080 -e PORT=8080 radar-api:local
 
-deploy-cloudrun: deploy-cloudrun-stage ## Deploy the API on Cloud Run (MIN_INSTANCES keeps a warm instance; default 0)
+deploy-cloudrun: deploy-cloudrun-stage ## Deploy the API on Cloud Run (MIN_INSTANCES keeps a warm instance, default 0; RADAR_SOURCE=ai|gdelt, default ai)
 	gcloud run deploy radar-api --source build/cloudrun --region $(or $(REGION),us-central1) \
 		--allow-unauthenticated --cpu 1 --memory 1Gi --min-instances $(or $(MIN_INSTANCES),0) \
 		--max-instances 3 \
 		--set-secrets NEBIUS_API_KEY=radar-nebius-key:latest,LANGSMITH_API_KEY=radar-langsmith-key:latest \
-		--update-env-vars LANGSMITH_TRACING=true,LANGSMITH_PROJECT=radar-agents --quiet
+		--update-env-vars LANGSMITH_TRACING=true,LANGSMITH_PROJECT=radar-agents,RADAR_SOURCE=$(or $(RADAR_SOURCE),ai) --quiet
 
-deploy-static: ## Write the static fallback to web/public/data/ from the full lake
-	RADAR_PROFILE=full uv run --extra api python deploy/export_static.py
+deploy-static: ## Write the static fallback to web/public/data/ from the full lake (RADAR_SOURCE=ai|gdelt, default ai)
+	RADAR_SOURCE=$(or $(RADAR_SOURCE),ai) RADAR_PROFILE=full uv run --extra api python deploy/export_static.py
 
 deploy-web: ## Build web/dist with API_URL (empty = static only)
 	cd web && bun install && VITE_API_BASE_URL="$(API_URL)" bun run build
@@ -90,8 +90,11 @@ deploy-web: ## Build web/dist with API_URL (empty = static only)
 redeploy-all: ## The final redeploy, in order (dry run by default; ARGS=--run deploys)
 	bash scripts/redeploy_all.sh $(ARGS)
 
+community-refresh: ## Re-fetch the AI community sensor (public feeds, 13 weeks) and rebuild its weekly table
+	uv run --env-file .env --extra crosssource python -m crosssource.community
+
 demo-check: ## Check the public site and API before the demo (ARGS=--chat adds one real chat turn)
-	uv run python scripts/demo_check.py $(ARGS)
+	RADAR_SOURCE=$(or $(RADAR_SOURCE),ai) uv run python scripts/demo_check.py $(ARGS)
 
 # ==============================================================================
 # Worktrees: make worktree BRANCH=feat/ws1-run-bq

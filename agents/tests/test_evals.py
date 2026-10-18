@@ -85,3 +85,30 @@ def test_judge_v2_sees_the_tool_data_and_today(monkeypatch):
     assert "Hoy es 20" in seen["system"] and "no juzgues si los números" in seen["system"]
     assert "ninguna herramienta" in ev.tool_data(_resp())
     assert len(ev.tool_data(_resp(trace=[step] * 500))) <= ev.TOOL_DATA_CHARS
+
+
+def test_v2_questions_keep_v1_and_name_only_lexicon_ids():
+    import yaml
+
+    from radar.paths import REPO_ROOT
+
+    v1 = ev.load_questions()
+    v2 = ev.load_questions(ev.QUESTIONS.with_name("questions_v2.yaml"))
+    assert v1["version"] == 1 and v2["version"] == 2  # two datasets, v1 never rewritten
+    assert [q["id"] for q in v2["questions"]] == [q["id"] for q in v1["questions"]]
+    lexicon = yaml.safe_load((REPO_ROOT / "contracts" / "ai_lexicon.yaml").read_text())
+    ids = {f"ai:{e['id']}" for e in lexicon["entries"]}
+    named = {q["id"]: q["entity"] for q in v2["questions"] if q.get("entity")}
+    assert set(named) == {"q06", "q07", "q08", "q09", "q10", "q11"}
+    assert set(named.values()) <= ids
+    changed = {a["id"] for a, b in zip(v1["questions"], v2["questions"], strict=True) if a != b}
+    assert changed == set(named)  # only the entity questions differ
+
+
+def test_v3_adds_three_community_questions_to_a_frozen_v2():
+    v2 = ev.load_questions(ev.QUESTIONS.with_name("questions_v2.yaml"))
+    v3 = ev.load_questions(ev.QUESTIONS.with_name("questions_v3.yaml"))
+    assert v3["version"] == 3 and v3["questions"][:25] == v2["questions"]
+    new = v3["questions"][25:]
+    assert [q["id"] for q in new] == ["q26", "q27", "q28"]
+    assert all(q["kind"] == "community" and not q.get("entity") for q in new)

@@ -19,7 +19,7 @@ from langsmith import traceable
 from langsmith.run_helpers import get_current_run_tree
 from langsmith.utils import ContextThreadPoolExecutor
 
-from agents import tools
+from agents import tools, trust
 from agents.llm import ChatModel, NebiusChat
 from radar.paths import lake
 
@@ -36,6 +36,8 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
             "get_language_coverage",
             "get_topic_sources",
             "get_topic_evidence",
+            "get_leaders",
+            "get_community_signal",
         ],
         "role": "Mides qué temas de IA crecen, en qué etapa están y su carga emocional, con las "
         "señales normalizadas de GDELT (participación del día, z_7d, crecimiento, tono, controversia). "
@@ -57,8 +59,9 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     "editor": {
         "name_es": "Editor",
         "tools": ["get_topic_brief", "get_topic_evidence", "get_topic_series", "get_context_1hop"],
-        "role": "Propones formato, dos ganchos y un guion de 30-45 s en español, apoyado solo en los "
-        "datos que consultas. Si existe el brief ya escrito del tema, parte de él.",
+        "role": "Propones formato, dos ganchos y un guion breve en español, apoyado solo en los "
+        "datos que consultas. El formato sale del brief ya escrito del tema cuando existe; no "
+        "inventes duraciones.",
     },
     "scout": {
         "name_es": "Explorador",
@@ -269,7 +272,8 @@ def run_specialist(model: ChatModel, turn: Turn, agent: str, question: str) -> s
 
 # --- Auditor (deterministic) ------------------------------------------------------------------
 
-_NUM = re.compile(r"(?<![\w-])-?\d+(?:[.,]\d+)?%?")
+# whole tokens only: "30X" (the client's name) is not the number 30
+_NUM = re.compile(r"(?<![\w-])-?\d+(?:[.,]\d+)?%?(?![\w])")
 
 
 _MONTHS_ES = [
@@ -330,6 +334,23 @@ def _source_dates(results: list[dict[str, Any]], extra: str) -> set[tuple[int | 
 
 
 _THOUSANDS = re.compile(r"^[1-9]\d{0,2}(?:[.,]\d{3})+$")
+# "semana 42" / "semana 42 de 2026" in an answer, and the ISO weeks ("2026-W42") the tools return
+_WEEK_SAID = re.compile(r"\bsemana\s+(\d{1,2})(?:\s+(?:de(?:l)?\s+)?(\d{4}))?\b", re.I)
+_WEEK_ISO = re.compile(r"\b(\d{4})-W(\d{2})\b")
+
+
+def _untraced_weeks(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
+    """Weeks named in the answer that no tool returned (a week without a year matches any year)."""
+    texts = [question] + [json.dumps(r["result"], default=str) for r in results]
+    weeks = {(int(y), int(w)) for t in texts for y, w in _WEEK_ISO.findall(t)}
+    bad = []
+    for m in _WEEK_SAID.finditer(answer):
+        week, year = int(m.group(1)), int(m.group(2)) if m.group(2) else None
+        if year is None and week <= 12:
+            continue  # "la semana 1": a small count, as for numbers
+        if not any(w == week and (year is None or y == year) for y, w in weeks):
+            bad.append(m.group(0))
+    return bad
 
 
 def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
@@ -342,7 +363,8 @@ def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) 
         for text, (y, m, d) in _dates(answer)
         if not any(sm == m and sd == d and (y is None or sy in (y, None)) for sy, sm, sd in dates)
     ]
-    for token in _numbers(answer):
+    bad += _untraced_weeks(answer, results, question)
+    for token in _numbers(_WEEK_SAID.sub(" ", answer)):  # a week is read whole, as a date is
         value = _as_float(token)
         if abs(value) <= 12 and value == int(value):
             continue  # small counts such as "top 10" or "2 ganchos"
@@ -638,6 +660,60 @@ def wrong_outlet_counts(answer: str, turn: Turn) -> list[str]:
     return bad
 
 
+_TRUST_Q = re.compile(r"conf[ií]a|confiable|fiable|backtest|precisi|acierta|creer", re.I)
+# unconditional trust: "puedes confiar", "es confiable", "alta precisión"; a hedge right after
+# ("con cautela", "solo para", "pero") or a "no" right before makes it a calibrated statement
+_TRUST_CLAIM = re.compile(
+    r"(?:puedes|puede|se puede|pueden) confiar|conf[ií]a(?:r)? (?:plenamente|totalmente|en el radar)|"
+    r"(?:es|son|resulta) (?:muy |altamente |totalmente |bastante )?(?:confiable|fiable|precis[oa]|"
+    r"exact[oa]|sólid[oa]|robust[oa])|alta (?:precisi[oó]n|confiabilidad|fiabilidad)|"
+    r"(?:muy|altamente|totalmente) (?:confiable|fiable|precis[oa])",
+    re.I,
+)
+_TRUST_HEDGE = re.compile(
+    r"con (?:cautela|moderaci[oó]n|reservas|cuidado)|solo|s[oó]lo|parcialmente|siempre que|"
+    r"pero|aunque|como se[nñ]al|no (?:supera|es mejor)",
+    re.I,
+)
+
+
+def trust_line(turn: Turn) -> str:
+    """How far to trust the radar, written by code from get_backtest's parsed headline, with the
+    same sentences as the UI's trust summary (agents/trust.py)."""
+    found = {r["tool"]: r["result"] for r in turn.tool_results if r["result"].get("available")}
+    summary = (found.get("get_backtest") or {}).get("resumen")
+    if not summary:
+        return ""
+    weeks = (
+        f" de {summary['semanas_evaluadas']} semanas" if summary.get("semanas_evaluadas") else ""
+    )
+    text = (
+        f"Qué tan confiable es el radar (backtest{weeks}; acierto = {summary['etiqueta']}): "
+        + trust.precision_sentence(summary)
+    )
+    if beats := trust.beats_sentence(summary):
+        text += f" {beats}"
+    if summary.get("etiqueta_principal_bajo_cobertura"):
+        text += f" {trust.PRIMARY_BELOW_COVERAGE}"
+    if (found.get("get_filter_quality") or {}).get("etiquetas_humanas_pendientes"):
+        text += f" {trust.HUMAN_LABELS_PENDING}"
+    return f"{text} {trust.EARLY_SIGNAL}"
+
+
+def trust_claims(answer: str, turn: Turn) -> list[str]:
+    """Unconditional trust phrases on the trust route (where get_backtest ran)."""
+    if not any(r["tool"] == "get_backtest" for r in turn.tool_results):
+        return []
+    claims = []
+    for m in _TRUST_CLAIM.finditer(answer):
+        before = answer[max(0, m.start() - 12) : m.start()].lower()
+        after = answer[m.end() : m.end() + 40]
+        if re.search(r"\bno\b|\bni\b", before) or _TRUST_HEDGE.search(after):
+            continue
+        claims.append(m.group(0))
+    return claims
+
+
 def coverage_line(turn: Turn) -> str:
     """Spanish and Portuguese coverage of the topic, written by code from get_language_coverage."""
     cov = next(
@@ -737,6 +813,8 @@ _NON_NAME = re.compile(r"[^\w&.-]+")
 def _entity_in_question(question: str, week: str | None) -> str | None:
     """The graph topic a question names: a full node name in the text ('google' -> 'org:google'),
     else the longest 1-3 word phrase that resolves to one ('OpenAI' -> GDELT's 'org:openai inc')."""
+    if tools.ai_source():  # the AI run ranks ai: lexicon topics, never GDELT org ids
+        return tools.ai_topic_in(question)
     # whole words only: a plain substring test found 'org:a co' inside "ha costado"
     padded = f" {_NON_NAME.sub(' ', question.lower())} "
     names = tools.graph_nodes(week)
@@ -821,6 +899,113 @@ def _leader(result: dict[str, Any]) -> str | None:
     return (trends or {}).get("fastest_growing_subtopic")
 
 
+# "¿qué es lo más grande / lo más importante esta semana?": the leaders by volume, not the
+# emergence top 10 (which ranks what is rising and leaves Nvidia or OpenAI out by design)
+_LEADERS_Q = re.compile(
+    r"lo m[aá]s (?:grande|importante|relevante|destacado|comentado|mencionado)|l[ií]deres|"
+    r"m[aá]s se habla|temas m[aá]s grandes|m[aá]s cobertura",
+    re.I,
+)
+LEADERS_SHOWN = 5
+
+# The AI community sensor: "¿qué discute la comunidad IA?", "¿qué piden las aceleradoras / YC?",
+# "¿qué dicen los críticos?" -> the Signal analyst with get_community_signal (counts only)
+_CRITICS_Q = re.compile(
+    r"cr[ií]tic|se opone|se oponen|oposici[oó]n|opositor|detractor|esc[eé]ptic|contra la ia", re.I
+)
+_BUILDERS_Q = re.compile(r"aceleradora|y ?combinator|\byc\b|startups?\b|fundadores", re.I)
+_COMMUNITY_Q = re.compile(
+    # singular "comunidad": "comunidades de temas" (q13) are graph communities, not the AI community
+    r"\bcomunidad\b|investigador|papers?\b|hugging ?face|practicantes|desarrolladores|"
+    + _BUILDERS_Q.pattern
+    + "|"
+    + _CRITICS_Q.pattern,
+    re.I,
+)
+
+
+def community_category(question: str) -> str | None:
+    if _CRITICS_Q.search(question):
+        return "critics"
+    if _BUILDERS_Q.search(question):
+        return "builders"
+    return None
+
+
+def community_line(turn: Turn) -> str:
+    """ "La comunidad IA esta semana", written by code from get_community_signal's counts (never
+    titles), flagged as an unvalidated signal."""
+    out = next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_community_signal" and r["result"].get("available")
+        ),
+        None,
+    )
+    if not out:
+        return ""
+
+    def tops(rows: list[dict[str, Any]]) -> str:
+        return ", ".join(f"{r['label_es']} ({r['n_items']})" for r in rows)
+
+    cats = out["por_categoria"]
+    head = f"({out['week']}; señal no validada: no entra en el backtest)"
+    if "temas_de_postura_critica" in out:  # the critics
+        c = cats[0]
+        text = (
+            f"Los críticos de la IA esta semana {head}: {c['n_items']} publicaciones de fuentes "
+            f"críticas sobre {c['n_temas']} temas: {tops(out['top_por_categoria']['critics'])}."
+        )
+        if out["temas_de_postura_critica"]:
+            text += (
+                " Temas de la postura crítica en toda la comunidad: "
+                f"{tops(out['temas_de_postura_critica'])}."
+            )
+        return text
+    counts = "; ".join(
+        f"{c['category_es']}: {c['n_items']} publicaciones sobre {c['n_temas']} temas" for c in cats
+    )
+    lead = "; ".join(
+        f"{c['category_es']}: {tops(out['top_por_categoria'][c['category']])}" for c in cats[:3]
+    )
+    return f"La comunidad IA esta semana {head}: {counts}. Lo que más discute: {lead}."
+
+
+def leaders_block(turn: Turn) -> str:
+    """The week's AI leaders by volume, written by code from get_leaders."""
+    out = next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_leaders" and r["result"].get("available")
+        ),
+        None,
+    )
+    if not out or not out["rows"]:
+        return ""
+    lines = []
+    for r in out["rows"][:LEADERS_SHOWN]:
+        change = ""
+        if r["change_vs_prev_week"] is not None:
+            change = (
+                f", {r['change_vs_prev_week']:+.0%} por día con datos frente a la semana previa"
+            )
+        rank = (
+            f"; en emergencia va en el puesto {r['emergence_rank']}"
+            if r.get("emergence_rank") is not None
+            else ""
+        )
+        lines.append(
+            f"{r['leader_rank']}. {r['label_es']} ({r['family_es']}): {r['articles']} artículos"
+            f"{change}{rank}"
+        )
+    return (
+        f"Lo más grande de la semana ({out['week']}, por volumen de artículos en todos los "
+        f"idiomas; {out['days_with_data']} días con datos):\n" + "\n".join(lines)
+    )
+
+
 @traceable(
     run_type="chain", process_inputs=lambda i: {"agent": i["agent"], "question": i["question"]}
 )
@@ -841,7 +1026,17 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
         )
         + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else [])
         + ([("get_topic_sources", {"topic_id": entity, "week": week})] if entity else [])
-        + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
+        + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else [])
+        + (
+            [("get_leaders", {"week": week or ctx["signals"].get("week")})]
+            if _LEADERS_Q.search(question)
+            else []
+        )
+        + (
+            [("get_community_signal", {"category": community_category(question)})]
+            if _COMMUNITY_Q.search(question)
+            else []
+        ),
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
@@ -891,6 +1086,9 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
 
 
 _TONE_Q = re.compile(r"tono|emoci|sentimiento|[aá]nimo|negativ|positiv", re.I)
+_POSTURA_Q = re.compile(
+    r"qui[eé]n se opone|se oponen|opositor|cr[ií]tic|regulaci[oó]n|postura", re.I
+)
 _WINDOW_Q = re.compile(r"ventana|espa[nñ]ol|portugu|llega|a punto|d[ií]as quedan", re.I)
 _BRIDGE_Q = re.compile(
     r"puente|conect|cruza|otros? (dominios?|sectores?)|cl[ií]ma|salud|educaci|empleo", re.I
@@ -906,6 +1104,8 @@ def view_lens(question: str, entity: str | None) -> str:
     """The graph lens a question asks for (view_command.color_by), chosen by code."""
     if _TONE_Q.search(question):
         return "tone"
+    if _POSTURA_Q.search(question):
+        return "postura"
     if _WINDOW_Q.search(question):
         return "window"
     if _NOVELTY_Q.search(question):
@@ -930,6 +1130,8 @@ def _lens_caption(lens: str, entity: str | None, leader: str | None) -> str:
         "bridge": "Los temas que conectan la IA con otros dominios (tamaño = cuánto conectan)",
         "momentum": "Los temas que más ganan centralidad esta semana",
         "novelty": "Las conexiones nuevas de esta semana",
+        "postura": "Promotores y críticos: el color es la postura y el tamaño es el tono absoluto",
+        "family": "Los temas de la semana, coloreados por familia del léxico",
     }.get(
         lens,
         f"Los temas de la semana por decisión del radar; el n.º 1 es {name}"
@@ -997,6 +1199,8 @@ def run_turn(
         needed = ["signal_analyst", "cartographer"]
     if entity and _EVIDENCE_Q.search(question) and "signal_analyst" not in needed:
         needed = ["signal_analyst", *needed]  # it reads the topic's articles and outlets
+    if _COMMUNITY_Q.search(question):  # the community sensor only: other notes drift (q26)
+        needed = ["signal_analyst"]
     if not needed:  # unrecognised question: the Media Master delegates freely
         answer = _loop(
             model,
@@ -1038,8 +1242,23 @@ def run_turn(
                 )
             )
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
-        decides = "signal_analyst" in needed or "editor" in needed
-        line = decision_line(turn, entity, question) if decides else ""
+        # a community question is not about what to publish: no decision format (release eval
+        # v0.3: with it the answers drifted to the emergence top 10, usefulness_v2 0.17-0.33)
+        decides = ("signal_analyst" in needed or "editor" in needed) and not (
+            _COMMUNITY_Q.search(question)
+        )
+        leaders = leaders_block(turn) if _LEADERS_Q.search(question) else ""
+        community = community_line(turn) if _COMMUNITY_Q.search(question) else ""
+        # a leaders or community question is not about what to publish: no emergence decision
+        line = (
+            decision_line(turn, entity, question)
+            if decides and not leaders and not community
+            else ""
+        )
+        if leaders:
+            line = f"{line}\n\n{leaders}" if line else leaders
+        if community:
+            line = f"{line}\n\n{community}" if line else community
         block = evidence_block(turn) if _EVIDENCE_Q.search(question) else ""
         if block:
             line = f"{line}\n\n{block}" if line else block
@@ -1049,7 +1268,12 @@ def run_turn(
         count = outlet_count_line(turn) if _OUTLET_COUNT_Q.search(question) else ""
         if count:
             line = f"{line}\n\n{count}" if line else count
-        coverage = coverage_line(turn) if decides or entity else ""
+        trust = trust_line(turn) if "auditor" in needed and _TRUST_Q.search(question) else ""
+        if trust:
+            line = f"{line}\n\n{trust}" if line else trust
+        coverage = (
+            coverage_line(turn) if (decides or entity) and not leaders and not community else ""
+        )
         if coverage:
             line = f"{line}\n\n{coverage}" if line else coverage
         instructions = (
@@ -1057,7 +1281,8 @@ def run_turn(
                 f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
                 "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
                 "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
-                "(formato y enfoque). Máximo 6 líneas en total."
+                "(formato y enfoque; el formato del brief si lo hay, sin duraciones en segundos ni "
+                "minutos). Máximo 6 líneas en total."
                 if decides
                 else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
                 "los informes; no agregues KPIs ni decisiones que no estén en ellos."
@@ -1068,9 +1293,25 @@ def run_turn(
                 )
             )
             + (
+                f" El sistema ya escribe lo que publica la comunidad IA: «{community}». No lo "
+                "repitas: responde en 2 o 3 líneas solo con lo que dice esa línea (qué temas "
+                "dominan y en qué categoría), di que es una señal no validada y no hables del top "
+                "10, de decisiones ni de temas que esa línea no nombra. Si la pregunta pide algo que "
+                "los conteos no dicen (por ejemplo qué piden exactamente), dilo."
+                if community
+                else ""
+            )
+            + (
                 f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
                 "menciones otros umbrales, mínimos de co-menciones ni valores de NPMI."
                 if facts
+                else ""
+            )
+            + (
+                f" El sistema ya escribe qué tan confiable es el radar: «{trust}». No lo repitas. "
+                "No digas que se puede confiar sin condiciones ('puedes confiar', 'es confiable', "
+                "'alta precisión'): la confianza es la que dice esa línea."
+                if trust
                 else ""
             )
             + (
@@ -1169,6 +1410,17 @@ def _audit(
             "\n\n⚠️ El Auditor: los datos no muestran artículos de este tema en español ni en "
             "portugués esta semana; lo que se diga de su crecimiento o presencia en Latinoamérica "
             "no tiene respaldo."
+        )
+    if claims := trust_claims(answer, turn):
+        turn.log(
+            "auditor",
+            "veto",
+            result_summary=f"confianza sin condiciones que el backtest no respalda: {', '.join(claims)}",
+        )
+        answer += (
+            "\n\n⚠️ El Auditor: el backtest no respalda una confianza sin condiciones ("
+            + ", ".join(f"«{c}»" for c in claims)
+            + "); la confiabilidad medida es la de la línea de arriba."
         )
     if wrong := wrong_outlet_counts(answer, turn):
         turn.log(

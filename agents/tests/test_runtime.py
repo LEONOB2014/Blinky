@@ -252,6 +252,9 @@ def test_the_route_records_the_resolved_entity():
         ("¿Qué temas conectan la IA con el clima?", None, "bridge"),
         ("¿Qué tema está ganando más fuerza?", None, "momentum"),
         ("¿Qué conexiones nuevas aparecieron esta semana?", None, "novelty"),
+        ("¿Quién se opone?", None, "postura"),
+        ("¿Dónde están los críticos?", None, "postura"),
+        ("¿Qué dice la regulación?", None, "postura"),
     ],
 )
 def test_the_question_picks_the_graph_lens(question, entity, lens):
@@ -266,9 +269,17 @@ def test_lens_values_are_in_the_contract():
     from radar.paths import REPO_ROOT
 
     schema = json.loads((REPO_ROOT / "contracts" / "view_command.schema.json").read_text())
-    assert {"decision", "segment", "tone", "window", "bridge", "momentum", "novelty"} <= set(
-        schema["properties"]["color_by"]["enum"]
-    )
+    assert {
+        "decision",
+        "segment",
+        "tone",
+        "window",
+        "bridge",
+        "momentum",
+        "novelty",
+        "family",
+        "postura",
+    } <= set(schema["properties"]["color_by"]["enum"])
 
 
 def test_auditor_matches_shares_only_for_percentages():
@@ -306,3 +317,65 @@ def test_auditor_reads_dates_whole_and_still_catches_numbers_beside_them():
         "18 de octubre de 2025"
     ]
     assert untraced_numbers("Todo en 2026.", results, "") == []  # the year of a source date
+
+
+def test_auditor_reads_weeks_whole_and_still_catches_an_untraced_week():
+    from agents.runtime import untraced_numbers
+
+    results = [{"result": {"newest": {"topic_scores_weekly": "2026-W42"}, "billed_gb": 380.75}}]
+    ok = "Datos hasta la semana 42 de 2026 (semana 42), con 380.75 GB."
+    assert untraced_numbers(ok, results, "") == []
+    assert untraced_numbers("Datos de la semana 43 de 2026.", results, "") == ["semana 43 de 2026"]
+    assert untraced_numbers("Datos de la semana 42 de 2025.", results, "") == ["semana 42 de 2025"]
+    assert untraced_numbers("En la semana 42 hubo 9999 artículos.", results, "") == ["9999"]
+    assert untraced_numbers("Desde la semana 1.", results, "") == []  # a small count
+
+
+def test_no_role_or_instruction_gives_the_model_a_video_duration():
+    prompt = runtime.master_prompt()
+    assert "30-45" not in prompt and " s en español" not in prompt
+    assert "no inventes duraciones" in runtime.SPECIALISTS["editor"]["role"]
+    assert "format_es" not in prompt  # field names leak into answers
+
+
+@pytest.mark.unit
+def test_the_ai_source_resolves_named_topics_to_lexicon_ids(tmp_path, monkeypatch):
+    """Under RADAR_SOURCE=ai a named company resolves to its ai: lexicon id, never a GDELT org."""
+    import polars as pl
+
+    gold = tmp_path / "gold"
+    gold.mkdir()
+    scored = ["ai:infra:nvidia", "ai:lab:nvidia_models", "ai:lab:openai", "ai:lab:google_ai"]
+    pl.DataFrame({"topic_id": scored, "week": ["2026-W42"] * 4}).write_parquet(
+        gold / "topic_ai_scores_weekly.parquet"
+    )
+    monkeypatch.setenv("RADAR_PROFILE", "full")
+    monkeypatch.setenv("RADAR_LAKE", str(tmp_path))
+    monkeypatch.setenv("RADAR_SOURCE", "ai")
+    assert runtime._entity_in_question("¿Qué está pasando con Nvidia?", None) == "ai:infra:nvidia"
+    assert runtime._entity_in_question("¿Con qué se conecta OpenAI?", None) == "ai:lab:openai"
+    assert (
+        runtime._entity_in_question("Los vecinos de Google en el grafo", None) == "ai:lab:google_ai"
+    )
+    # a lexicon topic the AI run did not score never resolves
+    assert runtime._entity_in_question("¿Microsoft es tema caliente?", None) is None
+    assert runtime._entity_in_question("¿Qué opina Sam Altman de la regulación?", None) is None
+    assert runtime._entity_in_question("¿Qué debería publicar 30X esta semana?", None) is None
+
+
+@pytest.mark.unit
+def test_without_the_ai_source_named_topics_stay_gdelt_ids(monkeypatch):
+    monkeypatch.delenv("RADAR_SOURCE", raising=False)
+    assert runtime._entity_in_question("Muéstrame los vecinos de Google en el grafo", None) == (
+        "org:google"
+    )
+
+
+@pytest.mark.unit
+def test_auditor_does_not_read_a_number_out_of_30x():
+    from agents.runtime import untraced_numbers
+
+    results = [{"result": {"articles": 44}}]
+    assert untraced_numbers('Enfoque: "Datos del radar de 30X".', results, "") == []
+    assert untraced_numbers("30X vio 44 artículos y 9999 medios.", results, "") == ["9999"]
+    assert untraced_numbers("Subió un 31% esta semana.", results, "") == ["31%"]  # % still read

@@ -1,7 +1,8 @@
 -- S13: radar.topic_sources_weekly (contracts/topic_sources_weekly.schema.json): per ranked topic and Monday week, how
 -- many distinct outlets carry it and how concentrated it is, so WS4 can keep wire-syndication bursts out of the top 10.
 -- Reads radar.article_segment (ring 1: segment 'ai', its org/theme arrays and source) and the topic ids of topic_daily;
--- bills only the bytes of those columns.
+-- bills only the bytes of those columns. AI-lexicon topics ('ai:<id>', topic_ai_daily) join in through
+-- radar.article_topic_ai (S15); their co-mention pattern uses the same org/theme entities.
 -- top_theme_pattern_share: the topic-week's 5 most co-mentioned *specific* entities (orgs and themes in at most 10% of
 -- that week's ring-1 articles, the topic itself excluded, ties by name) define a pattern; each article's pattern is the
 -- sorted subset of those 5 it carries (possibly empty). Background themes are excluded because they sit in most
@@ -14,6 +15,8 @@ PARTITION BY week
 CLUSTER BY topic_id AS
 WITH topics AS (
   SELECT DISTINCT topic_id FROM `radar.topic_daily`
+  UNION DISTINCT
+  SELECT DISTINCT topic_id FROM `radar.topic_ai_daily`
 ),
 art_ents AS (
   SELECT gkg_id, DATE_TRUNC(dt, WEEK(MONDAY)) AS week, source, CONCAT('org:', e) AS ent
@@ -28,6 +31,9 @@ mentions AS (
   SELECT a.gkg_id, a.week, a.source, a.ent AS topic_id
   FROM art_ents AS a
   JOIN topics AS t ON t.topic_id = a.ent
+  UNION ALL
+  SELECT gkg_id, week, source, topic_id
+  FROM `radar.article_topic_ai`
 ),
 sources AS (
   SELECT

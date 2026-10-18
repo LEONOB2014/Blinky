@@ -3,7 +3,8 @@
     RADAR_PROFILE=full uv run --extra graph python -m graph.export_views
     RADAR_PROFILE=full uv run --extra graph python -m graph.export_views --topic org:nvidia
 
-- ``temporal.json``: the last 13 weeks (about 90 days) of ``edges_weekly``, scanned one week at a
+- ``temporal.json``: the last 13 weeks (about 90 days) of ``edges_weekly`` (or
+  ``edges_ai_weekly`` with ``--ai``), scanned one week at a
   time for low memory: top ``max_nodes`` (1,000) nodes by weighted degree over the span with
   n >= ``min_n`` (20) and NPMI > ``min_npmi`` (0.1), pruned per week to the top-``top_k`` (5)
   edges by NPMI per node, with a precomputed frozen 2D layout in cosmos.gl space units and Spanish
@@ -39,6 +40,17 @@ PERSON_PREFIX = "per:"
 SPAN_WEEKS = 13
 MAX_NODES = 1000
 MIN_N = 20
+# The AI graph (--ai) has ~110 curated topics: the v0.2 floor of 20 co-mentions per pair leaves it
+# sparse (2026-W42: 51 edges), so it uses the 1-hop ring's floor (graph/context.py MIN_N = 3); the
+# NPMI cut and the per-node top-k are the same. The floor used is written to _meta.params.
+MIN_N_AI = 3
+
+
+def default_min_n(ai: bool) -> int:
+    """The co-mention floor of the exported graph: the ring's for the AI graph, v0.2's otherwise."""
+    return MIN_N_AI if ai else MIN_N
+
+
 MIN_NPMI = 0.1
 TOP_K = 5
 TOP_LABELS = 30
@@ -55,6 +67,28 @@ EXTRA_STORY_TOPICS = (
     "thm:TECH_AUTOMATION",
 )
 LEIDEN_SEED = 42
+
+# One fixed palette. The web legend in web/src/aiLexicon.ts uses the same hex values.
+# Keys and Spanish labels match contracts/ai_lexicon.yaml families.
+FAMILY_PALETTE: dict[str, tuple[str, str]] = {
+    "labs": ("#6d28d9", "Laboratorios"),
+    "models": ("#2563eb", "Modelos"),
+    "products": ("#0891b2", "Productos y asistentes"),
+    "techniques": ("#0f766e", "Técnicas"),
+    "infra": ("#b45309", "Infraestructura y chips"),
+    "research": ("#7c3aed", "Investigación y open source"),
+    "business": ("#047857", "Negocio e inversión"),
+    "policy": ("#1d4ed8", "Regulación y política"),
+    "safety": ("#b91c1c", "Seguridad y riesgo"),
+    "opposition": ("#c2410c", "Oposición y crítica"),
+    "society": ("#a16207", "Sociedad y trabajo"),
+}
+STANCE_PALETTE: dict[str, tuple[str, str]] = {
+    "promoter": ("#1d4ed8", "Impulsores"),
+    "critic": ("#c2410c", "Críticos"),
+    "neutral": ("#64748b", "Neutros"),
+}
+_EMPTY_METRICS = pl.LazyFrame(schema={"wk": pl.Date, "entity_id": pl.String})
 
 # Core AI organizations from bq_sql/s2_monthly_insert.sql (f_org) + AI stack infrastructure.
 _RING_AI_ORGS = frozenset(
@@ -537,6 +571,49 @@ def _no_persons(lf: pl.LazyFrame) -> pl.LazyFrame:
     )
 
 
+def _total_bucket(edges: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+    """Keep the ``all`` language total. ``edges_ai_weekly`` also stores eng/spa/por/other."""
+    lf = edges.lazy()
+    if "lang_bucket" in lf.collect_schema().names():
+        lf = lf.filter(pl.col("lang_bucket") == "all")
+    return lf
+
+
+def _neighbors_from_edges(
+    edges: pl.LazyFrame | pl.DataFrame,
+    topic_id: str,
+    monday: date,
+    *,
+    min_n: int = 3,
+    min_npmi: float = 0.1,
+    k: int = 20,
+) -> pl.DataFrame:
+    """Top-k co-mentions when ``topic_context_1hop`` has no ``ai:`` rows yet."""
+    nbrs = (
+        _total_bucket(edges)
+        .filter(
+            (pl.col("wk") == monday)
+            & ((pl.col("x") == topic_id) | (pl.col("y") == topic_id))
+            & (pl.col("n") >= min_n)
+            & pl.col("npmi").is_not_null()
+            & (pl.col("npmi") > min_npmi)
+        )
+        .select(
+            pl.when(pl.col("x") == topic_id)
+            .then(pl.col("y"))
+            .otherwise(pl.col("x"))
+            .alias("neighbor"),
+            "n",
+            "npmi",
+        )
+        .collect()
+        .sort(["npmi", "n", "neighbor"], descending=[True, True, False])
+        .head(k)
+        .with_row_index("rank", offset=1)
+    )
+    return nbrs.select("neighbor", "rank", "n", "npmi")
+
+
 def _format_org_name(raw: str) -> str:
     cleaned = raw.strip()
     if cleaned.lower() == "openai group":
@@ -722,6 +799,79 @@ def _precompute_layout(
     ]
 
 
+def load_lexicon(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """Map ``ai:<id>`` to family, Spanish label, stance and label_es.
+
+    Empty when the file is absent.
+    """
+    src = path or (CONTRACTS_DIR / "ai_lexicon.yaml")
+    if not src.exists():
+        return {}
+    doc = yaml.safe_load(src.read_text(encoding="utf-8")) or {}
+    families = doc.get("families") or {}
+    out: dict[str, dict[str, str]] = {}
+    for entry in doc.get("entries") or []:
+        raw_id = str(entry.get("id") or "").strip()
+        if not raw_id:
+            continue
+        topic = raw_id if raw_id.startswith("ai:") else f"ai:{raw_id}"
+        family = str(entry.get("family") or "")
+        fallback = FAMILY_PALETTE.get(family, ("#64748b", family or "Otra familia"))
+        stance = str(entry.get("stance") or "neutral")
+        if stance not in STANCE_PALETTE:
+            stance = "neutral"
+        out[topic] = {
+            "family": family,
+            "family_es": str(families.get(family) or fallback[1]),
+            "stance": stance,
+            "label_es": str(entry.get("label_es") or raw_id),
+        }
+    return out
+
+
+def _palette_legend(palette: dict[str, tuple[str, str]]) -> list[dict[str, str]]:
+    return [
+        {"id": key, "label_es": label, "color": color} for key, (color, label) in palette.items()
+    ]
+
+
+def _seat_critics(
+    coords: list[tuple[float, float]],
+    stances: list[str | None],
+) -> list[tuple[float, float]]:
+    """Put the critic camp in a left-hand grid so it reads as its own cluster."""
+    critics = [i for i, stance in enumerate(stances) if stance == "critic"]
+    if len(critics) < 2:
+        return coords
+    others = [i for i in range(len(coords)) if i not in set(critics)]
+    out = list(coords)
+    usable = SPACE_SIZE - 2.0 * SPACE_PAD
+    left = SPACE_PAD + 0.28 * usable
+    right = SPACE_SIZE - SPACE_PAD
+    if others:
+        xs = [coords[i][0] for i in others]
+        ys = [coords[i][1] for i in others]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        span_x = max(max_x - min_x, 1e-9)
+        span_y = max(max_y - min_y, 1e-9)
+        for i in others:
+            x, y = coords[i]
+            out[i] = (
+                round(left + (x - min_x) / span_x * (right - left), 2),
+                round(SPACE_PAD + (y - min_y) / span_y * usable, 2),
+            )
+    band_right = left - 36.0
+    columns = max(1, math.ceil(math.sqrt(len(critics) * 0.6)))
+    rows = math.ceil(len(critics) / columns)
+    for k, i in enumerate(sorted(critics, key=lambda j: (coords[j][1], coords[j][0]))):
+        col, row = k % columns, k // columns
+        x = SPACE_PAD + (col + 0.5) * (band_right - SPACE_PAD) / columns
+        y = SPACE_PAD + (row + 0.5) * usable / rows
+        out[i] = (round(x, 2), round(y, 2))
+    return out
+
+
 def _compute_subgraph_metrics(
     node_ids: list[str],
     edge_rows: list[tuple[str, str, int, float]],
@@ -793,13 +943,15 @@ def export_temporal(
     scores: pl.LazyFrame | pl.DataFrame | None = None,
     *,
     topic_daily: pl.LazyFrame | pl.DataFrame | None = None,
+    lexicon: dict[str, dict[str, str]] | None = None,
+    ai_only: bool = False,
     span: int = SPAN_WEEKS,
     max_nodes: int = MAX_NODES,
     min_n: int = MIN_N,
     min_npmi: float = MIN_NPMI,
     top_k: int = TOP_K,
 ) -> dict[str, Any]:
-    edges_lf, node_metrics_lf = edges.lazy(), node_metrics.lazy()
+    edges_lf, node_metrics_lf = _total_bucket(edges), node_metrics.lazy()
     weeks = span_weeks(edges_lf, span)
     widx = {w: i for i, w in enumerate(weeks)}
 
@@ -832,6 +984,8 @@ def export_temporal(
             }
         )
     )
+    if ai_only and not kept.is_empty():
+        kept = kept.filter(pl.col("x").str.starts_with("ai:") & pl.col("y").str.starts_with("ai:"))
     all_deg = (
         pl.concat([kept.select(e=pl.col("x"), n="n"), kept.select(e=pl.col("y"), n="n")])
         .group_by("e")
@@ -896,6 +1050,10 @@ def export_temporal(
                 .sort(["deg", "e"], descending=[True, False])
                 .head(max_nodes)
             )
+    if lexicon:
+        for tid, entry in lexicon.items():
+            if entry.get("label_es"):
+                score_labels[tid] = entry["label_es"]
 
     ids = deg["e"].to_list()
     idx = {v: i for i, v in enumerate(ids)}
@@ -978,14 +1136,16 @@ def export_temporal(
         if {"topic_id", "dt", "mean_tone", "n_articles"}.issubset(td_cols):
             min_dt = weeks[0]
             max_dt = weeks[-1] + timedelta(days=6)
+            tone_filter = (
+                (pl.col("dt") >= min_dt)
+                & (pl.col("dt") <= max_dt)
+                & pl.col("topic_id").is_in(ids)
+                & pl.col("mean_tone").is_not_null()
+            )
+            if "is_missing" in td_cols:
+                tone_filter = tone_filter & ~pl.col("is_missing")
             td_df = (
-                td_lf.filter(
-                    (pl.col("dt") >= min_dt)
-                    & (pl.col("dt") <= max_dt)
-                    & pl.col("topic_id").is_in(ids)
-                    & pl.col("mean_tone").is_not_null()
-                    & ~pl.col("is_missing")
-                )
+                td_lf.filter(tone_filter)
                 .with_columns(wk=pl.col("dt").dt.truncate("1w"))
                 .group_by("wk", "topic_id")
                 .agg(
@@ -1086,6 +1246,10 @@ def export_temporal(
     targets = [idx[y] for y in kept["y"]]
     npmis = kept["npmi"].to_list()
     coords = _precompute_layout(len(ids), sources, targets, npmis)
+    lex = lexicon or {}
+    stances = [lex.get(v, {}).get("stance") for v in ids]
+    if any(stance == "critic" for stance in stances):
+        coords = _seat_critics(coords, stances)
 
     nodes = [
         {
@@ -1093,11 +1257,14 @@ def export_temporal(
             "label": _label(v, score_labels),
             "label_es": _label(v, score_labels),
             "etype": v.split(":", 1)[0],
+            "family": lex.get(v, {}).get("family"),
+            "family_es": lex.get(v, {}).get("family_es"),
+            "stance": lex.get(v, {}).get("stance"),
             "ring": ring_of[v],
             "domain": domain_of[v],
             "x": coords[idx[v]][0],
             "y": coords[idx[v]][1],
-            "show_label": v in label_ids,
+            "show_label": v in label_ids or lex.get(v, {}).get("stance") == "critic",
             "deg_span": int(d),
             "pagerank": pagerank[v],
             "importance": importance[v],
@@ -1219,7 +1386,11 @@ def export_temporal(
                     "top_k_per_node": top_k,
                     "top_labels": TOP_LABELS,
                     "leiden_seed": LEIDEN_SEED,
+                    "ai_only": ai_only,
                 },
+                "default_color_by": "family" if ai_only else "decision",
+                "family_legend": _palette_legend(FAMILY_PALETTE),
+                "stance_legend": _palette_legend(STANCE_PALETTE),
                 "n_nodes": len(nodes),
                 "n_labeled_nodes": len(label_ids),
                 "n_edges": kept.height,
@@ -1300,6 +1471,7 @@ def export_story(
     *,
     prev_edges: pl.LazyFrame | pl.DataFrame | None = None,
     node_metrics_wk: dict[str, dict[str, Any]] | None = None,
+    lexicon: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     if topic_id.startswith(PERSON_PREFIX):
         raise ValueError("persons are never exported")
@@ -1322,6 +1494,8 @@ def export_story(
         .select(sel_ring_cols)
         .collect()
     )
+    if nbrs.is_empty() and topic_id.startswith("ai:"):
+        nbrs = _neighbors_from_edges(edges, topic_id, monday)
     members = [topic_id, *nbrs["neighbor"].to_list()]
     among = (
         _no_persons(edges.lazy())
@@ -1367,6 +1541,10 @@ def export_story(
                 score_labels[topic_id] = str(score_row["label_es"])
             if score_row.get("primary_subtopic"):
                 primary_subtopics[topic_id] = str(score_row["primary_subtopic"])
+    if lexicon:
+        for tid, entry in lexicon.items():
+            if entry.get("label_es"):
+                score_labels[tid] = entry["label_es"]
 
     topic_label_es = _label(topic_id, score_labels)
     if score_row is not None:
@@ -1394,9 +1572,13 @@ def export_story(
 
     def _node_extra(nid: str) -> dict[str, Any]:
         nm = (node_metrics_wk or {}).get(nid) or {}
+        entry = (lexicon or {}).get(nid) or {}
         return {
             "ring": ring_of.get(nid, "ai_domain"),
             "domain": domain_of.get(nid),
+            "family": entry.get("family"),
+            "family_es": entry.get("family_es"),
+            "stance": entry.get("stance"),
             "betweenness": nm.get("betweenness", bet_map.get(nid)),
             "cross_ring_share": cross_map.get(nid),
             "community_week": nm.get("community_week", comm_map.get(nid)),
@@ -1529,17 +1711,70 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--topic", help="story topic id (default: #1 of the latest scored week)")
     parser.add_argument("--week", help="story ISO week, e.g. 2026-W42 (default: latest scored)")
     parser.add_argument("--max-nodes", type=int, default=MAX_NODES)
-    parser.add_argument("--min-n", type=int, default=MIN_N)
+    parser.add_argument(
+        "--min-n",
+        type=int,
+        default=None,
+        help=f"co-mention floor (default {MIN_N}; {MIN_N_AI} with --ai)",
+    )
     parser.add_argument("--top-k", type=int, default=TOP_K)
+    parser.add_argument(
+        "--edges",
+        default=None,
+        help="gold edge table (default: edges_weekly, or edges_ai_weekly with --ai)",
+    )
+    parser.add_argument(
+        "--topics",
+        default=None,
+        help="gold topic table for tone (default: topic_daily, or topic_ai_daily with --ai)",
+    )
+    parser.add_argument(
+        "--scores",
+        default=None,
+        help="gold scores table (topic_ai_scores_weekly with --ai)",
+    )
+    parser.add_argument(
+        "--ai",
+        action="store_true",
+        help="AI lexicon graph: ai: nodes, family colour, label_es, critic camp",
+    )
+    parser.add_argument(
+        "--lexicon",
+        type=Path,
+        default=None,
+        help="lexicon YAML (default: contracts/ai_lexicon.yaml when it exists)",
+    )
     args = parser.parse_args(argv)
 
-    edges = pl.scan_parquet(paths.gold("edges_weekly"))
-    metrics = pl.scan_parquet(paths.gold("node_metrics_weekly"))
-    ring = pl.scan_parquet(paths.gold("topic_context_1hop"))
-    scores_path = paths.gold("topic_scores_weekly")
+    edges_name = args.edges or ("edges_ai_weekly" if args.ai else "edges_weekly")
+    topics_name = args.topics or ("topic_ai_daily" if args.ai else "topic_daily")
+    edges_path = paths.gold(edges_name)
+    if not edges_path.exists():
+        raise SystemExit(f"missing lake table {edges_name}")
+    edges = _total_bucket(pl.scan_parquet(edges_path))
+    scores_name = args.scores or ("topic_ai_scores_weekly" if args.ai else "topic_scores_weekly")
+    metrics_path = paths.gold("node_metrics_weekly")
+    metrics = pl.scan_parquet(metrics_path) if metrics_path.exists() else _EMPTY_METRICS
+    ring_path = paths.gold("topic_context_1hop")
+    ring = (
+        pl.scan_parquet(ring_path)
+        if ring_path.exists()
+        else pl.LazyFrame(
+            schema={
+                "wk": pl.Date,
+                "topic_id": pl.String,
+                "neighbor": pl.String,
+                "rank": pl.Int64,
+                "n": pl.Int64,
+                "npmi": pl.Float64,
+            }
+        )
+    )
+    scores_path = paths.gold(scores_name)
     scores = pl.scan_parquet(scores_path) if scores_path.exists() else None
-    td_path = paths.gold("topic_daily")
+    td_path = paths.gold(topics_name)
     topic_daily = pl.scan_parquet(td_path) if td_path.exists() else None
+    lexicon = load_lexicon(args.lexicon)
 
     t0 = time.perf_counter()
     temporal = export_temporal(
@@ -1547,8 +1782,10 @@ def main(argv: list[str] | None = None) -> int:
         metrics,
         scores,
         topic_daily=topic_daily,
+        lexicon=lexicon,
+        ai_only=args.ai,
         max_nodes=args.max_nodes,
-        min_n=args.min_n,
+        min_n=args.min_n if args.min_n is not None else default_min_n(args.ai),
         top_k=args.top_k,
     )
     t1 = time.perf_counter()
@@ -1562,7 +1799,7 @@ def main(argv: list[str] | None = None) -> int:
         if topic is None and top10_rows:
             topic = str(top10_rows[0]["topic_id"])
     if topic is None or week is None:
-        raise SystemExit("no topic_scores_weekly: pass --topic and --week")
+        raise SystemExit(f"no {scores_name}: pass --topic and --week")
 
     t2 = time.perf_counter()
     monday = week_monday(week)
@@ -1621,6 +1858,7 @@ def main(argv: list[str] | None = None) -> int:
             scores_wk,
             prev_edges=edges_prev_wk,
             node_metrics_wk=node_metrics_wk,
+            lexicon=lexicon,
         )
         fname = story_filename(tid)
         _write(st, args.out / fname)

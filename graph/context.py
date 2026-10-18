@@ -7,6 +7,10 @@ For every ranked topic (an entity whose type is in ``ranked_entity_types`` of
 up to 20 non-person neighbours; they never reach the ring, the API or the UI. Each neighbour
 carries its segment and domain when a lookup is given; WS1's tables do not provide them yet, so
 they are null until then.
+
+The AI radar's topics (``ai:<id>``, from ``edges_ai_weekly``) get the same ring with
+``prefixes=("ai:",)``; their rows sit in the same table, so the API and the agents read both
+without branching.
 """
 
 import polars as pl
@@ -33,13 +37,16 @@ def context_1hop(
     edges: pl.DataFrame,
     node_metrics: pl.DataFrame,
     segments: pl.DataFrame | None = None,
+    prefixes: tuple[str, ...] | None = None,
 ) -> pl.DataFrame:
     """``topic_context_1hop`` rows.
 
     ``node_metrics`` supplies the weekly hub flags (``wk``, ``entity_id``, ``is_hub``).
     ``segments``, when given, maps ``entity_id`` to ``segment`` and ``domain``.
+    ``prefixes`` are the topic id prefixes that get a ring (default: the ranked entity types).
     """
-    prefixes = tuple(f"{t}:" for t in ranked_entity_types())
+    if prefixes is None:
+        prefixes = tuple(f"{t}:" for t in ranked_entity_types())
     both = pl.concat(
         [
             edges.select("wk", pl.col("x").alias("topic_id"), pl.col("y").alias("neighbor"),

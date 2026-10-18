@@ -1,0 +1,40 @@
+# Evaluation set for the agents on the AI lexicon run (v3, 2026-10-18): v2's 25 questions, unchanged,
+# plus 3 about the AI community sensor (crosssource/community.py, get_community_signal). v1 and v2
+# stay frozen; v3 is dataset radar-agents-v3, the v0.3 release eval.
+#   q26 the AI community overall; q27 the accelerators (builders category); q28 the critics
+#       (critics category plus the lexicon's critic stance). No entity: none names a lexicon topic.
+# Change it only with a new version, so experiments stay comparable.
+#   agents: specialists that must take part (a subset; extra ones are not penalised)
+#   entity: the ai: lexicon id the question is about, when it names one
+#   decision: true when the answer should carry a code-computed decision
+#   kind: the question family, for per-family scores
+version: 3
+questions:
+  - {id: q01, kind: rising, question: "¿Qué tema de IA está subiendo esta semana y por qué?", agents: [signal_analyst], decision: true}
+  - {id: q02, kind: rising, question: "¿Qué debería publicar 30X esta semana?", agents: [signal_analyst], decision: true}
+  - {id: q03, kind: rising, question: "Dame el top 3 de temas calientes de la semana con su decisión", agents: [signal_analyst], decision: true}
+  - {id: q04, kind: rising, question: "¿Qué tema está a punto de llegar al español y cuántos días quedan?", agents: [signal_analyst], decision: true}
+  - {id: q05, kind: rising, question: "¿Qué temas NO son calientes aunque se hable mucho de ellos?", agents: [signal_analyst], decision: true}
+  - {id: q06, kind: entity, question: "¿Qué está pasando con Nvidia?", agents: [], entity: "ai:infra:nvidia", decision: false}
+  - {id: q07, kind: entity, question: "¿Con qué se está conectando OpenAI esta semana?", agents: [cartographer], entity: "ai:lab:openai", decision: false}
+  - {id: q08, kind: entity, question: "¿Microsoft es tema caliente esta semana?", agents: [signal_analyst], entity: "ai:lab:microsoft_ai", decision: true}
+  - {id: q09, kind: entity, question: "¿Por qué aparece Anthropic en las noticias de IA?", agents: [], entity: "ai:lab:anthropic", decision: false}
+  - {id: q10, kind: entity, question: "Muéstrame los vecinos de Google en el grafo", agents: [cartographer], entity: "ai:lab:google_ai", decision: false}
+  - {id: q11, kind: entity, question: "¿Conviene escribir sobre Taiwan Semiconductor esta semana?", agents: [signal_analyst], entity: "ai:infra:tsmc_foundry", decision: true}
+  - {id: q12, kind: graph, question: "Muéstrame el grafo de la semana", agents: [cartographer], decision: false}
+  - {id: q13, kind: graph, question: "¿Qué comunidades de temas se están formando?", agents: [cartographer], decision: false}
+  - {id: q14, kind: graph, question: "Visualiza cómo se conecta la IA con el clima y la energía", agents: [cartographer], decision: false}
+  - {id: q15, kind: audience, question: "¿Desde qué ángulo le cuento el tema principal a ejecutivos de LatAm?", agents: [audience_strategist], decision: false}
+  - {id: q16, kind: audience, question: "¿Qué tema encaja mejor con la audiencia de 30X en LatAm?", agents: [audience_strategist], decision: false}
+  - {id: q17, kind: audience, question: "¿Cómo está el tono de las noticias de IA en español?", agents: [audience_strategist], decision: false}
+  - {id: q18, kind: content, question: "Escribe un gancho para un post de LinkedIn sobre el tema que más sube", agents: [editor], decision: true}
+  - {id: q19, kind: content, question: "¿Qué formato de contenido recomiendas para el tema principal?", agents: [editor], decision: true}
+  - {id: q20, kind: ops, question: "¿Cuánto ha costado BigQuery hasta ahora?", agents: [scout], decision: false}
+  - {id: q21, kind: ops, question: "¿Qué tan frescos están los datos?", agents: [scout], decision: false}
+  - {id: q22, kind: trust, question: "¿Cuánto puedo confiar en el radar? ¿Hay backtest?", agents: [auditor], decision: false}
+  - {id: q23, kind: trust, question: "¿Qué tan bueno es el filtro de noticias de IA?", agents: [auditor], decision: false}
+  - {id: q24, kind: out_of_scope, question: "¿Cuántos likes tendrá mi próximo post en LinkedIn?", agents: [], decision: false}
+  - {id: q25, kind: out_of_scope, question: "¿Qué opina Sam Altman de la regulación?", agents: [], decision: false}
+  - {id: q26, kind: community, question: "¿Qué está discutiendo la comunidad IA esta semana?", agents: [signal_analyst], decision: false}
+  - {id: q27, kind: community, question: "¿Qué piden las aceleradoras como Y Combinator?", agents: [signal_analyst], decision: false}
+  - {id: q28, kind: community, question: "¿Qué dicen los críticos de la IA esta semana?", agents: [signal_analyst], decision: false}

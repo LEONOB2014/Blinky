@@ -4,8 +4,8 @@ Instructions for coding agents (Claude Code, Gemini CLI, Grok CLI) and humans wo
 repository: **Radar de Señal Temprana**, the early-signal radar that tells 30X which AI topics are
 about to land on LinkedIn, why, and from which emotional angle to tell them to LatAm executives
 (Reto 30X "Radar de contenido"). This file is the canonical source of repository standards;
-`CLAUDE.md` and `GEMINI.md` import it. The plan is [`docs/plan/MASTER_PLAN.pdf`](docs/plan/MASTER_PLAN.pdf)
-(single source of truth); procedures too long for this file live in [`docs/development/`](docs/development/).
+`CLAUDE.md` and `GEMINI.md` import it. The plan is [`docs/plan/MASTER_PLAN.md`](docs/plan/MASTER_PLAN.md)
+(living, single source of truth; the original [PDF](docs/plan/MASTER_PLAN.pdf) stays); procedures too long for this file live in [`docs/development/`](docs/development/).
 
 ## Project map
 

@@ -3,10 +3,10 @@ profile) and returns plain JSON. When the table a tool needs does not exist yet,
 (`available: false` and the reason) instead of returning anything invented.
 """
 
-import csv
 import datetime as dt
 import functools
 import json
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,8 +18,18 @@ import polars as pl
 import yaml
 from jsonschema import Draft202012Validator
 
+from agents import trust
+from agents.trust import (  # noqa: F401 - re-exported for the agents and tests
+    BQ_FREE_TIB_PER_MONTH,
+    BQ_PRICE_SOURCE,
+    BQ_USD_PER_TIB,
+    TIB,
+    backtest_summary,
+    ledger_costs,
+)
 from radar.contracts import load_schema
-from radar.paths import REPO_ROOT, gold, lake, profile
+from radar.paths import REPO_ROOT, lake, profile
+from radar.paths import gold as _gold
 
 WEEK_RE = re.compile(r"^(\d{4})-W(\d{2})$")
 Z_DISPLAY_CAP = 10.0  # z-scores above this are shown as ">10": tiny 28-day baselines inflate them
@@ -27,6 +37,31 @@ Z_DISPLAY_CAP = 10.0  # z-scores above this are shown as ">10": tiny 28-day base
 
 def _con() -> duckdb.DuckDBPyConnection:
     return duckdb.connect()
+
+
+# The AI radar (WP2): with RADAR_SOURCE=ai the agents and the briefs read the AI lexicon run's
+# tables (models/source.py writes them); a table with no AI variant in the lake falls back to the
+# shared one, so S13/S14 rows for ai: topics may live in either. Briefs are always written to the
+# AI name, so v0.2's briefs are never overwritten.
+AI_TABLES = {
+    "topic_scores_weekly": "topic_ai_scores_weekly",
+    "topic_daily": "topic_ai_daily",
+    "topic_sources_weekly": "topic_ai_sources_weekly",
+    "topic_evidence_weekly": "topic_ai_evidence_weekly",
+    "topic_briefs_weekly": "topic_ai_briefs_weekly",
+}
+
+
+def ai_source() -> bool:
+    return os.environ.get("RADAR_SOURCE") == "ai"
+
+
+def gold(name: str, *, write: bool = False) -> Path:
+    """radar.paths.gold, switched to the AI run's table under RADAR_SOURCE=ai."""
+    alt = AI_TABLES.get(name) if ai_source() else None
+    if alt and (write or _gold(alt).exists()):
+        return _gold(alt)
+    return _gold(name)
 
 
 def _table(name: str) -> str | None:
@@ -80,6 +115,35 @@ def week_bounds(week: str | None) -> tuple[str, dt.date, dt.date]:
 def labels_es() -> dict[str, str]:
     tax = yaml.safe_load((REPO_ROOT / "contracts" / "taxonomy.yaml").read_text(encoding="utf-8"))
     return {"ai_all": "IA en general"} | {k: v["label_es"] for k, v in tax["subtopics"].items()}
+
+
+@functools.cache
+def _ai_lexicon() -> tuple[tuple[str, tuple[re.Pattern[str], ...]], ...]:
+    """Each AI lexicon entry as (topic id, its name matchers): the entry's patterns, its GDELT org
+    aliases and its Spanish label, all whole-word and case-insensitive (contracts/ai_lexicon.yaml)."""
+    lex = yaml.safe_load((REPO_ROOT / "contracts" / "ai_lexicon.yaml").read_text(encoding="utf-8"))
+    out = []
+    for e in lex["entries"]:
+        names = [*(e.get("gdelt_orgs") or []), e["label_es"]]
+        matchers = [re.compile(p, re.I) for p in e["patterns"]]
+        matchers += [re.compile(rf"(?<!\w){re.escape(n.lower())}(?!\w)", re.I) for n in names]
+        out.append((f"ai:{e['id']}", tuple(matchers)))
+    return tuple(out)
+
+
+def ai_topic_in(text: str) -> str | None:
+    """The AI lexicon topic a text names ('¿Qué está pasando con Nvidia?' -> 'ai:infra:nvidia'),
+    only among topics the AI run scored; the longest match wins, ties go to the lexicon order."""
+    path = gold("topic_scores_weekly")
+    scored = set(_known_topics(str(path), path.stat().st_mtime)) if path.exists() else None
+    best: tuple[int, str] | None = None
+    for topic_id, matchers in _ai_lexicon():
+        if scored is not None and topic_id not in scored:
+            continue
+        span = max((len(m.group(0)) for p in matchers if (m := p.search(text))), default=0)
+        if span and (best is None or span > best[0]):
+            best = (span, topic_id)
+    return best[1] if best else None
 
 
 def _cap(z: float | None) -> float | str | None:
@@ -208,7 +272,7 @@ def list_subtopic_trends(week: str | None = None, lang_bucket: str = "all") -> d
 def get_topic_series(topic: str, lang_bucket: str = "all", weeks: int = 8) -> dict[str, Any]:
     """Weekly articles, share and tone of one subtopic (or `ai_all`) or one org/theme topic."""
     topic = resolve_topic(topic)
-    if topic.startswith(("org:", "thm:")):
+    if topic.startswith(("org:", "thm:", "ai:")):
         return _entity_series(topic, lang_bucket, weeks)
     table = _table("daily_topic")
     if not table:
@@ -282,6 +346,201 @@ def get_language_coverage(topic: str, week: str | None = None) -> dict[str, Any]
         "articulos_pt": articles("por"),
         "articulos_total": int(next(r["articles"] for r in total["rows"] if r["week"] == label)),
         "dias_con_datos": _days_with_data(monday, sunday),
+    }
+
+
+@functools.cache
+def ai_lexicon_entries() -> dict[str, dict[str, Any]]:
+    """ai: topic id -> label_es, family (and its Spanish name) and stance, from the lexicon."""
+    lex = yaml.safe_load((REPO_ROOT / "contracts" / "ai_lexicon.yaml").read_text(encoding="utf-8"))
+    families = lex.get("families") or {}
+    return {
+        f"ai:{e['id']}": {
+            "label_es": e["label_es"],
+            "family": e["family"],
+            "family_es": families.get(e["family"], e["family"]),
+            "stance": e.get("stance"),
+        }
+        for e in lex["entries"]
+    }
+
+
+# The AI community sensor (crosssource/community.py): what researchers, practitioners, builders,
+# critics and the media publish, matched to the lexicon. An unvalidated signal: most feeds keep a
+# short history, so it never enters the backtest. Item titles stay in the lake; only counts here.
+COMMUNITY_CATEGORIES_ES = {
+    "research": "investigación",
+    "practitioners": "practicantes",
+    "builders": "constructores y aceleradoras",
+    "vision": "visión y estrategia",
+    "media": "medios especializados",
+    "critics": "críticos",
+}
+COMMUNITY_TOP = 3
+
+
+def get_community_signal(
+    topic_id: str | None = None, week: str | None = None, category: str | None = None
+) -> dict[str, Any]:
+    """Measured community counts for a week: items and topics per category, the top topics of
+    each category, and (for the critics) the topics whose lexicon stance is critic. Optionally
+    for one topic or one category. Never item titles."""
+    path = _gold("community_topic_weekly")
+    if not path.exists():
+        return _unavailable("community_topic_weekly")
+    if category is not None and category not in COMMUNITY_CATEGORIES_ES:
+        return {"available": False, "reason": f"categoría desconocida: {category}"}
+    c = pl.read_parquet(path)
+    weeks = sorted(c["week"].unique().to_list())
+    label = week if week in weeks else weeks[-1]
+    c = c.filter(pl.col("week") == label)
+    if topic_id is not None:
+        c = c.filter(pl.col("topic_id") == topic_id)
+    if category is not None:
+        c = c.filter(pl.col("category") == category)
+    if c.is_empty():
+        what = topic_id or category or "la comunidad"
+        return {
+            "available": False,
+            "reason": f"sin publicaciones de la comunidad sobre {what} en {label}",
+        }
+    lex = ai_lexicon_entries()
+
+    def name(t: str) -> str:
+        return lex.get(t, {}).get("label_es", t.split(":")[-1])
+
+    per_cat = (
+        c.group_by("category")
+        .agg(
+            pl.col("n_items").sum().alias("n_items"), pl.col("topic_id").n_unique().alias("n_temas")
+        )
+        .sort(["n_items", "category"], descending=[True, False])
+    )
+    top: dict[str, list[dict[str, Any]]] = {}
+    for cat in per_cat["category"].to_list():
+        rows = c.filter(pl.col("category") == cat).sort(
+            ["n_items", "topic_id"], descending=[True, False]
+        )
+        top[cat] = [
+            {"topic_id": r["topic_id"], "label_es": name(r["topic_id"]), "n_items": int(r["n_items"]),
+             "n_sources": int(r["n_sources"])}
+            for r in rows.head(COMMUNITY_TOP).to_dicts()
+        ]  # fmt: skip
+    out: dict[str, Any] = {
+        "available": True,
+        "week": label,
+        "no_validada": "señal no validada: la mayoría de las fuentes guarda poco historial, por eso "
+        "nunca entra en el backtest",
+        "por_categoria": [
+            {
+                "category": r["category"],
+                "category_es": COMMUNITY_CATEGORIES_ES[r["category"]],
+                "n_items": int(r["n_items"]),
+                "n_temas": int(r["n_temas"]),
+            }
+            for r in per_cat.to_dicts()
+        ],  # fmt: skip
+        "top_por_categoria": top,
+    }
+    if category == "critics":  # plus the lexicon's critic camp, whoever writes about it
+        all_week = pl.read_parquet(path).filter(pl.col("week") == label)
+        critic_ids = [t for t, e in lex.items() if e.get("stance") == "critic"]
+        camp = (
+            all_week.filter(pl.col("topic_id").is_in(critic_ids))
+            .group_by("topic_id")
+            .agg(pl.col("n_items").sum())
+            .sort(["n_items", "topic_id"], descending=[True, False])
+        )
+        out["temas_de_postura_critica"] = [
+            {
+                "topic_id": r["topic_id"],
+                "label_es": name(r["topic_id"]),
+                "n_items": int(r["n_items"]),
+            }
+            for r in camp.head(COMMUNITY_TOP).to_dicts()
+        ]
+    return out
+
+
+LEADERS_LIMIT = 15
+
+
+def get_leaders(week: str | None = None, limit: int = LEADERS_LIMIT) -> dict[str, Any]:
+    """The week's AI leaders by volume: the `ai:` topics with the most articles (all languages),
+    unlike the emergence top 10, which ranks what is rising and leaves the giants out.
+
+    Per topic: articles, the change vs the previous week per day with data (days flagged missing
+    are left out, never counted as zero), the es+pt share, family and stance (lexicon), and its
+    emergence rank and decision (`topic_ai_scores_weekly`). Reads the AI lexicon run's tables
+    whatever RADAR_SOURCE says; unavailable when they are not in the lake.
+    """
+    daily_path, scores_path = _gold("topic_ai_daily"), _gold("topic_ai_scores_weekly")
+    if not daily_path.exists():
+        return _unavailable("topic_ai_daily")
+    d = pl.read_parquet(daily_path).filter(~pl.col("is_missing"))
+    if d.schema["dt"] == pl.String:
+        d = d.with_columns(pl.col("dt").str.to_date())
+    if week is None:
+        week = (
+            pl.read_parquet(scores_path)["week"].max()
+            if scores_path.exists()
+            else d["dt"].max().strftime("%G-W%V")
+        )
+    label, monday, sunday = week_bounds(week)
+    prev_monday = monday - dt.timedelta(days=7)
+
+    def window(start: dt.date) -> tuple[pl.DataFrame, int]:
+        part = d.filter(pl.col("dt").is_between(start, start + dt.timedelta(days=6)))
+        agg = part.group_by("topic_id").agg(
+            pl.col("n_articles").sum().alias("n"),
+            pl.col("n_articles")
+            .filter(pl.col("lang_bucket").is_in(["spa", "por"]))
+            .sum()
+            .alias("n_espt"),
+        )
+        return agg, part["dt"].n_unique()
+
+    cur, days = window(monday)
+    prev, prev_days = window(prev_monday)
+    if cur.is_empty():
+        return {"available": False, "reason": f"no hay artículos de temas de IA en {label}"}
+    top = cur.sort(["n", "topic_id"], descending=[True, False]).head(limit)
+    top = top.join(prev.select("topic_id", pl.col("n").alias("n_prev")), on="topic_id", how="left")
+    ranks: dict[str, dict[str, Any]] = {}
+    if scores_path.exists():
+        sc = pl.read_parquet(scores_path).filter(pl.col("week") == label)
+        ranks = {r["topic_id"]: r for r in sc.select("topic_id", "rank", "decision").to_dicts()}
+    lex = ai_lexicon_entries()
+    rows = []
+    for i, r in enumerate(top.to_dicts(), start=1):
+        n_prev = r["n_prev"] or 0
+        change = None
+        if n_prev and days and prev_days:
+            change = round((r["n"] / days) / (n_prev / prev_days) - 1, 4)
+        meta = lex.get(r["topic_id"], {})
+        score = ranks.get(r["topic_id"], {})
+        rows.append(
+            {
+                "leader_rank": i,
+                "topic_id": r["topic_id"],
+                "label_es": meta.get("label_es", r["topic_id"].split(":")[-1]),
+                "family": meta.get("family"),
+                "family_es": meta.get("family_es"),
+                "stance": meta.get("stance"),
+                "articles": int(r["n"]),
+                "articles_prev_week": int(n_prev),
+                "change_vs_prev_week": change,
+                "espt_share": round(r["n_espt"] / r["n"], 4) if r["n"] else None,
+                "emergence_rank": score.get("rank"),
+                "decision": score.get("decision"),
+            }
+        )
+    return {
+        "available": True,
+        "week": label,
+        "days_with_data": days,
+        "prev_week_days_with_data": prev_days,
+        "rows": rows,
     }
 
 
@@ -596,59 +855,10 @@ def get_freshness() -> dict[str, Any]:
     return {"available": True, "profile": profile(), "newest": out}
 
 
-# BigQuery on-demand compute: first 1 TiB per month free, then USD 6.25 per TiB (checked
-# 2026-10-18 at https://cloud.google.com/bigquery/pricing).
-BQ_FREE_TIB_PER_MONTH = 1
-BQ_USD_PER_TIB = 6.25
-BQ_PRICE_SOURCE = "cloud.google.com/bigquery/pricing (on-demand, consultado el 2026-10-18)"
-TIB = 2**40
-
-
 def get_cost_ledger() -> dict[str, Any]:
     """What the radar has cost: BigQuery bytes billed (measured) with the free tier and the USD it
-    implies (estimate), plus Jev's USD from its own ledger (measured)."""
-    path = REPO_ROOT / "reports" / "bq_ledger.csv"
-    with path.open(encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    billed = sum(int(r["billed_bytes"] or 0) for r in rows)
-    month = max((r["ts_utc"][:7] for r in rows), default=None)
-    month_billed = sum(int(r["billed_bytes"] or 0) for r in rows if r["ts_utc"][:7] == month)
-    over_free = max(0.0, month_billed / TIB - BQ_FREE_TIB_PER_MONTH)
-    return {
-        "available": True,
-        "bigquery": {
-            "medido": "bytes facturados según reports/bq_ledger.csv",
-            "jobs": len(rows),
-            "billed_gb": round(billed / 1e9, 2),
-            "billed_tib": round(billed / TIB, 4),
-            "mes": month,
-            "billed_tib_mes": round(month_billed / TIB, 4),
-            "cuota_gratuita_tib_mes": BQ_FREE_TIB_PER_MONTH,
-            "cuota_gratuita_usada": round(month_billed / TIB / BQ_FREE_TIB_PER_MONTH, 4),
-            "estimado": "costo en USD calculado con el precio público, no una factura",
-            "precio_usd_por_tib": BQ_USD_PER_TIB,
-            "fuente_precio": BQ_PRICE_SOURCE,
-            "costo_usd_con_cuota_gratuita": round(over_free * BQ_USD_PER_TIB, 2),
-            "costo_usd_sin_cuota_gratuita": round(billed / TIB * BQ_USD_PER_TIB, 2),
-            "nota": "la cuota gratuita es por cuenta de facturación; si otros proyectos de la cuenta "
-            "ya la usaron este mes, el costo real se acerca al de sin cuota",
-        },
-        "jev": _jev_ledger(),
-    }
-
-
-def _jev_ledger() -> dict[str, Any]:
-    path = REPO_ROOT / "reports" / "jev_ledger.csv"
-    if not path.exists():
-        return {"available": False, "reason": "reports/jev_ledger.csv todavía no existe"}
-    with path.open(encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    return {
-        "available": True,
-        "medido": "suma de cost_usd en reports/jev_ledger.csv",
-        "llamadas": len(rows),
-        "costo_usd": round(sum(float(r["cost_usd"] or 0) for r in rows), 4),
-    }
+    implies (estimate), plus Jev's USD from its own ledger (measured). See agents/trust.py."""
+    return {"available": True} | ledger_costs(REPO_ROOT / "reports")
 
 
 def get_segment_mix(week: str | None = None) -> dict[str, Any]:
@@ -673,13 +883,26 @@ def _report(name: str) -> dict[str, Any]:
 
 
 def get_backtest() -> dict[str, Any]:
-    """The backtest report (WS4), verbatim."""
-    return _report("backtest.md")
+    """The backtest report (WS4), with its headline numbers parsed for the trust line."""
+    path = trust.backtest_report(REPO_ROOT / "reports")  # backtest_ai.md under RADAR_SOURCE=ai
+    if not path.exists():
+        return _report(path.name)
+    text = path.read_text(encoding="utf-8")
+    return {
+        "available": True,
+        "fuente": f"reports/{path.name}",
+        "resumen": trust.report_summary(path),
+        "report": text[:4000],
+    }
 
 
 def get_filter_quality() -> dict[str, Any]:
-    """The filter precision/recall report (WS2), verbatim."""
-    return _report("label_quality.md")
+    """The filter precision/recall report (WS2), and whether human labels are still pending."""
+    out = _report("label_quality.md")
+    if out.get("available"):
+        text = (REPO_ROOT / "reports" / "label_quality.md").read_text(encoding="utf-8")
+        out = {"etiquetas_humanas_pendientes": "Pre-Human-Tally" in text} | out
+    return out
 
 
 # --- Registry ---------------------------------------------------------------------------------
@@ -780,6 +1003,29 @@ TOOLS: dict[str, Tool] = {
             },
         ),
         Tool(
+            "get_community_signal",
+            get_community_signal,
+            "Lo que publica la comunidad IA (investigación, practicantes, constructores y "
+            "aceleradoras, visión, medios, críticos) por categoría y tema esta semana: conteos "
+            "medidos, señal no validada; nunca títulos.",
+            {
+                "type": "object",
+                "properties": {
+                    "topic_id": {"type": "string"},
+                    "week": WEEK,
+                    "category": {"type": "string", "enum": list(COMMUNITY_CATEGORIES_ES)},
+                },
+            },
+        ),
+        Tool(
+            "get_leaders",
+            get_leaders,
+            "Los temas de IA más grandes de la semana por volumen de artículos (todos los "
+            "idiomas): artículos, cambio frente a la semana previa, cuota en español y "
+            "portugués, familia, postura y su puesto en emergencia.",
+            {"type": "object", "properties": {"week": WEEK}},
+        ),
+        Tool(
             "get_topic_scores",
             get_topic_scores,
             "Puntuaciones, ventana y decisión de un tema.",
@@ -832,7 +1078,19 @@ TOOLS: dict[str, Tool] = {
                     "caption_es": {"type": "string"},
                     "color_by": {
                         "type": "string",
-                        "enum": ["tone", "arousal", "community", "segment"],
+                        "enum": [
+                            "tone",
+                            "arousal",
+                            "community",
+                            "segment",
+                            "decision",
+                            "window",
+                            "bridge",
+                            "momentum",
+                            "novelty",
+                            "family",
+                            "postura",
+                        ],
                     },
                     "week": WEEK,
                     "focus_topic": {"type": "string"},

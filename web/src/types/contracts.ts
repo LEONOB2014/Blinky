@@ -54,6 +54,9 @@ export interface TopicScoreWeekly {
   evidence_ids: string[];
   has_wikipedia_es_pt?: boolean;
   profile: Profile;
+  /** Lexicon family, when the card is an `ai:` topic. */
+  family?: string | null;
+  family_es?: string | null;
 }
 
 /** `contracts/topic_daily.schema.json` */
@@ -119,6 +122,8 @@ export type ViewColorBy =
   | "community"
   | "tone"
   | "window"
+  | "family"
+  | "postura"
   | "arousal";
 
 export interface ViewFilter {

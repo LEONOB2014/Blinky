@@ -35,6 +35,8 @@ TABLES = {
     "daily_topic_rolling": ("radar.daily_topic_rolling", True),
     "topic_daily": ("radar.topic_daily", False),
     "edges_weekly": ("radar.edges_weekly", False),
+    "topic_ai_daily": ("radar.topic_ai_daily", False),
+    "edges_ai_weekly": ("radar.edges_ai_weekly", False),
     "topic_subtopic_weekly": ("radar.topic_subtopic_weekly", False),
     "topic_sources_weekly": ("radar.topic_sources_weekly", False),
     # Titles and URLs: lake and deployed site only, never git (contract x-mock: private).

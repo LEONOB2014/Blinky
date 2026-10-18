@@ -6,7 +6,36 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 07:20 UTC-5 · branch `docs/ws9-redeploy-0715` (batched redeploy of `develop` 3675f48) · committed locally, not pushed.
+2026-10-18 09:48 UTC-5 · branch `feat/ws9-deploy-ai` (deploy wiring for the AI radar, develop 1c6d287 merged) · committed locally, not pushed, not deployed.
+
+## Deploy wiring for the AI radar (09:48 UTC-5)
+
+`RADAR_SOURCE` (default `ai`; `gdelt` reproduces v0.2) reaches Cloud Run, the static export, the graph views
+(`export_views --ai`) and demo-check. All numbers *measured*.
+
+- **Image:** `push_lake.TABLES` adds `topic_ai_scores_weekly`, `topic_ai_daily`, `topic_ai_briefs_weekly`,
+  `wiki_pageviews_ai_daily`, `community_topic_weekly`. Staged context **89.8 MiB** (16 tables, 89 MiB of lake)
+  against 92 MiB on disk for the last staged one; the AI tables add about 1.3 MiB. The final image size is
+  known only after Cloud Build (base image and dependencies on top).
+- `edges_ai_weekly` is not shipped: no live reader (the agents' graph tools read `edges_weekly`, which is not
+  on the service either) and the AI graph is exported offline into `views/`.
+- Guards: `plan()` refuses `per:` topics in any shipped table, and title/URL columns outside
+  `topic_evidence_weekly`. All 16 tables pass.
+- **Dry run** `make redeploy-all`: preconditions and the scores check pass (`topic_ai_scores_weekly`, md5
+  eab2e304…, 1,704 s old); every deploy step printed, none run.
+- **Local check under `RADAR_SOURCE=ai`** (API test client): top 10 all `ai:`, #1 `ai:biz:mergers_deals`
+  with 351 days of timeline; demo-check's chat turn would name `ai:lab:google_deepmind`.
+- **Open, for WS3 and the API:** the 1-hop ring of `ai:` topics is empty (`topic_context_1hop` has 0 `ai:`
+  rows), so demo-check's "1-hop ring of #1" will fail after the deploy, and the UI's ring panel is empty
+  for AI topics. The UI's context picker (`CONTEXT_ENTITIES` in App.tsx) still offers `org:` entities,
+  which have no series under `ai`.
+- **Order:** step 3b's `--ai` flag exists only on `feat/ws3-ai-graph`; merge it before the deploy.
+
+Previous: 2026-10-18 08:30 UTC-5 · branch `docs/ws9-challenge-map` (submission mapped to the 30X brief) · committed locally, not pushed.
+
+Previous: 2026-10-18 07:55 UTC-5 · branch `docs/ws9-submission-refresh` (submission kit refresh) · committed locally, not pushed.
+
+Previous: 2026-10-18 07:20 UTC-5 · branch `docs/ws9-redeploy-0715` (batched redeploy of `develop` 3675f48) · committed locally, not pushed.
 
 Previous: 2026-10-18 06:25 UTC-5 · branch `docs/ws9-final-redeploy` (the final redeploy of `develop` 0a006f8) · committed locally, not pushed.
 
@@ -19,6 +48,49 @@ Previous: 2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 r
 Previous: 2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+
+## Submission mapped to the 30X brief (orchestrator's order, 08:08)
+
+`submission_text.md` now answers the reto's three questions, the example deliverable and the cost
+explicitly, with new sections: "Lo que pide el reto y lo que responde el radar", "Sin gastar una
+fortuna", "Por qué miramos aguas arriba de LinkedIn" and "JEV". `demo_script.md` opens with the
+same map. New numbers, with their sources:
+
+- **BigQuery:** 0.350 TiB billed, all in 2026-10 (*measured*, `reports/bq_ledger.csv`): inside the
+  1 TiB monthly free tier, so 0 USD (*estimate*: other use on the billing account is not checked);
+  2.18 USD at the 6.25 USD/TiB list price (*estimate*).
+- **LLM spend on Nebius, about 3.7 USD recorded (*estimate*):** labelling 2.30 (pilot 0.06, round 1
+  1.47, embeddings 0.02, round 2 0.75; `status/WS2.md`), agent evals and tests with a recorded
+  estimate 1.37 (`status/WS0-agents.md`, 05:05-07:45), live chat checks under 0.05 (this file).
+  Agent evals before 05:05 have no recorded dollar estimate.
+- **30X posts sheet:** `lake/manual/social_posts.csv` has 0 rows (*measured*); the editor test sheet
+  has no answers yet.
+- **Evidence:** 1,191 articles over 240 topic-weeks (*measured*).
+
+## Submission kit refresh (orchestrator's order, 07:45)
+
+Every number in `docs/submission/` was checked against its source; `demo_script.md` and
+`video_plan.md` now describe the current UI (one screen, the chat pill, the 8 lenses, the lines the
+code writes, the calibrated trust answer). All *measured*:
+
+| Number | Value | Source |
+|---|---|---|
+| BigQuery | 384.35 GB decimal (384,346,095,616 bytes billed) over 69 jobs | `reports/bq_ledger.csv` |
+| Agent eval, `trust-calibration` | grounding 0.960 [0.92-1.00] (72/75), usefulness v2 0.750 [0.74-0.76], v1 0.707, routing 1.000, 6,358 tokens/turn | `status/WS0-agents.md` |
+| Agent eval, release v0.2.0 | grounding 1.000 (75/75), usefulness v2 0.663 [0.63-0.70] | `status/WS0-agents.md` |
+| Evidence | 1,191 articles (240 topic-weeks, 212 topics, 8 weeks), 0 duplicates by normalized title | `topic_evidence_weekly`, `title_key` |
+| Jev | 981 calls, 0.04428430 USD (unchanged) | `reports/jev_ledger.csv` |
+| Live API | revision `radar-api-00008-xfp`, min-instances 1, ready at 07:35 UTC-5 (read with `gcloud run services describe`) | Cloud Run |
+
+- **Live check, `make demo-check` at 07:49 UTC-5 (12:49 UTC): 7/7** (seconds from the laptop,
+  network included): page 0.75, static top 10 0.23, freshness 0.71, API top 10 0.79, live == static
+  0.00, timeline of #1 0.66, 1-hop ring of #1 0.74. The first request took 0.71 s, against the 5.37 s
+  cold start measured at 06:42 with min-instances 0: no cold start. No chat turn was spent.
+- **`stories.md`:** regenerated at 12:48 UTC and identical except for the timestamp (the data has not
+  changed since 06:41 UTC), so the committed file was kept.
+- **Pending for the demo:** the graph fit after a chat answer and the Historia lens with named
+  neighbours come with `fix/ws5-dock-badge-fit` (committed locally, not deployed). `demo_script.md`
+  says what to skip if it is not deployed.
 
 ## Batched redeploy of `develop` 3675f48 (orchestrator's order, 07:14, approved)
 

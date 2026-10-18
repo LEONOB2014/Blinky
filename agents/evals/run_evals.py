@@ -33,13 +33,16 @@ QUESTIONS = Path(__file__).with_name("questions.yaml")
 JUDGE_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
 
 
-def load_questions() -> dict[str, Any]:
-    return yaml.safe_load(QUESTIONS.read_text(encoding="utf-8"))
+def load_questions(path: Path = QUESTIONS) -> dict[str, Any]:
+    return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
 
 
-def ensure_dataset(client: Client) -> str:
-    """Create the dataset once per version; never rewrite a version's examples."""
-    spec = load_questions()
+def ensure_dataset(client: Client, path: Path = QUESTIONS) -> str:
+    """Create the dataset once per version; never rewrite a version's examples.
+
+    `path` is the question set (`--spec`): v1 is questions.yaml (radar-agents-v1), v2 the AI
+    lexicon run's questions_v2.yaml (radar-agents-v2)."""
+    spec = load_questions(path)
     name = f"radar-agents-v{spec['version']}"
     if client.has_dataset(dataset_name=name):
         return name
@@ -277,6 +280,12 @@ def main() -> None:
     parser.add_argument("--repetitions", type=int, default=1, help="runs per question")
     parser.add_argument("--change", default="", help="what this experiment changes (metadata)")
     parser.add_argument(
+        "--spec",
+        type=Path,
+        default=QUESTIONS,
+        help="question set (default questions.yaml, v1); its version names the dataset",
+    )
+    parser.add_argument(
         "--questions", help="comma-separated question ids to run (default: all 25), e.g. q20,q22"
     )
     parser.add_argument(
@@ -297,7 +306,7 @@ def main() -> None:
         )
         _report(f"{args.rescore}.v2", _rows(results), args.repetitions)
         return
-    dataset = ensure_dataset(client)
+    dataset = ensure_dataset(client, args.spec)
     data: Any = dataset
     if args.questions:
         wanted = set(args.questions.split(","))
@@ -321,6 +330,7 @@ def main() -> None:
             "git_sha": _git_sha(),
             "change": args.change,
             "repetitions": args.repetitions,
+            "questions": args.spec.name,
             "scores_file_mtime": _scores_mtime(),
         },
     )

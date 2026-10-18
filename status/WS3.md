@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 23:48 UTC-5 · `feat/ws3-graph-smoke` (WS3c graph-view smoke test) · committed locally; the orchestrator pushes
+2026-10-18 09:56 UTC-5 · `feat/ws3-ai-graph` (community counts on the AI cards) · committed locally; the orchestrator pushes
 
 ## Done
 
@@ -108,11 +108,13 @@ layout covers the sweep for now.
 
 ## In progress
 
-- Nothing. The addendum is done; the push waits for the maintainer.
+- Nothing. `origin/develop` is merged (lexicon PR #66 and the community sensor
+  PR #67). The AI graph export below is committed locally; the orchestrator pushes.
 
 ## Blocked on
 
-Nothing outside the brief. Waiting on the scheduled WS1 input above.
+- Nothing. `topic_context_1hop` has no `ai:` rows (measured, 0). Stories take
+  their ring from `edges_ai_weekly` until that table is rebuilt.
 
 ## Notes for the lead
 
@@ -197,3 +199,105 @@ Jaccard >= 0.3 `community_id` has almost no continuity on full data. Diagnosis o
   Communities are large (largest 2,997 and 3,217 nodes) on a dense graph (~800k edges, ~10k nodes).
 
 Distributions over node-weeks (measured): median `new_nbr_rate` 0.606, median `deg_growth` -0.008.
+
+## WP3 AI graph (2026-10-18 09:05 UTC-5)
+
+`graph/export_views.py` takes `--edges`, `--topics`, `--scores`, `--lexicon` and `--ai`.
+`--ai` reads `edges_ai_weekly` and `topic_ai_daily`, keeps only `ai:` nodes, overlays
+`label_es` from the lexicon, and writes `family`, `family_es`, `stance`, `default_color_by`
+and the Spanish legends. NPMI, edge state, betweenness, momentum, community and importance
+are still computed on the pruned edges. With two or more critics, the layout seats that camp
+on the left. The org graph stays on the decision lens when the yaml is present.
+
+The Postura lens colours by stance and sizes by the absolute weekly GDELT tone. Questions
+"¿quién se opone?", "críticos" and "regulación" select it, after tone so a tone question
+still wins. The rail and the topic card show a family chip when the id is `ai:` or the card
+has `family`. The Comunidad IA line reads `community` when WP4 sends it, and otherwise says
+there is no signal this week. It does not invent paper or talk counts.
+
+Tests (measured, this machine): `uv run --extra graph pytest graph/tests/test_ai_graph.py
+graph/tests/test_export_views.py agents/tests/test_runtime.py` — 48 passed. The AI-export
+test is a 4-node fixture, not the lake. `bun install` then `tsc -b` in `web/` passed with
+no errors. The UI was not opened in a browser.
+
+### Lexicon coverage (second opinion)
+
+Read of `contracts/ai_lexicon.yaml` at `024938e` on `feat/ws0-ai-lexicon` (measured):
+110 entries. Stances: 64 promoter, 28 neutral, 18 critic. The file is not on this branch.
+
+Already covered, so not gaps: Chinese labs DeepSeek, Qwen, Kimi, Zhipu/GLM, ERNIE,
+Doubao, Hunyuan, MiniMax and Huawei/Pangu; `model:open_chinese` and
+`model:deepseek_models`; Hugging Face (`research:hugging_face`); open-source patterns
+for PyTorch, LangChain, LlamaIndex, vLLM, Ollama and llama.cpp; agents as `tech:agents`
+plus MCP; the critics' camp (pause, FLI/CAIS/MIRI, protests, artists including SAG-AFTRA,
+copyright, jobs, existential risk, the EU AI Act).
+
+Gaps an editor would still miss:
+
+1. No pattern for 01.AI / Yi, Baichuan, StepFun, SenseTime / SenseNova, or iFlytek / Spark.
+   A headline that only names Yi or SenseNova matches neither those labs nor
+   `model:open_chinese`.
+2. No node for the EU AI Office, AI Factories, EuroHPC, InvestAI, or the GPAI Code of
+   Practice. `policy:eu_ai_act` matches `eu ai` and "European Commission … AI", so those
+   stories collapse into the Act.
+3. Agent frameworks are not nodes. `tech:agents` matches "ai agent" / "agentic", not
+   LangGraph, CrewAI, AutoGen, smolagents, Dify or n8n. LangChain only sits inside
+   `research:open_source_projects`.
+4. Open-source runtimes absent from that pattern list: SGLang, Unsloth, MLX, Open WebUI,
+   LM Studio. vLLM, Ollama and llama.cpp are present.
+5. Named regulators are not entries: FTC, UK CMA, CNIL, ICO, Ofcom, NIST. "Safety
+   institute" matches `risk:ai_safety`, so a UK or US AISI story does not land on a
+   regulator node in the critics' camp.
+6. No LMSYS / Chatbot Arena entry. "leaderboard" only matches
+   `research:papers_benchmarks`.
+7. Empty `wikipedia.es` on Moonshot, Zhipu, ByteDance, Tencent, MiniMax and Huawei, so
+   those labs get no Spanish pageview series until a title is added.
+
+Family ids in that yaml are `techniques`, `business`, `safety`, `opposition` and
+`society` (35 of 110 entries: 11 + 8 + 6 + 5 + 5). The graph palette uses those ids.
+
+### Real export (measured, 2026-10-18 09:12 UTC-5)
+
+`RADAR_PROFILE=full uv run --extra graph python -m graph.export_views --ai`
+on this Mac. `edges_ai_weekly` has a language row and an `all` total (one pair,
+Anthropic–cyber, week 2026-10-12: eng 2 + spa 3 + por 1 + other 2 = all 8). The
+export keeps `all` only, and reads `topic_ai_scores_weekly`.
+
+Result: 84 nodes, all `ai:` and all in the lexicon; 811 edges over 13 weeks
+(2026-07-20 .. 2026-10-12); 0.50 s. 16 critics sit on the left (max x 1200.5,
+min other x 1344.0), including pause, regulation, copyright, jobs and existential
+risk. Latest week rank 1 is Alianzas y adquisiciones en IA (`esperar`). The
+2026-W42 story of that topic has 7 neighbours taken from the edges. The EU AI Act
+has no co-mention with n ≥ 20 inside these 13 weeks (its two such edges are both
+2026-01-26, n = 59 and 61), so it is not in this graph. JSON is in `lake/views/`
+and `web/public/data/views/` (git-ignored). The UI was not opened in a browser.
+
+### Community counts on the AI cards (measured, 2026-10-18 09:56 UTC-5)
+
+`lake/gold/community_topic_weekly.parquet`: 1,041 rows over 15 weeks (2026-W28 .. 2026-W42).
+2026-W42 is 79 rows and 54 topics. Category totals that week: research 35 rows / 452 items,
+builders 25 / 63, vision 12 / 12, critics 3 / 3, media 2 / 2, practitioners 2 / 7.
+
+`GET /api/community?week=2026-W42` returns those rows and only the six schema fields.
+`GET /api/radar` for the same week returns the lexicon top 10 from `topic_ai_scores_weekly`
+(the dev slice has no that table, so the default profile still reads `topic_scores_weekly`).
+The radar body has no community fields. Both payloads validate against their contracts.
+
+Top 10 lines rendered in headless Chrome at `http://127.0.0.1:5184/` (API on 8014; 8010 and
+5180 were left running):
+
+| rank | topic | line |
+|---|---|---|
+| 1 | Alianzas y adquisiciones en IA | Comunidad IA: sin señal de esta semana |
+| 2 | Google DeepMind | Comunidad IA: sin señal de esta semana |
+| 3 | Bolsa y acciones de IA | Comunidad IA: sin señal de esta semana |
+| 4 | Fichajes, salidas y spin-offs | Comunidad IA: sin señal de esta semana |
+| 5 | Protestas y rechazo social a la IA | Comunidad IA: sin señal de esta semana |
+| 6 | Artistas y creadores contra la IA | La comunidad IA lo discute: 1 pieza de construcción |
+| 7 | Rondas y valuaciones de IA | Comunidad IA: sin señal de esta semana |
+| 8 | Ajuste fino y entrenamiento | La comunidad IA lo discute: 61 de investigación, 2 de construcción |
+| 9 | Pesos abiertos y open source | La comunidad IA lo discute: 4 piezas de investigación |
+| 10 | Robótica e IA física | La comunidad IA lo discute: 7 piezas de investigación |
+
+The rail was ten `ai:` cards. No non-`ai:` card was on that screen. `communityFromRows`
+returns null for an `org:` id, and the line is rendered only when `topic_id` starts with `ai:`.

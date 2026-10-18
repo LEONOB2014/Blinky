@@ -6,6 +6,72 @@ All notable changes to this project are documented here. The format follows
 Entries are generated from Conventional Commits by commitizen; see
 [docs/development/releasing.md](docs/development/releasing.md).
 
+## v0.3.0 (2026-10-18)
+
+### Highlights (every number measured unless marked)
+
+- **An AI radar.** v0.2 ranked GDELT's extracted organisations, and GDELT does not extract AI-native ones (no `org:openai` in 2026-W42), so its top 10 was banks and retailers. The ranked unit is now a curated lexicon: 110 AI topics in 11 families, including the opposition to AI. W41 and W42 top 10: 10/10 AI topics.
+- **Two lists.** "Despegando" (emergence) and "Lo más grande" (volume). W42 leaders: Nvidia 4,718 · OpenAI 2,691 · Microsoft 2,153 · Google 2,116 · Anthropic 1,938 articles.
+- **The AI community sensor.** 3,636 items from 23 of 24 public sources over 15 weeks: HF papers and model releases, AI Engineer, DataTalksClub, Vanishing Gradients, Gradient Dissent, W&B, YC (RFS and videos), The Batch, safety and critic organisations. It feeds the card community line, the agents and the Postura lens (promoters vs critics). Unvalidated, kept out of the backtest.
+- **Honest backtest of the AI run.** Secondary label 25.6% (22.3–28.8) vs base 25.4%. It beats persistence, not raw-count growth. The primary label is below the coverage rule. The ranking is relevant; it is not yet better than chance on its labels. The trust answer and panel say so.
+- **Agents.** Leaders and community tools; Auditor checks for coverage claims, outlet counts and "30X". Release eval v3 (28 questions × 3): grounding 0.964 (0.93–1.00), decisions and routing 1.000.
+- **Live** in AI mode on Cloud Run with min-instances 1 for the demo; demo-check 8/8 with a chat turn. README and a living master plan (`docs/plan/MASTER_PLAN.md`). BigQuery 389.7 GB over 74 jobs, inside the free tier.
+
+### BREAKING CHANGE
+
+- topic ids become ai:<entry id>, read from
+topic_ai_daily (s15); the v0.2 org universe stays only for the
+backtest comparison.
+
+### Feat
+
+- **crosssource**: keep only live streams for a channel and add a refresh target
+- **graph**: build the 1-hop ring of the ai topics
+- **web**: rail toggle between rising topics and the week's ai leaders
+- show measured community counts on the AI cards
+- **graph**: colour the AI graph by family and add Postura
+- **agents**: answer what the ai community discusses, by code
+- **deploy**: select the radar source in the redeploy
+- **deploy**: ship the ai radar tables in the api image
+- **api**: rank the week's ai leaders by volume
+- **crosssource**: add the ai community sensor
+- **ingest**: take ai evidence topics from the ws4 scores
+- **contracts**: add mocks for topic_ai_daily and edges_ai_weekly
+- **bq**: add s15 and s16 generated from the ai lexicon
+- **contracts**: add topic_ai_daily and edges_ai_weekly
+- **ingest**: generate the ai-lexicon bigquery scripts
+- **agents**: resolve ai: topics and add the v2 eval set
+- **api**: serve ai lexicon scores when RADAR_SOURCE=ai
+- **agents**: read the ai lexicon run's tables under RADAR_SOURCE=ai
+- **contracts**: rank a curated ai lexicon instead of gdelt orgs
+- **scores**: run scores and backtest on a chosen input source
+- **agents**: say which article filter feeds the radar
+- **web**: open the trust panel with a calibrated spanish summary
+- **agents**: build the trust summary from the chat's trust parsers
+
+### Fix
+
+- **agents**: read the ai backtest for trust under RADAR_SOURCE=ai
+- **web**: recapture the fallback graph with the ai leaders labelled
+- **web**: label the ai leaders and keep the ai graph's layout
+- **web**: replace the fallback graph image with the ai graph
+- **graph**: use the ring's co-mention floor for the ai graph
+- **graph**: export the AI graph from the all-language edges
+- **agents**: route community questions to the signal analyst alone
+- **agents**: answer community questions from the community line only
+- **crosssource**: keep other sources' items on a partial community fetch
+- **agents**: keep the topic name in a corrected brief headline
+- **agents**: check brief coverage claims against their es+pt count
+- **agents**: stop the auditor reading 30 out of 30X
+- **ingest**: check the lexicon id shape, not a copy of its prefixes
+- **scores**: apply the 20-article floor to ai topics
+- **scores**: use the all bucket of edges_ai_weekly for new neighbours
+- **web**: fit the graph and its labels after a view change
+- **web**: raise the chat dock above the netlify badge
+- keep the brief field name out of the editor role
+- trace named weeks in the auditor and drop the editor's duration
+- write a calibrated trust line by code and veto overclaims
+
 ## v0.2.0 (2026-10-18)
 
 ### Highlights (every number measured unless marked)

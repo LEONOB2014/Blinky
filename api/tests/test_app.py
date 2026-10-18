@@ -112,6 +112,58 @@ def test_radar_returns_validated_scores_when_table_exists(
 
 
 @pytest.mark.unit
+def test_radar_reads_ai_scores_when_that_source_is_selected(
+    client: TestClient, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("RADAR_SOURCE", "ai")
+    ai_path = tmp_path / "topic_ai_scores_weekly.parquet"
+    gdelt_path = tmp_path / "topic_scores_weekly.parquet"
+    row = {
+        "week": "2026-W42",
+        "topic_id": "ai:product:chatgpt",
+        "label_es": "ChatGPT",
+        "subtopics": ["products"],
+        "primary_subtopic": "products",
+        "emergence_pct": 70.0,
+        "stage": "emergente",
+        "saturation": 0.1,
+        "audience_fit": 0.5,
+        "outperformance": None,
+        "emotional_charge_pct": 40.0,
+        "framing_angle": "explicador neutral",
+        "window": {
+            "state": "dias_restantes",
+            "days_left": 5,
+            "typical_lag_days": 6.0,
+            "n_onsets": 10,
+        },
+        "priority": 0.5,
+        "rank": 1,
+        "decision": "preparar",
+        "why": ["Emergencia medida"],
+        "evidence_ids": [],
+        "has_wikipedia_es_pt": True,
+        "profile": "full",
+    }
+    pl.DataFrame([row]).write_parquet(ai_path)
+    pl.DataFrame([{**row, "topic_id": "org:kroger", "label_es": "Kroger"}]).write_parquet(
+        gdelt_path
+    )
+
+    def fake(name: str):
+        if name == "topic_ai_scores_weekly":
+            return ai_path
+        if name == "topic_scores_weekly":
+            return gdelt_path
+        return tmp_path / f"{name}.parquet"
+
+    monkeypatch.setattr("api.app.gold", fake)
+    rows = client.get("/api/radar?week=2026-W42&limit=5").json()
+    assert [r["topic_id"] for r in rows] == ["ai:product:chatgpt"]
+    assert validate_records("topic_scores_weekly", rows) == []
+
+
+@pytest.mark.unit
 def test_topic_timeline_matches_topic_daily_contract_on_dev_slice(client: TestClient):
     resp = client.get("/api/topic/regulation_policy/timeline")
     assert resp.status_code == 200
@@ -205,6 +257,91 @@ def test_radar_never_returns_a_deny_listed_org(client: TestClient, tmp_path, mon
     assert [r["week"] for r in client.get("/api/radar?week=2026-W41").json()] == ["2026-W41"]
 
 
+def _community_row(topic_id, week, category, n_items, n_sources, score):
+    return {
+        "topic_id": topic_id,
+        "week": week,
+        "category": category,
+        "n_items": n_items,
+        "n_sources": n_sources,
+        "score": score,
+    }
+
+
+@pytest.mark.unit
+def test_community_missing_returns_empty_list_and_reason(client: TestClient):
+    resp = client.get("/api/community?week=2026-W42")
+    assert resp.status_code == 200
+    assert resp.json() == []
+    assert "community_topic_weekly" in resp.headers.get("X-Radar-Empty-Reason", "")
+    assert resp.headers.get("X-Radar-Status") == "pending-community"
+
+
+@pytest.mark.unit
+def test_community_week_stays_off_the_radar_payload(client: TestClient, tmp_path, monkeypatch):
+    scores = pl.DataFrame(
+        [
+            _score_row("2026-W42", "ai:tech:fine_tuning", 1, "Ajuste fino y entrenamiento"),
+            _score_row("2026-W42", "org:nvidia", 2, "Nvidia"),
+        ]
+    )
+    community = pl.DataFrame(
+        [
+            _community_row("ai:tech:fine_tuning", "2026-W42", "research", 61, 2, 3987.0),
+            _community_row("ai:tech:fine_tuning", "2026-W42", "builders", 2, 1, 0.0),
+            _community_row("ai:tech:robotics", "2026-W41", "research", 7, 1, 360.0),
+        ]
+    )
+    _gold_at(
+        monkeypatch,
+        tmp_path,
+        {"topic_scores_weekly": scores, "community_topic_weekly": community},
+    )
+
+    radar = client.get("/api/radar?week=2026-W42&limit=10")
+    assert radar.status_code == 200
+    rows = radar.json()
+    assert validate_records("topic_scores_weekly", rows) == []
+    for row in rows:
+        assert "community" not in row
+        assert "category" not in row
+        assert "n_items" not in row
+
+    resp = client.get("/api/community?week=2026-W42")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert validate_records("community_topic_weekly", body) == []
+    assert [row["category"] for row in body] == ["builders", "research"]
+    assert {row["week"] for row in body} == {"2026-W42"}
+    fields = {"topic_id", "week", "category", "n_items", "n_sources", "score"}
+    assert all(set(row) == fields for row in body)
+    assert body[1]["n_items"] == 61
+
+    other = client.get("/api/community?week=2026-W40")
+    assert other.status_code == 200
+    assert other.json() == []
+    assert "2026-W40" in other.headers.get("X-Radar-Empty-Reason", "")
+
+
+@pytest.mark.unit
+def test_radar_serves_lexicon_scores_under_the_ai_source(client: TestClient, tmp_path, monkeypatch):
+    ai_scores = pl.DataFrame(
+        [_score_row("2026-W42", "ai:biz:mergers_deals", 1, "Alianzas y adquisiciones en IA")]
+    )
+    org_scores = pl.DataFrame([_score_row("2026-W42", "org:nvidia", 1, "Nvidia")])
+    _gold_at(
+        monkeypatch,
+        tmp_path,
+        {"topic_ai_scores_weekly": ai_scores, "topic_scores_weekly": org_scores},
+    )
+    monkeypatch.delenv("RADAR_SOURCE", raising=False)
+    assert [r["topic_id"] for r in client.get("/api/radar?week=2026-W42").json()] == ["org:nvidia"]
+    monkeypatch.setenv("RADAR_SOURCE", "ai")
+    body = client.get("/api/radar?week=2026-W42").json()
+    assert [row["topic_id"] for row in body] == ["ai:biz:mergers_deals"]
+    assert validate_records("topic_scores_weekly", body) == []
+
+
 @pytest.mark.unit
 def test_context_never_returns_a_person_neighbour(client: TestClient, tmp_path, monkeypatch):
     ring = pl.DataFrame(
@@ -287,3 +424,38 @@ def test_feedback_rejects_bad_input(client: TestClient, body):
         assert client.post("/api/feedback", json=body).status_code == 422
     finally:
         app.state.feedback_client = None
+
+
+@pytest.mark.unit
+def test_leaders_need_the_ai_source_and_match_the_contract(
+    client: TestClient, tmp_path, monkeypatch
+):
+    import yaml
+
+    from radar.contracts import CONTRACTS_DIR
+
+    resp = client.get("/api/leaders")
+    assert resp.json()["rows"] == [] and "RADAR_SOURCE=ai" in resp.headers["X-Radar-Empty-Reason"]
+    gold = tmp_path / "gold"
+    gold.mkdir()
+    day = dt.date(2026, 10, 12)
+    pl.DataFrame(
+        {
+            "topic_id": ["ai:lab:openai", "ai:infra:nvidia"],
+            "dt": [day, day],
+            "lang_bucket": ["eng", "spa"],
+            "segment": ["ai", "ai"],
+            "n_articles": [30, 50],
+            "is_missing": [False, False],
+        }
+    ).write_parquet(gold / "topic_ai_daily.parquet")
+    monkeypatch.setenv("RADAR_PROFILE", "full")
+    monkeypatch.setenv("RADAR_LAKE", str(tmp_path))
+    monkeypatch.setenv("RADAR_SOURCE", "ai")
+    body = client.get("/api/leaders?week=2026-W42").json()
+    assert [r["topic_id"] for r in body["rows"]] == ["ai:infra:nvidia", "ai:lab:openai"]
+    spec = yaml.safe_load((CONTRACTS_DIR / "api.yaml").read_text(encoding="utf-8"))
+    schema = spec["paths"]["/api/leaders"]["get"]["responses"]["200"]["content"]["application/json"]
+    from jsonschema import Draft202012Validator
+
+    assert not list(Draft202012Validator(schema["schema"]).iter_errors(body))
