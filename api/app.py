@@ -2,6 +2,7 @@
 
 Implements every path in `contracts/api.yaml`:
 - `GET /api/radar`
+- `GET /api/leaders`
 - `GET /api/topic/{topic_id}/timeline`
 - `GET /api/topic/{topic_id}/context`
 - `GET /api/freshness`
@@ -29,7 +30,7 @@ from pydantic import BaseModel, Field
 
 from agents.llm import ChatModel, NebiusChat, model_config
 from agents.runtime import run_turn
-from agents.tools import week_bounds
+from agents.tools import LEADERS_LIMIT, get_leaders, week_bounds
 from radar.contracts import CONTRACTS_DIR, load_schema
 from radar.paths import REPO_ROOT, gold, profile
 
@@ -196,6 +197,29 @@ def get_radar(
             row["label_es"] = labels[row["topic_id"]]
         rows.append(row)
     return rows
+
+
+@app.get("/api/leaders")
+def get_leaders_endpoint(
+    response: Response,
+    week: Annotated[str | None, Query(pattern=r"^[0-9]{4}-W[0-9]{2}$")] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = LEADERS_LIMIT,
+) -> dict[str, Any]:
+    """The week's AI leaders by volume (`agents.tools.get_leaders`), the giants the emergence top
+    10 leaves out by design. Only under `RADAR_SOURCE=ai`: the v0.2 GDELT ranking has no leaders
+    list, so it returns no rows and says why in `X-Radar-Empty-Reason`."""
+    empty = {"week": week, "days_with_data": None, "prev_week_days_with_data": None, "rows": []}
+    if os.environ.get("RADAR_SOURCE") != "ai":
+        response.headers["X-Radar-Empty-Reason"] = "leaders need RADAR_SOURCE=ai (AI lexicon run)"
+        return empty
+    out = get_leaders(week, limit)
+    if not out.get("available"):
+        response.headers["X-Radar-Empty-Reason"] = out.get("reason") or "no AI leaders"
+        return empty
+    rows = [r for r in out["rows"] if not is_person(r["topic_id"])]
+    return {k: out[k] for k in ("week", "days_with_data", "prev_week_days_with_data")} | {
+        "rows": rows
+    }
 
 
 @app.get("/api/topic/{topic_id}/timeline")

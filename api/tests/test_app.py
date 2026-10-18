@@ -339,3 +339,38 @@ def test_feedback_rejects_bad_input(client: TestClient, body):
         assert client.post("/api/feedback", json=body).status_code == 422
     finally:
         app.state.feedback_client = None
+
+
+@pytest.mark.unit
+def test_leaders_need_the_ai_source_and_match_the_contract(
+    client: TestClient, tmp_path, monkeypatch
+):
+    import yaml
+
+    from radar.contracts import CONTRACTS_DIR
+
+    resp = client.get("/api/leaders")
+    assert resp.json()["rows"] == [] and "RADAR_SOURCE=ai" in resp.headers["X-Radar-Empty-Reason"]
+    gold = tmp_path / "gold"
+    gold.mkdir()
+    day = dt.date(2026, 10, 12)
+    pl.DataFrame(
+        {
+            "topic_id": ["ai:lab:openai", "ai:infra:nvidia"],
+            "dt": [day, day],
+            "lang_bucket": ["eng", "spa"],
+            "segment": ["ai", "ai"],
+            "n_articles": [30, 50],
+            "is_missing": [False, False],
+        }
+    ).write_parquet(gold / "topic_ai_daily.parquet")
+    monkeypatch.setenv("RADAR_PROFILE", "full")
+    monkeypatch.setenv("RADAR_LAKE", str(tmp_path))
+    monkeypatch.setenv("RADAR_SOURCE", "ai")
+    body = client.get("/api/leaders?week=2026-W42").json()
+    assert [r["topic_id"] for r in body["rows"]] == ["ai:infra:nvidia", "ai:lab:openai"]
+    spec = yaml.safe_load((CONTRACTS_DIR / "api.yaml").read_text(encoding="utf-8"))
+    schema = spec["paths"]["/api/leaders"]["get"]["responses"]["200"]["content"]["application/json"]
+    from jsonschema import Draft202012Validator
+
+    assert not list(Draft202012Validator(schema["schema"]).iter_errors(body))

@@ -29,7 +29,7 @@ agents:
     name_es: Analista de señales
     owns: [models/]
     decides: emergence, stage, saturation, window, priority, decision
-    tools: [get_top10, get_topic_scores, get_language_coverage, get_topic_sources, get_topic_series, compare_topics, why_not_hot]
+    tools: [get_top10, get_leaders, get_topic_scores, get_language_coverage, get_topic_sources, get_topic_series, compare_topics, why_not_hot]
   cartographer:
     name_es: Cartógrafo
     owns: [graph/]

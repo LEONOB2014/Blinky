@@ -18,6 +18,47 @@ paths:
           content:
             application/json:
               schema: {type: array, items: {$ref: "topic_scores_weekly.schema.json"}}
+  /api/leaders:
+    get:
+      summary: The week's AI leaders by volume (RADAR_SOURCE=ai only; empty rows otherwise)
+      description: >
+        The ai: lexicon topics with the most articles that week, all languages, from
+        topic_ai_daily. Days flagged is_missing are left out; change_vs_prev_week compares
+        articles per day with data. Family and stance come from contracts/ai_lexicon.yaml;
+        emergence_rank and decision from topic_ai_scores_weekly (null when unscored).
+      parameters:
+        - {name: week, in: query, schema: {type: string, pattern: "^[0-9]{4}-W[0-9]{2}$"}}
+        - {name: limit, in: query, schema: {type: integer, default: 15, maximum: 50}}
+      responses:
+        "200":
+          description: Leaders, most articles first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [week, days_with_data, prev_week_days_with_data, rows]
+                properties:
+                  week: {type: [string, "null"]}
+                  days_with_data: {type: [integer, "null"]}
+                  prev_week_days_with_data: {type: [integer, "null"]}
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      required: [leader_rank, topic_id, label_es, articles, articles_prev_week]
+                      properties:
+                        leader_rank: {type: integer, minimum: 1}
+                        topic_id: {type: string, pattern: "^ai:"}
+                        label_es: {type: string}
+                        family: {type: [string, "null"]}
+                        family_es: {type: [string, "null"]}
+                        stance: {type: [string, "null"], enum: [promoter, critic, neutral, null]}
+                        articles: {type: integer, minimum: 0}
+                        articles_prev_week: {type: integer, minimum: 0}
+                        change_vs_prev_week: {type: [number, "null"]}
+                        espt_share: {type: [number, "null"], minimum: 0, maximum: 1}
+                        emergence_rank: {type: [integer, "null"]}
+                        decision: {type: [string, "null"]}
   /api/topic/{topic_id}/timeline:
     get:
       summary: Daily series of one topic by language

@@ -183,6 +183,10 @@ def export(out: Path = OUT) -> dict[str, int]:
         sizes["context"] += _write(tmp / "context" / slugs[topic] / "latest.json", get(base))
 
     sizes["other"] += _write(tmp / "freshness.json", get("/api/freshness"))
+    # the week's AI leaders by volume (RADAR_SOURCE=ai; an empty list otherwise)
+    for week in recent:
+        sizes["other"] += _write(tmp / "leaders" / f"{week}.json", get(f"/api/leaders?week={week}"))
+    sizes["other"] += _write(tmp / "leaders" / "latest.json", get("/api/leaders"))
     sizes["evidence"] = write_evidence(tmp / "evidence")
     evidence_path = gold("topic_evidence_weekly")
     if evidence_path.exists():
