@@ -61,7 +61,7 @@ def test_the_radar_aggregates_still_use_the_gdelt_rule_not_the_classifier():
     ("source", "report", "says", "not_says"),
     [
         (None, "backtest.md", "acierta el 29,2%", "bajo la regla del 90%"),
-        ("ai", "backtest_ai.md", "acierta el 25,6%", "29,2%"),
+        ("ai", "backtest_ai.md", "acierta el 22,1%", "29,2%"),
     ],
 )
 def test_the_trust_answer_reads_the_backtest_of_the_active_source(
@@ -89,7 +89,7 @@ def test_the_trust_answer_reads_the_backtest_of_the_active_source(
     assert f"reports/{report}" in summary["sources"]
     if source == "ai":
         assert "frente a un 25,4% de un tema al azar" in line
-        assert "no supera a la regla simple de crecimiento de menciones (27,2%)" in line
+        assert "no supera a la regla simple de crecimiento de menciones (27,7%)" in line
         assert "incluso en el peor caso" not in line  # a secondary-label claim, not a bound
         assert trust.PRIMARY_BELOW_COVERAGE in line and points["principal"]
         assert tools.get_backtest()["fuente"] == "reports/backtest_ai.md"

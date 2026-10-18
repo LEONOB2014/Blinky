@@ -211,7 +211,7 @@ def test_language_buckets_do_not_double_count():
 
 def test_shipped_lexicon_families_have_colours():
     lex = load_lexicon()
-    assert len(lex) == 110
+    assert len(lex) == 117
     assert set(lex) >= {"ai:lab:openai", "ai:policy:eu_ai_act", "ai:critic:pause_ai"}
     families = {entry["family"] for entry in lex.values()}
     assert families <= set(FAMILY_PALETTE)
