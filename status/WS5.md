@@ -6,7 +6,94 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 01:55 UTC-5 · Branch: `feat/ws5-graph-views` (brief `BRIEF.md`, WS5 G) · committed locally; the orchestrator pushes
+2026-10-18 02:55 UTC-5 · Branch: `feat/ws5-graph-views` (brief `BRIEF.md`, Addenda 2 & 3 Must items complete) · committed locally; the orchestrator pushes
+
+## Addenda 2 & 3 — Query-driven Lenses, Graph Properties, Split View & Fullscreen (2026-10-18 02:55 UTC-5)
+
+### 1. Graph properties that make the lenses speak (`graph/export_views.py`, `lake/views/temporal.json`)
+
+All Addendum 3 node and edge properties computed on the pruned graph (1,000 nodes, 13 weeks `2026-W30 .. 2026-W42`), exported to `lake/views/temporal.json` (`3.74 MB`, `4.90 s` runtime, peak RSS `1,201.26 MiB`, well below the `1.5 GB` cap *(measured)*):
+
+- **Edge properties (computed per week, `edges_weekly` scanned week-by-week)**:
+  - `n` (co-mentions) and `npmi`: width = `0.5 + 2.5 * log(n)`, intensity = NPMI alpha.
+  - `edge_state`: `new` (absent previous week), `growing` (n up >= 50%), `persisting`, `fading` (down >= 50%).
+  - `n_growth`: `log((n + 1) / (n_prev + 1))`.
+  - `cross_ring`: boolean indicating if endpoints belong to different rings.
+  - **Distribution in `2026-W42` (`n=3,463` edges)**:
+    - `edge_n`: median `80.0`, p90 `761.0`, max `7,133` *(measured)*.
+    - `edge_npmi`: median `0.4852`, p90 `0.8324`, max `0.9982` *(measured)*.
+    - `edge_n_growth`: median `3.4657`, p90 `5.1059` *(measured)*.
+    - `edge_state`: `new` 2,752, `growing` 422, `persisting` 243, `fading` 46 *(measured)*.
+    - `cross_ring`: `468` cross-ring edges (`13.5%` of W42 edges) *(measured)*.
+
+- **Node properties (computed per week)**:
+  - `ring` and `domain`: taxonomy segments (`ai` 90 nodes, `it` 43 nodes, `ai_domain` 867 nodes in W42 *(measured)*).
+  - `importance`: within-week percentile of PageRank (`[0, 1]`), default node size across lenses.
+  - `betweenness`: igraph Freeman normalized $B(v) / ((V-1)(V-2)/2)$ with edge distance weights $1 / \text{npmi}$:
+    - median `0.001823`, p90 `0.01004`, max `0.05432` *(measured)*.
+  - `cross_ring_share`: share of node's edge weight connected to another ring:
+    - median `0.0000`, p90 `0.2072`, max `0.7778` *(measured)*.
+  - `momentum`: mean of within-week percentiles of `pr_rank_delta` and `deg_growth`:
+    - median `0.4974`, p90 `0.8966`, top decile >= `0.8966` glowing halo *(measured)*.
+  - `community_week`: within-week Leiden clustering (seed 42, 20 communities in W42 *(measured)*).
+  - `new_nbr_rate`: median `0.2079`, p90 `0.3224` *(measured)*.
+
+### 2. Split view & Full-screen graph mode (`App.tsx`, `App.css`)
+
+- **Draggable split layout**:
+  - Cards and Maestro de Medios chat on the left (`~35%` default, draggable between `20%` and `60%`).
+  - Graph on the right (`~65%` default). Draggable divider with mouse/touch support.
+- **Full-screen graph mode (`view-panel-fullscreen`)**:
+  - Toggled with dedicated button or keyboard shortcut `F` / `f`; `Esc` returns.
+  - Auto-expands to full screen whenever the Cartographer / chat emits a `view_command` for `temporal` or `story`.
+  - **Floating chat box** over the graph with question input, quick pills, and response stream.
+  - **Collapsible Top 10 card drawer** sliding out over the graph to inspect decision cards without leaving fullscreen.
+  - Active lens legend and `caption_es` displayed on top in Spanish.
+
+### 3. Query-driven lenses (`TemporalGraph.tsx` & `StoryGraph.tsx`)
+
+- **8 reactive lenses**:
+  - `decision` (Radar default): node color by decision, halo on top 10, size by importance, edge width log(n), alpha NPMI.
+  - `segment` (Story): node color by ring (`ai` fuchsia, `it` sky blue, `ai_domain` orange), focus topic pinned and centered, links highlighted.
+  - `bridge`: node color by `cross_ring_share`, size by betweenness centrality, gold cross-ring links highlighted.
+  - `momentum`: node color by momentum, glowing halo on top decile, growing edges highlighted.
+  - `novelty`: node color by `new_nbr_rate`, new edges bright green, fading edges muted.
+  - `community`: node color by within-week Leiden community.
+  - `tone`: diverging blue-red by tone.
+  - `window`: node color by window state, GPU clustering with `setPointClusters` + `setPointClusterStrength`.
+- **Reheat re-layout (Correction 02:35)**:
+  - Reheats using `graph.start(0.35)` with gentle energy and settles in `~380 ms`, then freezes with `graph.pause()`.
+
+### 4. Headed Chrome measurements (Apple M1 Pro Metal GPU, full profile)
+
+| View / Action | Metric | Measured value | Notes / Denominator |
+|---|---|---|---|
+| `TemporalGraph` (GPU) | Renderer | `ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro)` | *(measured)* headed Chrome (`1440×1020`, DPR 2) |
+| `TemporalGraph` | `t_fetch_ms` / `t_parse_ms` | `12.9 ms` / `25.3 ms` | *(measured)* `3.74 MB` `temporal.json` |
+| `TemporalGraph` | First frame (`t_first_frame_ms`) | `177.1 ms` | *(measured)* 1,000 nodes, 3,463 edges in W42 |
+| `TemporalGraph` | Re-layout FPS (`fps_relayout`) | `120.6 .. 120.8 fps` | *(measured)* during simulation reheat |
+| `TemporalGraph` | Settle time (`settle_time_ms`) | `380.7 .. 381.3 ms` | *(measured)* reheat duration before freeze |
+| `TemporalGraph` | Playing FPS (`fps_playing`) | `120.2 fps` | *(measured)* 13-week playback sweep |
+| `TemporalGraph` | Week switch time (`week_switch_ms`) | median `2.6 ms` (2.2 .. 4.3 ms) | *(measured)* week slider steps |
+| Story View #1 | Load time (`org:marsh mclennan`) | `31.2 ms` Sigma render | *(measured)* 21 nodes, 162 edges, ring colors |
+| Fullscreen toggle | Switch time | `< 16 ms` (immediate layout reflow) | *(measured)* WebGL context preserved |
+
+- **Screenshots (saved in git-ignored `lake/views/`)**:
+  - `lake/views/ui_split_view.png` (`1.03 MB`): Split view with cards/chat on left (~35%) and GPU graph on right (~65%), draggable divider.
+  - `lake/views/ui_lens_radar.png` (`1.03 MB`): Radar lens with decision colors, importance sizing, dynamic legend, reheat settle.
+  - `lake/views/ui_fullscreen.png` (`821 kB`): Full-screen graph mode with top bar controls, legend, and floating chat overlay.
+  - `lake/views/ui_fullscreen_drawer.png` (`728 kB`): Collapsible Top 10 card drawer open over full-screen graph.
+  - `lake/views/ui_story_top1.png` (`1.03 MB`): Story ring for Top #1 `org:marsh mclennan`, rings colored by AI/IT/domain with gold cross-ring chords.
+  - `lake/views/ui_chat_rearrange.png` (`902 kB`): Chat question *"¿Qué tema de IA sube esta semana y por qué? Muéstramelo en el grafo"* rearranging graph into Momentum lens.
+
+- **Build size (`bun run build`, Vite 6.4.4)**:
+  - `dist/assets/index-*.js`: `286.04 kB` (`88.22 kB` gzip) *(measured)*
+  - `dist/assets/index-*.css`: `14.08 kB` (`3.55 kB` gzip) *(measured)*
+  - `dist/assets/sigma-vendor-CxsImN5y.js`: `159.49 kB` (`37.94 kB` gzip) *(measured)*
+  - `dist/assets/cosmos-vendor-DOVCUqqA.js`: `745.56 kB` (`195.32 kB` gzip) *(measured)*
+  - Build time: `1.83 s` *(measured)*.
+
+---
 
 ## G — Graph views in `web/` (`feat/ws5-graph-views`)
 
