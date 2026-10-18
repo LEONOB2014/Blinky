@@ -12,6 +12,49 @@ READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.par
 with the syndication guard in the eligibility gate (16,904 rows, 46 weeks, 4,911 topics, 0 contract
 violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060 rows, 1,916 exact).
 
+## WP2: agents eval v2 on the AI lexicon (09:45 UTC-5, branch `feat/ws4-ai-ranking`, claude-cacho; committed locally, the orchestrator pushes)
+
+- **Question set:** `agents/evals/questions_v2.yaml`, version 2 (LangSmith dataset
+  `radar-agents-v2`). v1 stays frozen. Entity ids were measured on 2026-10-18 in
+  `topic_ai_scores_weekly`:
+  - q06 Nvidia -> `ai:infra:nvidia` (the company entry); q07 -> `ai:lab:openai`;
+    q08 -> `ai:lab:microsoft_ai`; q10 -> `ai:lab:google_ai`; q11 -> `ai:infra:tsmc_foundry`;
+  - q09 asks about Anthropic (`ai:lab:anthropic`), because Samsung has no lexicon entry.
+- **`run_evals.py --spec`:** defaults to `questions.yaml`; the question file is recorded in the
+  metadata.
+- **Resolver bug fixed** (18ec840): under `RADAR_SOURCE=ai` the resolver returned GDELT ids
+  (`org:nvidia`, `org:openai inc`).
+  - It now matches the AI lexicon: patterns, GDELT org aliases and the label, whole word, only
+    among scored `ai:` topics, longest match first.
+  - It was checked offline on all 25 questions before the paid run. Without `RADAR_SOURCE` the
+    GDELT resolver is unchanged (tested).
+  - The ranking was not touched and nothing was rescored.
+
+**Run:** `ai-v2-5ef01c19`, 25 x 3, no lost runs, all *measured*. Brackets are the min-max of the
+three repetition means.
+
+| Evaluator | Mean [spread] |
+|---|---|
+| grounding | **0.987 [0.96-1.00]** (ship bar >= 0.95: met) |
+| decision faithfulness | 1.000 [1.00-1.00] |
+| routing | 1.000 [1.00-1.00] |
+| entities | 0.960 [0.96-0.96] |
+| usefulness v1 | 0.737 [0.72-0.75] |
+| usefulness_v2 | 0.587 [0.55-0.64] |
+| latency | 8.7 s |
+| tokens per turn | 6,183 |
+
+- **Entities:** all six entity questions resolve correctly in 18 of 18 runs.
+  - The 3 misses are q14 ("cómo se conecta la IA con el clima y la energía"): it now resolves to
+    `ai:infra:energy`, a lexicon topic it does name. v2 keeps v1's "no entity" for q14, because
+    only the entity questions were changed.
+- **Grounding:** the one miss (a q05 run) is an Auditor false positive. "30" is read out of the
+  brand "30X" ("Datos del radar de 30X"); `_NUM` lacks a trailing word boundary.
+- **Next for the orchestrator:** decide whether q14 gets an entity in a v3, and fix the "30X"
+  number read. Neither was changed here.
+- **Spend:** agent tokens 463,757 (*measured*); judge tokens not recorded; about $0.20 at assumed
+  list rates (*estimate*).
+
 ## WP2: scores and backtest on the AI lexicon (09:05 UTC-5, branch `feat/ws4-ai-ranking`, claude-cacho; committed locally, the orchestrator pushes)
 
 **Pipeline**
