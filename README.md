@@ -43,7 +43,7 @@ The full plan is in [docs/plan/MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf), and 
 
 | Part | State | Evidence |
 |---|---|---|
-| GDELT loop (WS1) | Done for 2025-11 → 2026-10-18 | 4.03M AI/IT/domain articles segmented; 367.5 GB billed over 62 BigQuery jobs ([ledger](reports/bq_ledger.csv)), inside the 1 TB free tier |
+| GDELT loop (WS1) | Done for 2025-11 → 2026-10-18 | 4.03M AI/IT/domain articles segmented; 382.0 GB billed over 67 BigQuery jobs ([ledger](reports/bq_ledger.csv)), inside the 1 TB free tier |
 | Graph metrics, 1-hop ring (WS3) | Done, 51 weeks | 473,275 node-weeks; 4,773,204 ring rows, no persons |
 | Link-prediction baselines (WS7) | Done | EdgeBank MRR 0.0050 on new edges, persistence 0.0123 on all ([report](reports/tgnn.md)) |
 | Scores, window, decision (WS4) | Merged, with an eligibility gate and a syndication guard | 16,904 topic-weeks; a topic headlines only if established or an exact Wikidata match, with >= 5 sources, no outlet above 50% and no single copy pattern above 90% (thresholds estimated from the data) |
@@ -54,7 +54,7 @@ The full plan is in [docs/plan/MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf), and 
 | Agents | Merged, traced and evaluated | 8 agents on Qwen3-30B; LangSmith traces per turn; frozen 25-question set, 3 repetitions: grounding 1.00, routing 1.00, usefulness (judge that sees the data) 0.383 -> 0.567 after the quality work |
 | Graph views (GPU, temporal) | Merged; demo layout being redesigned | cosmos.gl temporal graph and sigma story view; split view and full screen; question-driven lenses (decision, ring, bridge, momentum, novelty, community, tone, window) with a real re-layout; per-week betweenness, sector crossing, momentum and edge state |
 | Deploy | Live and public, redeployed after the guard | UI on Netlify ([radar-senal-temprana.netlify.app](https://radar-senal-temprana.netlify.app)), API and agents on Cloud Run; public chat rate-limited; the static fallback carries the evidence and trust numbers; one command redeploys everything |
-| Evidence articles (WS1d) | Merged | up to 5 representative articles per top topic-week, one per outlet, Spanish and Portuguese first; titles and URLs only on the deployed site, never in git |
+| Evidence articles (WS1d) | Merged, deduplicated | up to 5 representative articles per top topic-week, one per outlet and one per normalized title (before: 463 of 1,200 slots were repeat copies; after: 0, 1,191 articles over 240 topic-weeks), Spanish and Portuguese first; titles and URLs only on the deployed site, never in git |
 | Spanish briefs | Merged | 20 briefs (top 10 of 2026-W41 and W42), 20/20 pass the Auditor (3 retried for overclaims), shown on each card with the evidence articles |
 
 ## Architecture
