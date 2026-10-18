@@ -2,9 +2,11 @@
 
 For every ranked topic (an entity whose type is in ``ranked_entity_types`` of
 ``contracts/taxonomy.yaml``: organizations and themes, never persons) and week: its neighbours in
-``edges_weekly`` with n >= 3 and NPMI > 0.1, hubs of that week dropped, top 20 by NPMI (ties by
-``n``, then name). Each neighbour carries its segment and domain when a lookup is given; WS1's
-tables do not provide them yet, so they are null until then.
+``edges_weekly`` with n >= 3 and NPMI > 0.1, persons and that week's hubs dropped, top 20 by NPMI
+(ties by ``n``, then name). Persons are dropped before the top 20 is taken, so each topic still gets
+up to 20 non-person neighbours; they never reach the ring, the API or the UI. Each neighbour
+carries its segment and domain when a lookup is given; WS1's tables do not provide them yet, so
+they are null until then.
 """
 
 import polars as pl
@@ -15,6 +17,7 @@ from radar.contracts import CONTRACTS_DIR
 MIN_N = 3
 MIN_NPMI = 0.1  # strict: NPMI > 0.1
 TOP_K = 20
+PERSON_PREFIX = "per:"  # never a ring neighbour (persons are not served)
 
 COLUMNS = [
     "wk", "topic_id", "neighbor", "rank", "n", "npmi", "neighbor_segment", "neighbor_domain",
@@ -49,6 +52,7 @@ def context_1hop(
     ring = (
         both.filter(
             pl.any_horizontal([pl.col("topic_id").str.starts_with(p) for p in prefixes]),
+            ~pl.col("neighbor").str.starts_with(PERSON_PREFIX),
             pl.col("n") >= MIN_N,
             pl.col("npmi").is_not_null() & (pl.col("npmi") > MIN_NPMI),
         )

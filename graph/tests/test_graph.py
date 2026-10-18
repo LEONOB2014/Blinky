@@ -11,7 +11,7 @@ pytest.importorskip("igraph")
 pytest.importorskip("leidenalg")
 
 from graph.build import build, validate
-from graph.context import MIN_NPMI, TOP_K, context_1hop, ranked_entity_types
+from graph.context import MIN_NPMI, PERSON_PREFIX, TOP_K, context_1hop, ranked_entity_types
 from graph.metrics import (
     JACCARD_MIN,
     hub_set,
@@ -186,3 +186,23 @@ def test_segments_join_when_provided(edges, outputs):
     ring = context_1hop(week, metrics, seg)
     assert ring.filter(pl.col("neighbor") == nb)["neighbor_segment"].unique().to_list() == ["it"]
     assert validate_records("topic_context_1hop", _records(ring)) == []
+
+
+def test_persons_never_enter_the_ring_and_do_not_use_up_the_top_20(edges, outputs):
+    # The dev slice has no person nodes, so this relabels one real neighbour of a capped topic as a
+    # person: it must vanish and the next non-person neighbour must fill the 20th place.
+    metrics, ring = outputs
+    week = edges.filter(pl.col("wk") == WK_B)
+    base = ring.filter(pl.col("wk") == WK_B)
+    topic = base.group_by("topic_id").len().filter(pl.col("len") == TOP_K)["topic_id"].sort()[0]
+    first = base.filter((pl.col("topic_id") == topic) & (pl.col("rank") == 1))["neighbor"][0]
+    person = PERSON_PREFIX + "relabelled"
+    relabel = week.with_columns(
+        x=pl.when(pl.col("x") == first).then(pl.lit(person)).otherwise("x"),
+        y=pl.when(pl.col("y") == first).then(pl.lit(person)).otherwise("y"),
+    )
+    got = context_1hop(relabel, metrics).filter(pl.col("topic_id") == topic)
+    assert not got["neighbor"].str.starts_with(PERSON_PREFIX).any()
+    assert got.height == TOP_K
+    old = base.filter(pl.col("topic_id") == topic).sort("rank")["neighbor"].to_list()
+    assert got.sort("rank")["neighbor"].to_list()[: TOP_K - 1] == old[1:]
