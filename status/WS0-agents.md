@@ -4,7 +4,27 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 10:15 UTC-5 · AI community in the agents; release eval v0.3.0 grounding 0.964 (measured) · committed locally; the orchestrator pushes.
+2026-10-18 10:55 UTC-5 · trust reads the AI backtest under RADAR_SOURCE=ai (fix/agents-trust-ai) · committed locally; the orchestrator pushes.
+
+## Trust on the AI run (10:55 UTC-5, branch `fix/agents-trust-ai`, claude-cacho; committed locally, the orchestrator pushes)
+
+- **The problem:** under `RADAR_SOURCE=ai` the chat's trust answer, the Confianza panel's summary
+  and the static export read `reports/backtest.md`. That is v0.2's backtest of GDELT orgs (29,2% vs
+  25,4%), stated about a different ranking (MASTER_PLAN §5).
+- **The fix:** `agents/trust.backtest_report` picks `reports/backtest_ai.md` under
+  `RADAR_SOURCE=ai`, else v0.2's report. `get_backtest`, `trust_summary` and `deploy/evidence.py`
+  all go through it.
+  - The AI report's primary label is below the coverage rule, so the line states the **secondary
+    label**: 25,6% (22,3% a 28,8%) vs a 25,4% base. It beats persistence and not raw-count growth
+    (27,2%). It adds that the primary label only has bounds.
+  - Without the variable the v0.2 line is unchanged. Tests cover both sources; every number is
+    traced (*measured*).
+- **Rerun** `trust-ai-2a5d95c7` (q22, q23 x 3 on v3, *measured*):
+  - grounding 6/6, routing 1.000, usefulness v1 0.833, usefulness_v2 0.875 [0.75-1.00];
+  - every q22 answer cites 25,6% and the coverage rule; none says 29,2% or "puedes confiar".
+  - q23 (filter quality) gets no trust line by design. Two of its answers name an odd week
+    ("2025-W10"), a minor model slip not caught by the Auditor (a week number under 12).
+- **Spend:** 35,311 agent tokens (*measured*), about $0.02 (*estimate*).
 
 ## AI community in the agents and the v0.3 release eval (10:15 UTC-5, branch `feat/agents-community`, claude-cacho; committed locally, the orchestrator pushes)
 
