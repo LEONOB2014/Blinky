@@ -75,8 +75,9 @@ RULES = (
     "Reglas: responde en español claro para ejecutivos de medios. Usa SOLO números que devuelvan las "
     "herramientas, sin inventar ni redondear de forma engañosa; si una herramienta dice que algo no "
     "está disponible, dilo tal cual. Las decisiones (publicar ahora, preparar, esperar, no es tema "
-    "caliente) las calcula el código del Analista de señales: nunca las inventes. Sé breve: máximo "
-    "8 líneas."
+    "caliente) las calcula el código del Analista de señales: nunca las inventes. Si los datos "
+    "traen 'resumen_es' u otros campos ya formateados (porcentajes, nombres), cópialos tal cual en "
+    "vez de recalcular. Sé breve: máximo 8 líneas."
 )
 
 
@@ -410,12 +411,7 @@ def _decisions_by_code(turn: Turn) -> dict[str, str]:
 
 _WEEK_IN_TEXT = re.compile(r"\b(\d{4}-W\d{2})\b")
 
-DECISION_ES = {
-    "publicar_ahora": "Publicar ahora",
-    "preparar": "Preparar",
-    "esperar": "Esperar",
-    "no_es_tema_caliente": "No es tema caliente",
-}
+DECISION_ES = tools.DECISION_ES
 _PLURAL = re.compile(r"\btop\b|\btemas\b|\d", re.I)
 
 # How the Media Master writes for an executive (measured: the judge penalised raw ids, field names,
