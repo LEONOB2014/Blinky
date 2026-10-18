@@ -4,7 +4,77 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 06:25 UTC-5 · graph facts written by code (fix/agents-graph-facts): graph questions 15/15 grounded · committed locally; the orchestrator lands it.
+2026-10-18 06:45 UTC-5 · answer polish (fix/agents-answer-polish): one decision line, es/pt coverage by code, LatAm and outlet-count audits · committed locally; the orchestrator lands it.
+
+## Answer polish: one decision line, es/pt coverage by code, LatAm claims audited (06:45 UTC-5, branch `fix/agents-answer-polish`, committed locally; the orchestrator lands it)
+
+From claude-work's live rehearsal:
+
+1. **Double decision line.**
+   - `strip_echo` drops any line of the model's text that repeats a code-written line, or a second
+     "Decisión del radar" line. It works in code, not only through the prompt.
+   - Answers with two decision lines: 3 of 75 in PR #48's full run, 0 in every run since.
+2. **Invented LatAm claim.**
+   - New `get_language_coverage`: es and pt articles of the topic that week, from `get_topic_series`.
+     A topic with articles that week but no rows in a language counts 0 there. It also gives the
+     total and the days with data (`daily_totals`, `is_missing` excluded; W42 has 6).
+   - Code writes "Cobertura en español y portugués de X (W): 0 artículos en español y 0 en
+     portugués, de 44 en total (6 días con datos)".
+   - The model is told not to claim growth, presence or conversation in Latinoamérica / LatAm / la
+     región unless that line shows es/pt articles.
+   - **Auditor check (deterministic):** when es + pt = 0, a growth or presence word followed within
+     three words by "en <LatAm>" is flagged, unless a gap word comes just before it ("brecha de
+     cobertura en LatAm", "sin presencia en la región"). The Auditor logs a veto and appends a
+     warning.
+   - The first version of the check (any LatAm word plus a claim word in one sentence) warned on 15
+     of 75 answers, 14 of them false positives. The narrowed rule keeps 1 of those 15, q04's
+     "crecimiento en América Latina", a real unbacked claim.
+3. **Found and fixed on the way:**
+   - The coverage line's large totals made the model write "4.117" for 4117, which the Auditor read
+     as 4.117. Thousands separators now match the integer, exactly (4.118 is still flagged).
+   - The coverage line also made Q3 answer "44 medios distintos" (2 of 2 hand runs; the measured
+     count is 39, and 44 is articles). An outlet-count question now gets a code-written line from
+     `get_topic_sources`, and the Auditor flags any "N medios" that is not the measured count.
+- **Tests:** 9 new across `test_answer_polish.py` and `test_topic_evidence.py`. `make test` 279 passed,
+  `make check` clean.
+
+**Eval,** all *measured*. Brackets are the min-max of the three repetition means.
+
+| Experiment | Questions | grounding | usefulness_v2 | tokens/turn |
+|---|---|---|---|---|
+| PR #48 (graph-facts, d6fa0ff) | 25 x 3 | 0.933 [0.88-0.96] | 0.647 [0.61-0.67] | 6,205 |
+| answer-polish (56478c4, first LatAm rule) | 25 x 3 | 0.920 [0.84-0.96] | 0.597 [0.54-0.63] | 6,350 |
+| PR #48, the 11 questions below only | q01-q07, q12, q13, q16, q19 x 3 | 0.939 | 0.515 | 7,496 |
+| answer-polish-r2 (0ac3893, narrowed rule + thousands) | same 11 x 3 | **0.970** [0.91-1.00] | **0.614** [0.59-0.64] | 7,685 |
+
+- **The first full run's drop** came from the over-eager LatAm warnings (15 answers) and the "4.117"
+  misses. Those 11 questions were rerun after the fix, rather than the full 25 x 3, to stay under the
+  $0.40 cap.
+- **Combined estimate:** the rerun's 11 questions plus the first run's other 14 give grounding
+  0.947 and usefulness_v2 0.663 over 75 runs. That mixes two runs, so it has no spread; read it as
+  an *estimate*, not a measured full run.
+- **Left in the rerun:** one grounding miss, q05's "más de 50" (a co-mention floor again, now on a
+  non-graph route). No LatAm warnings and no double decision lines.
+- **Tokens:** +135 per turn against PR #48 (the coverage line).
+
+**claude-work's 4 questions,** by hand on the final commit 9aa36df (full lake, tracing off):
+
+| # | Question | Decision lines | LatAm claim | Other |
+|---|---|---|---|---|
+| 1 | ¿Qué contenido preparo esta semana sobre Marsh McLennan? | 1 | none ("aún no hay cobertura en español ni portugués") | pass |
+| 2 | ¿Qué artículos respaldan a Marsh McLennan, el tema número 1 de esta semana? | 1 | none | pass: evidence block, 44 / 39 |
+| 3 | ¿Cuántos medios distintos cubren a Marsh McLennan esta semana? | 1 | none | **pass:** "39 (en 44 artículos)" by code, no other count |
+| 4 | ¿En qué subtemas de IA cae Marsh McLennan esta semana? | 1 | none | right subtopics; still leaks the id "funding_markets" (the plain-language rule is not always followed) |
+
+- Auditor: no veto on any of the 4. Tokens 31,690 for the 4 turns.
+- The full and subset evals ran before 9aa36df. That commit only changes outlet-count questions and
+  adds a "N medios" check; no frozen question asks for an outlet count.
+
+**Nebius spend,** *estimate*:
+- agent tokens about 825,000 (*measured*: 476,248 full + 253,605 rerun + 3 x ~31,600 by hand,
+  Qwen3-30B);
+- judge tokens not recorded, roughly 108 runs x 2 judges x ~4k on Qwen3-235B;
+- about $0.32 at assumed list rates, under the $0.40 cap.
 
 ## Graph facts written by code (06:25 UTC-5, branch `fix/agents-graph-facts`, committed locally; the orchestrator lands it)
 
