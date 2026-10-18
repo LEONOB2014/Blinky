@@ -26,6 +26,33 @@ LatAm executives.**
 
 ---
 
+## The problem, the answer, the impact
+
+- **The problem.** 30X's media team decides which AI topics to cover for LatAm leaders. Paid social-scraping
+  services cost thousands of dollars a year and answer only half the question: they bring data, but not why
+  something works, whether a trend is starting or already copied, or whether it fits 30X's audience.
+- **The answer.** Every week the radar ranks AI topics from open sources upstream of LinkedIn, at near-zero data
+  cost. For each topic it says:
+  - why it is rising, and whether it is starting (window, stage);
+  - from which emotional angle to tell it to executives;
+  - a Spanish brief with evidence;
+  - what the AI community and its critics are saying.
+  Agents answer follow-up questions with numbers code computed and checked.
+- **The impact, once in use.** The same team prepares topics before they saturate in Spanish, without a scraping
+  subscription. Every claim is marked measured or estimate, and the radar says plainly how far to trust it.
+- **The ask.** A 4-week pilot with 30X's media team. They read the weekly radar and share their own post
+  analytics, so the audience fit learns from what actually performs.
+
+### What it costs to run
+
+| Item | Cost | Basis |
+|---|---|---|
+| GDELT on BigQuery, the whole year so far | **$0** inside the monthly free tier | 389.7 GB billed over 74 jobs ([ledger](reports/bq_ledger.csv)) *(measured)*; about $2.2 at list price *(estimate)* |
+| API and agents on Cloud Run | about $0.018 per hour with a warm instance (about $13 a month); about $0 when scaled to zero | [deploy/README.md](deploy/README.md) *(estimate)* |
+| Chat: Qwen3-30B on Nebius | about 6,400 tokens per answer, about $0.001 per answer at list prices | eval token counts *(measured)*; price *(estimate)* |
+| Jev for doubtful articles | $0.044 for 981 calls | [jev ledger](reports/jev_ledger.csv) *(measured)* |
+| UI on Netlify, traces on LangSmith | free tier | |
+
 ## What it does
 
 LinkedIn bans automated collection, so the radar watches the open chain upstream of it: global news (GDELT, 65

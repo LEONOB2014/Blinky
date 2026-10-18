@@ -104,7 +104,8 @@ LinkedIn is never scraped.
 - **Human gold labels pending:** filter quality is measured against a model panel, not people.
 - **The trust answer and the Confianza panel** still read v0.2's `reports/backtest.md` under the AI
   source; they should read `reports/backtest_ai.md`.
-- **Being fixed at delivery:** the static fallback image and the graph's density.
+- **Fixed at delivery (PR #79):** the static fallback image now shows the AI graph with the leaders labelled, and
+  the AI graph uses the ring's co-mention floor (W42: 106 nodes, 147 edges, *measured*).
 - **No piece-level answer yet:** the 30X social sheet (formats, hooks, authors) has 0 rows.
 
 ## 6. Next steps, before Tuesday's 30X demo
