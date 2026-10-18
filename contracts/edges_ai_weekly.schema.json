@@ -5,7 +5,7 @@
  "description": "BigQuery radar.edges_ai_weekly (bq_sql/s16_edges_ai_weekly.sql, generated from contracts/ai_lexicon.yaml) -> lake/gold/edges_ai_weekly.parquet. Counts are articles within the week and lang_bucket; 'all' is every language.",
  "type": "object",
  "x-owner": "WS1 (built), WS3 (read)",
- "x-mock": "pending-dev-slice",
+ "x-mock": "dev-slice",
  "properties": {
   "wk": {
    "type": "string",
@@ -32,7 +32,8 @@
   },
   "n": {
    "type": "integer",
-   "minimum": 3
+   "minimum": 1,
+   "description": "articles with both topics that week and bucket. No floor (edges_weekly keeps n >= 3): NPMI on small n is noisy, so consumers apply their own floor"
   },
   "n_src": {
    "type": "integer",

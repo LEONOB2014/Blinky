@@ -5,7 +5,7 @@
  "description": "BigQuery radar.topic_ai_daily (bq_sql/s15_topic_ai_daily.sql, generated from contracts/ai_lexicon.yaml by pipelines/ingest/gen_ai_sql.py) -> lake/gold/topic_ai_daily.parquet",
  "type": "object",
  "x-owner": "WS1",
- "x-mock": "pending-dev-slice",
+ "x-mock": "dev-slice",
  "properties": {
   "topic_id": {
    "type": "string",
