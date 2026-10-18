@@ -32,10 +32,10 @@
         <mxCell id="evalc" value="&lt;b&gt;LangSmith eval&lt;/b&gt;&lt;br&gt;&lt;font color='#475569'&gt;Frozen 25 questions × 3&lt;br&gt;Compared with the last experiment&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdfa;strokeColor=#0f766e;fontColor=#0f172a;fontSize=12;arcSize=8;absoluteArcSize=1;verticalAlign=middle;align=center;spacing=4;fontFamily=Helvetica;" vertex="1" parent="eval">
           <mxGeometry x="1036" y="48" width="300" height="100" as="geometry"/>
         </mxCell>
-        <mxCell id="g75" value="Grounding 75/75 (measured)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#bfdbfe;fontColor=#1e3a8a;fontSize=11;fontStyle=1;arcSize=12;absoluteArcSize=1;align=center;verticalAlign=middle;spacing=2;fontFamily=Helvetica;" vertex="1" parent="eval">
+        <mxCell id="g75" value="Grounding 0.964, v3 (measured)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#bfdbfe;fontColor=#1e3a8a;fontSize=11;fontStyle=1;arcSize=12;absoluteArcSize=1;align=center;verticalAlign=middle;spacing=2;fontFamily=Helvetica;" vertex="1" parent="eval">
           <mxGeometry x="24" y="52" width="620" height="36" as="geometry"/>
         </mxCell>
-        <mxCell id="use" value="Usefulness 0.383 → 0.663 (measured)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#bfdbfe;fontColor=#1e3a8a;fontSize=11;fontStyle=1;arcSize=12;absoluteArcSize=1;align=center;verticalAlign=middle;spacing=2;fontFamily=Helvetica;" vertex="1" parent="eval">
+        <mxCell id="use" value="Usefulness 0.619, v3 (measured)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#bfdbfe;fontColor=#1e3a8a;fontSize=11;fontStyle=1;arcSize=12;absoluteArcSize=1;align=center;verticalAlign=middle;spacing=2;fontFamily=Helvetica;" vertex="1" parent="eval">
           <mxGeometry x="24" y="100" width="620" height="36" as="geometry"/>
         </mxCell>
         <mxCell id="ship" value="3   make redeploy-all" style="swimlane;startSize=32;horizontal=1;fillColor=#f8fafc;strokeColor=#e2e8f0;fontColor=#0f172a;fontStyle=1;fontSize=13;rounded=1;arcSize=8;absoluteArcSize=1;html=1;collapsible=0;swimlaneFillColor=#ffffff;whiteSpace=wrap;fontFamily=Helvetica;align=left;spacingLeft=12;verticalAlign=middle;" vertex="1" parent="1">
@@ -59,7 +59,7 @@
         <mxCell id="st_runi" value="" style="html=1;strokeColor=none;fillColor=#5184F3;aspect=fixed;shape=mxgraph.gcp2.cloud_run;verticalLabelPosition=bottom;verticalAlign=top;align=center;fontSize=11;fontColor=#334155;fontFamily=Helvetica;" vertex="1" parent="st_run">
           <mxGeometry x="12" y="14" width="44" height="44" as="geometry"/>
         </mxCell>
-        <mxCell id="st_runt" value="&lt;b&gt;Cloud Run&lt;/b&gt;&lt;br&gt;&lt;font color='#475569'&gt;image bakes 11 tables&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontColor=#0f172a;whiteSpace=wrap;fontFamily=Helvetica;" vertex="1" parent="st_run">
+        <mxCell id="st_runt" value="&lt;b&gt;Cloud Run&lt;/b&gt;&lt;br&gt;&lt;font color='#475569'&gt;image bakes 16 tables&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontColor=#0f172a;whiteSpace=wrap;fontFamily=Helvetica;" vertex="1" parent="st_run">
           <mxGeometry x="64" y="4" width="234" height="72" as="geometry"/>
         </mxCell>
         <mxCell id="st_static" value="&lt;b&gt;Static export&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontColor=#0f172a;fontSize=12;arcSize=8;absoluteArcSize=1;verticalAlign=middle;align=center;spacing=4;fontFamily=Helvetica;" vertex="1" parent="ship">
@@ -77,7 +77,7 @@
         <mxCell id="st_demo" value="&lt;b&gt;demo-check&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontColor=#0f172a;fontSize=12;arcSize=8;absoluteArcSize=1;verticalAlign=middle;align=center;spacing=4;fontFamily=Helvetica;" vertex="1" parent="ship">
           <mxGeometry x="1002" y="176" width="310" height="80" as="geometry"/>
         </mxCell>
-        <mxCell id="redur" value="Redeploy 2 min 54 s (measured)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#bfdbfe;fontColor=#1e3a8a;fontSize=11;fontStyle=1;arcSize=12;absoluteArcSize=1;align=center;verticalAlign=middle;spacing=2;fontFamily=Helvetica;" vertex="1" parent="ship">
+        <mxCell id="redur" value="Redeploy 3 min 24 s (measured)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#bfdbfe;fontColor=#1e3a8a;fontSize=11;fontStyle=1;arcSize=12;absoluteArcSize=1;align=center;verticalAlign=middle;spacing=2;fontFamily=Helvetica;" vertex="1" parent="ship">
           <mxGeometry x="24" y="268" width="460" height="32" as="geometry"/>
         </mxCell>
         <mxCell id="live" value="Live check 8/8 (measured)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#bfdbfe;fontColor=#1e3a8a;fontSize=11;fontStyle=1;arcSize=12;absoluteArcSize=1;align=center;verticalAlign=middle;spacing=2;fontFamily=Helvetica;" vertex="1" parent="ship">

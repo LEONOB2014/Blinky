@@ -8,7 +8,7 @@
 LatAm executives.**
 
 [![CI](https://github.com/LEONOB2014/Blinky/actions/workflows/ci.yml/badge.svg)](https://github.com/LEONOB2014/Blinky/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-0.2.0-2563eb)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-2563eb)](CHANGELOG.md)
 [![Live](https://img.shields.io/badge/live-radar--senal--temprana-00C7B7?logo=netlify&logoColor=white)](https://radar-senal-temprana.netlify.app)
 [![License: MIT](https://img.shields.io/badge/license-MIT-16a34a)](LICENSE)
 [![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/en/v1.0.0/)
@@ -26,23 +26,65 @@ LatAm executives.**
 
 ---
 
+## The problem, the answer, the impact
+
+- **The problem.** 30X's media team decides which AI topics to cover for LatAm leaders. Paid social-scraping
+  services cost thousands of dollars a year and answer only half the question: they bring data, but not why
+  something works, whether a trend is starting or already copied, or whether it fits 30X's audience.
+- **The answer.** Every week the radar ranks AI topics from open sources upstream of LinkedIn, at near-zero data
+  cost. For each topic it says:
+  - why it is rising, and whether it is starting (window, stage);
+  - from which emotional angle to tell it to executives;
+  - a Spanish brief with evidence;
+  - what the AI community and its critics are saying.
+  Agents answer follow-up questions with numbers code computed and checked.
+- **The impact, once in use.** The same team prepares topics before they saturate in Spanish, without a scraping
+  subscription. Every claim is marked measured or estimate, and the radar says plainly how far to trust it.
+- **The ask.** A 4-week pilot with 30X's media team. They read the weekly radar and share their own post
+  analytics, so the audience fit learns from what actually performs.
+
+### What it costs to run
+
+| Item | Cost | Basis |
+|---|---|---|
+| GDELT on BigQuery, the whole year so far | **$0** inside the monthly free tier | 389.7 GB billed over 74 jobs ([ledger](reports/bq_ledger.csv)) *(measured)*; about $2.2 at list price *(estimate)* |
+| API and agents on Cloud Run | about $0.018 per hour with a warm instance (about $13 a month); about $0 when scaled to zero | [deploy/README.md](deploy/README.md) *(estimate)* |
+| Chat: Qwen3-30B on Nebius | about 6,400 tokens per answer, about $0.001 per answer at list prices | eval token counts *(measured)*; price *(estimate)* |
+| Jev for doubtful articles | $0.044 for 981 calls | [jev ledger](reports/jev_ledger.csv) *(measured)* |
+| UI on Netlify, traces on LangSmith | free tier | |
+
 ## What it does
 
 LinkedIn bans automated collection, so the radar watches the open chain upstream of it: global news (GDELT, 65
 languages, with tone and emotions) and reference attention (Wikipedia es/pt). LinkedIn itself is observed only
 through 30X's own analytics, filled in by hand.
 
-Every week it ranks the AI topics that are rising. Each topic gets:
+It ranks **AI topics**, not whatever company appears in an AI story. The ranked unit is a curated lexicon of 110 AI
+topics in 11 families ([`contracts/ai_lexicon.yaml`](contracts/ai_lexicon.yaml)):
+- labs and models; products; techniques (agents, RAG, open weights);
+- infrastructure; research; business; policy;
+- safety, and the opposition to AI.
+
+Each week the radar shows two lists:
+- **Despegando:** the emergence top 10, the AI topics rising faster than their own history.
+- **Lo más grande:** the week's leaders by volume (Nvidia, OpenAI, Anthropic, agents…).
+
+Each topic in the top 10 gets:
 - six scores and a lifecycle stage;
 - a window chip ("how many days before this lands in Spanish");
 - a decision (`publicar_ahora`, `preparar`, `esperar`, `no_es_tema_caliente`) and its reasons;
-- a Spanish brief and up to five evidence articles.
+- a Spanish brief and up to five evidence articles;
+- a **community line**: what researchers, practitioners, builders, Y Combinator's Requests for Startups and AI's
+  critics published about it that week. It comes from 25 public sources (Hugging Face papers and models, AI
+  Engineer, DataTalksClub, Vanishing Gradients, Gradient Dissent, W&B, The Batch, safety and critic organisations).
+  It is an unvalidated signal and stays out of the backtest.
 
 A team of agents, led by a **Media Master**, answers questions in Spanish and drives the graph views. It explains
 every decision with numbers a tool returned. Code computes every decision, and a code Auditor flags any number, date
 or claim the tools do not back.
 
-The full plan is in [docs/plan/MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf), and the build design is in
+The living plan is [docs/plan/MASTER_PLAN.md](docs/plan/MASTER_PLAN.md) (the original is
+[MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf)), and the build design is in
 [docs/designs/radar-build-plan.md](docs/designs/radar-build-plan.md).
 The living plan, updated to v0.3.0 with its decisions, limits and next steps: [docs/plan/MASTER_PLAN.md](docs/plan/MASTER_PLAN.md).
 
@@ -74,23 +116,26 @@ and agents run on Google Cloud Run. The public chat is rate-limited.
 
 ## Status
 
-<sub>Updated 2026-10-18 07:30 UTC-5 for v0.2.0. Every number is measured unless marked otherwise.</sub>
+<sub>Updated 2026-10-18 10:40 UTC-5 for v0.3.0. Every number is measured unless marked otherwise.</sub>
 
 | Part | State | Evidence |
 |---|---|---|
-| GDELT loop (WS1) | Done for 2025-11 → 2026-10-18 | 4.03M AI/IT/domain articles segmented; 384.3 GB billed over 69 BigQuery jobs ([ledger](reports/bq_ledger.csv)), inside the 1 TB free tier |
+| GDELT loop (WS1) | Done for 2025-11 → 2026-10-18 | 4.03M AI/IT/domain articles segmented; 389.7 GB billed over 74 BigQuery jobs ([ledger](reports/bq_ledger.csv)), inside the 1 TB free tier |
 | Graph metrics, 1-hop ring (WS3) | Done, 51 weeks | 473,275 node-weeks; 4,773,204 ring rows, no persons |
 | Link-prediction baselines (WS7) | Done | EdgeBank MRR 0.0050 on new edges, persistence 0.0123 on all ([report](reports/tgnn.md)) |
-| Scores, window, decision (WS4) | Done, with an eligibility gate and a syndication guard | 16,904 topic-weeks. A topic headlines only if it is established or an exact Wikidata match, with ≥ 5 sources, no outlet above 50% and no single copy pattern above 90% (thresholds *estimated* from the data) |
-| Backtest (WS4) | Both labels reported, with their limits | **Primary label** (Wikipedia es+pt pageview growth, exact matches, 43 weeks): radar precision@10 29.2% (24.4-34.0; coverage 92.7%).<br>Against base rate 25.4%, persistence 18.1% and raw-count growth 31.7%, it beats persistence even in the worst case (+6.4, 0.7-12.0) but not raw-count growth.<br>**Secondary label** (es+pt GDELT growth): 13.3% (9.5-17.2) vs base 6.7%, a tie with persistence; median lead 3.0 weeks (2.0-4.0) ([report](reports/backtest.md)) |
+| AI lexicon (v0.3) | Done | 110 curated AI topics in 11 families, multilingual patterns, GDELT org aliases for AI-native companies, a stance per topic (promoter, critic or neutral); no persons. All 110 match articles; 101 reach the 20-article floor in some week ([contract](contracts/ai_lexicon.yaml)) |
+| Scores, window, decision (WS4) | Done on the lexicon | 3,379 topic-weeks. Top 10: 10/10 AI topics in W41 and W42, each with ≥ 21 articles. W42: alliances and acquisitions, Google DeepMind, AI stocks, talent moves, protests, artists vs AI, funding, fine-tuning, open weights, robotics |
+| Leaders by volume | Done | W42: Nvidia 4,718 · OpenAI 2,691 · Microsoft 2,153 · Google 2,116 · Anthropic 1,938 · agents 996 · ChatGPT 929 articles |
+| Backtest (WS4) | Both runs reported, with their limits | **AI lexicon run** ([report](reports/backtest_ai.md)), 43 weeks:<br>• Secondary label (es+pt GDELT growth): 25.6% (22.3-28.8) vs base 25.4%. It beats persistence (+13.3 points) but not raw-count growth (−1.6, −5.6 to 2.3).<br>• Primary label (es+pt pageviews): 27.7% (24.0-31.2) vs base 26.5%. Coverage is 89.5%, below the 90% rule: only 29 of 110 entries have es/pt Wikipedia pages.<br>**The AI ranking is relevant, but on these labels it is not yet better than chance.**<br>**v0.2 run** ([report](reports/backtest.md)): 29.2% (24.4-34.0) vs base 25.4% on the primary label |
 | Wikipedia resolution and pageviews (WS6) | Done | 11,060 topics resolved (1,916 exact); 368,394 es+pt daily pageview rows; 0 failed requests and 0 rate-limit errors at one request per 6.5 s |
 | Article classifier cascade (WS2b) | Done; the 300-row human check is pending | The teacher panel (Qwen3-235B, DeepSeek-V4-Pro) agrees 96.8% on "is AI".<br>The local student scores F1 0.964 against the panel. On 300 sheet rows, precision is 0.94 for the student and 0.75 for the GDELT rule.<br>Jev was called only for doubtful cases: $0.044 over 981 calls ([report](reports/label_quality.md)) |
 | Evidence articles (WS1d, WS1e) | Done, deduplicated | Up to 5 articles per top topic-week, one per outlet and one per story (site suffixes stripped).<br>1,191 articles over 240 topic-weeks, 0 duplicates; before the fixes, 463 of 1,200 slots were repeat copies.<br>Titles and URLs appear only on the deployed site, never in git |
-| Spanish briefs | Done | 20 briefs (top 10 of 2026-W41 and W42); 20/20 pass the Auditor (3 retried for overclaims) |
-| Agents | Done, traced and evaluated | 8 agents on Qwen3-30B. Release eval, 25 frozen questions × 3: **grounding 1.000 (75/75)**, routing 1.000, usefulness (a judge that sees the data) 0.383 → **0.663 (0.63-0.70)** ([eval](#evaluation-loop)) |
-| Graph views | Done, in a one-screen layout | cosmos.gl temporal graph: 13 weeks, 1,000 nodes, 120 fps on an M1 Pro. sigma.js story view.<br>Eight question-driven lenses with a real re-layout. A graph image when the browser has no WebGL |
-| UI | Done, after a design review | Top-10 rail with three plain signals per topic, graph, collapsible chat dock, trust panel. Spanish throughout; measured (●) vs *estimated* (○) marks |
-| Deploy | Live (Cloud Run revision 00007) | One command redeploys everything in 2 min 54 s. Live check 8/8 with a real chat turn (12.4 s) |
+| AI community sensor | Done; unvalidated | 3,636 items from 25 public sources over 13 weeks (measured): HF papers and model releases, AI Engineer, DataTalksClub live streams, Vanishing Gradients, Gradient Dissent, CoreWeave, W&B, YC (RFS and videos), The Batch, practitioner newsletters, safety and critic organisations. Kept out of the backtest |
+| Spanish briefs | Done on the AI top 10 | 20 briefs (W41-W42); 20/20 pass the Auditor. A check catches coverage claims that contradict the brief's own es/pt count: 8 of 20 did before it, 0 after |
+| Agents | Done, traced and evaluated | 8 agents on Qwen3-30B, plus the leaders and community tools. Release eval v3 (28 questions × 3, AI lexicon): **grounding 0.964 (0.93-1.00)**, decisions and routing 1.000, usefulness (a judge that sees the data) 0.619 (0.60-0.64). Community questions are still weak: 0.50 ([eval](#evaluation-loop)) |
+| Graph views | Done, on the AI graph | cosmos.gl temporal graph of the lexicon topics, coloured by family, and sigma.js story view. Nine question-driven lenses, including **Postura** (promoters vs critics). A graph image when the browser has no WebGL |
+| UI | Done, after a design review | A rail toggle **Despegando / Lo más grande**, family chips, a community line when there is a signal, graph, collapsible chat dock, a trust panel with a calibrated Spanish summary. Spanish throughout; measured (●) vs *estimated* (○) marks |
+| Deploy | Live in AI mode (Cloud Run revision 00011, min-instances 1 for the demo) | One command redeploys everything (3 min 24 s); live check 8/8 with a real chat turn (10.3 s) |
 
 ## Architecture
 
@@ -170,15 +215,19 @@ flowchart LR
   R["GDELT GKG<br/>~315k rows a day"] -->|"S2: AI/IT flags,<br/>dedupe by id"| A["gkg_ai<br/>20.6M rows"]
   A -->|"S4a: rings"| SEG["article_segment<br/>ring 1 AI · ring 2 IT ·<br/>ring 3 AI × domain"]
   SEG -->|"S4: regex subtopics"| DT["daily_topic<br/>12 subtopics × language × LatAm"]
-  SEG -->|"S11: orgs and themes"| TD["topic_daily<br/>2.0M rows"]
-  SEG -->|"ring 1 only"| E["edges_weekly<br/>37.8M co-mentions"]
+  SEG -->|"S15: the AI lexicon<br/>on title + URL"| TD["topic_ai_daily<br/>110 AI topics · 66k rows"]
+  SEG -->|"S16: lexicon co-mentions"| E["edges_ai_weekly<br/>127k rows"]
   SEG -->|"S12"| TS["topic_subtopic_weekly<br/>1.27M rows"]
   SEG -->|"S13"| SRCW["topic_sources_weekly<br/>outlets per topic"]
   SEG -->|"S14: one per outlet,<br/>one per story"| EV["topic_evidence_weekly<br/>5 articles per top topic"]
   DT -->|"S8: 7-day signals"| RO["daily_topic_rolling"]
   E --> NM["node_metrics_weekly ·<br/>topic_context_1hop"]
   WP["wiki_pageviews_daily<br/>es + pt"] --> BT["backtest label"]
-  TD --> SC["topic_scores_weekly<br/>scores · window · decision"]
+  TD --> SC["topic_ai_scores_weekly<br/>scores · window · decision"]
+  TD --> LD["leaders by volume<br/>/api/leaders"]
+  CF["25 public community feeds<br/>papers · talks · YC RFS · critics"] -->|"lexicon match"| CM["community_topic_weekly<br/>unvalidated signal"]
+  CM --> OUT
+  LD --> OUT
   TS --> SC
   RO --> SC
   NM --> SC
@@ -194,9 +243,11 @@ flowchart LR
 - **Three rings.** Ring 1 is core AI news, ring 2 is IT news without AI, and ring 3 is AI crossing a domain: climate
   and energy, business, labour, health, education, elections and misinformation, law, security. Only ring 1 is
   ranked; rings 2 and 3 give context. The rules are in [`contracts/taxonomy.yaml`](contracts/taxonomy.yaml).
-- **What is ranked.** Organisations and `TECH_*` themes with at least 20 AI articles in a week, minus wire services
-  and extraction artefacts (a median of 376 topics a week). Generic GKG themes (`TAX_*`, `WB_*`) are context, never
-  ranked.
+- **What is ranked (v0.3).** Entries of the AI lexicon with at least 20 AI articles in a week, matched on titles and
+  URLs in every language, plus GDELT org aliases for AI-native companies. v0.2 ranked GDELT's extracted
+  organisations co-mentioned in AI articles. GDELT does not extract most AI-native entities (no `org:openai` in
+  2026-W42, measured), so that top 10 filled with banks and retailers. The v0.2 run is kept for the backtest
+  comparison (`RADAR_SOURCE=gdelt`).
 - **Missing days stay missing.** They are `NULL`, never zero.
 - **BigQuery spend is guarded.** Every job is dry-run first, aborts above 1.5× the last bill of the same script, and
   is logged in [`reports/bq_ledger.csv`](reports/bq_ledger.csv).
@@ -234,7 +285,7 @@ flowchart TB
 | Agent | Owns | Tools the runtime calls |
 |---|---|---|
 | Media Master | the conversation; integrates the team's notes into one recommendation | delegates only |
-| Signal analyst | what is rising, the top 10 and its decisions | `get_top10`, `get_topic_scores`, `list_subtopic_trends`, `get_topic_series`, `get_language_coverage`, `get_topic_sources`, `get_topic_evidence` |
+| Signal analyst | what is rising, the top 10 and its decisions | `get_top10`, `get_leaders`, `get_topic_scores`, `list_subtopic_trends`, `get_topic_series`, `get_language_coverage`, `get_topic_sources`, `get_topic_evidence`, `get_community_signal` |
 | Cartographer | why a topic connects to others; drives the views | `get_context_1hop`, `get_graph_facts`, `update_view` |
 | Audience strategist | fit for LatAm executives, the framing angle | `get_topic_series`, `get_topic_scores` |
 | Editor | what content to prepare | `get_topic_brief`, `get_topic_evidence`, `get_topic_series`, `get_context_1hop` |
@@ -326,7 +377,8 @@ Every agent PR reports its experiment against the previous one, with the min-max
 | Before the quality work | - | 0.383 | - |
 | After the quality work | 0.973 (0.92-1.00) | 0.567 (0.51-0.60) | 5,824 |
 | Graph facts written by code | 0.933 (0.88-0.96) | 0.647 (0.61-0.67) | 6,205 |
-| **Release v0.2.0** | **1.000 (1.00-1.00)** | **0.663 (0.63-0.70)** | 6,355 |
+| Release v0.2.0 (set v1, GDELT orgs) | 1.000 (1.00-1.00) | 0.663 (0.63-0.70) | 6,355 |
+| **Release v0.3.0** (set v3: 28 questions on the AI lexicon, not comparable with v1) | **0.964 (0.93-1.00)** | **0.619 (0.60-0.64)** | 6,359 |
 
 ### Deployment
 
