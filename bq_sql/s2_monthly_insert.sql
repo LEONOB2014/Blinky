@@ -1,5 +1,5 @@
 -- S2: one monthly slice. Bytes unchanged vs. the previous version: V2Tone (~97 B/row) was already selected; it is now fully parsed.
--- One monthly slice (example: September 2026). Edit the 4 literals per month (pipelines/ingest/run_bq.py will template them). Dry-run first.
+-- One monthly slice. pipelines/ingest/run_bq.py --month YYYY-MM fills the ${...} tokens and dry-runs first.
 -- Partition window = month +/- 1 day (ingestion-time partitions); DATE filter = exact publication month.
 INSERT INTO `radar.gkg_ai` (
   gkg_id, ts, dt, source, url, title, lang, tone, pos_score, neg_score, polarity, activity_density, self_group_ref_density, word_count, orgs, persons, themes, locations, allnames,
@@ -27,8 +27,8 @@ WITH base AS (
     AllNames AS allnames,
     _PARTITIONDATE AS ingest_day
   FROM `gdelt-bq.gdeltv2.gkg_partitioned`
-  WHERE _PARTITIONTIME >= TIMESTAMP('2026-08-31') AND _PARTITIONTIME < TIMESTAMP('2026-10-02')
-    AND DATE >= 20260901000000 AND DATE < 20261001000000
+  WHERE _PARTITIONTIME >= TIMESTAMP('${PART_START}') AND _PARTITIONTIME < TIMESTAMP('${PART_END}')
+    AND DATE >= ${DATE_START} AND DATE < ${DATE_END}
 ),
 flagged AS (
   SELECT
