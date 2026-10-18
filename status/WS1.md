@@ -1,3 +1,7 @@
+READY FOR EVIDENCE (03:05 UTC-5): `lake/gold/topic_evidence_weekly.parquet` exists (1,200 rows, validated). The
+static files for the Evidence card are written under `web/public/data/evidence/topics/` (git-ignored); the final
+redeploy ships them.
+
 READY FOR WS4 (01:30 UTC-5): `lake/gold/topic_sources_weekly.parquet` exists (270,888 rows, validated). See
 the WS1c section below for thresholds.
 
@@ -9,7 +13,9 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 01:30 UTC-5 · branch `feat/ws1-topic-sources` (WS1c) · committed locally, the orchestrator pushes.
+2026-10-18 03:05 UTC-5 · branch `feat/ws1-topic-evidence` (WS1d) · committed locally, the orchestrator pushes.
+
+Previous: 2026-10-18 01:30 UTC-5 · branch `feat/ws1-topic-sources` (WS1c) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-17 22:45 UTC-5 · branch `feat/ws1-gdelt-loop` · Addendum 2 done, push waits for the maintainer
 
@@ -34,6 +40,51 @@ Previous: 2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` · draft PR #7
 - `x-mock` NOT changed: with `dev-slice`, `make test-ws` fails (`test_mock_matches_contract[topic_daily]`,
   checked) because it needs `mocks/<name>.json`, which this brief does not let me write. For the
   orchestrator: copy records from the two fixtures into `mocks/` and then flip both `x-mock` values.
+
+## WS1d: evidence articles per ranked topic-week
+
+- `pipelines/ingest/evidence_topics.py` loads `radar.evidence_topics` with a free load job (0 bytes
+  billed): the top 30 ranked topics of each of the last 8 scored weeks of `topic_scores_weekly`,
+  240 topic-weeks, 2026-08-24..2026-10-12.
+- `bq_sql/s14_topic_evidence_weekly.sql` -> `radar.topic_evidence_weekly`, per the contract.
+  - Rule: relevance is how many of the topic-week's 5 top *specific* co-mentions an article carries
+    (the WS1c pattern logic). Each source keeps only its best article. Order: relevance, then es/pt
+    first, then earliest; keep 5. Articles without an http(s) URL are skipped.
+  - The rule is written in each row's `why_selected`.
+  - Script variables limit the scan to the topics' weeks.
+- Bill (measured): 1,205,862,400 bytes (1.12 GiB), cap 15 GiB.
+  - The script's own dry run reported only its variable declarations (3,840 bytes), so the job ran
+    with a 4.5 GiB hard limit.
+  - Literal-date dry runs had estimated 1.18 GB if pruning worked; it did.
+- Rows (measured): 1,200 = 240 topic-weeks × 5. Every topic-week got 5 articles (0 got fewer).
+- Relevance of the chosen articles (measured, of 1,200):
+
+  | Top co-mentions carried | Articles |
+  |---|---|
+  | 5 | 951 |
+  | 4 | 161 |
+  | 3 | 68 |
+  | 2 | 14 |
+  | 1 | 6 |
+
+- Language (measured): 1,003 eng, 132 other, 45 spa, 20 por. es/pt is **5.4%** (65 of 1,200); 21
+  of 240 topic-weeks have at least one es/pt article.
+- **2026-W42 top 10** (current scores, measured): each of the 10 topics has 5 articles from 5
+  distinct sources, and **0 es/pt** for all ten. This is consistent with `stories.md`: none of
+  these topics has an es/pt onset yet.
+- Lake: `lake/gold/topic_evidence_weekly.parquet` (0.1 MiB), 1,000 sampled rows valid.
+  `RADAR_PROFILE=full uv run pytest -m data` checks:
+  - at most 5 per topic-week;
+  - one per source;
+  - ranks 1..n;
+  - every URL starts with http;
+  - Monday weeks.
+- Static (`deploy/export_static.py`): `web/public/data/evidence/topics/<slug>.json` for the top 10
+  of the last 4 scored weeks, 39 topics, 0.10 MiB, git-ignored, with a unit test.
+  - WS9b's `feat/ws9-demo-hardening` also edits `export_static.py` (the trust-step JSON under
+    `evidence/`). The two changes touch different lines; expect a small merge.
+- Titles and URLs exist only in the lake and the deployed static files; none are in git or in this
+  status.
 
 ## WS1c: source diversity per topic-week (the syndication guard)
 

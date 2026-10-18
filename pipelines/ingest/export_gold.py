@@ -37,6 +37,8 @@ TABLES = {
     "edges_weekly": ("radar.edges_weekly", False),
     "topic_subtopic_weekly": ("radar.topic_subtopic_weekly", False),
     "topic_sources_weekly": ("radar.topic_sources_weekly", False),
+    # Titles and URLs: lake and deployed site only, never git (contract x-mock: private).
+    "topic_evidence_weekly": ("radar.topic_evidence_weekly", False),
 }
 PAGE = 100_000
 WORKERS = 8

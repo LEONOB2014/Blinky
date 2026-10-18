@@ -6,7 +6,86 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
+
+Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+
+## WS9b: demo hardening
+
+**Cold start, measured (2026-10-18 06:48 UTC, after 17.7 min idle).** Run with
+`deploy/cold_start.py --chat`, from the maintainer's laptop, so times include the network:
+
+| Request | Status | Time |
+|---|---|---|
+| First request, `/api/freshness` (a container starts) | 200 | **10.00 s** |
+| `/api/radar` right after | 200 | 1.53 s |
+| `/api/radar`, warm | 200 | 0.18 s |
+| One chat turn | 200 | 12.48 s |
+
+- The log shows a new container started after the first request (cold start confirmed). The
+  script first counted both of that container's startup lines as two starts; it now counts only
+  `Started server process`.
+- So a judge arriving after 15 idle minutes waits about 10 s for the first panel. `deploy/README.md`
+  has the `--min-instances=1` / `0` commands and the cost from Cloud Run's published pricing
+  (us-central1, request-based billing): about **$0.018 per hour** for an idle warm 1 vCPU / 1 GiB
+  instance (estimate), about $0.06 for the 09:00-12:30 window today.
+- **Not applied:** min-instances is the maintainer's decision. `make redeploy-all` now keeps
+  whatever value is set (`deploy-cloudrun` used to force 0).
+
+**Evidence offline.** `deploy/evidence.py`, called by `deploy/export_static.py`, writes
+`web/public/data/evidence/`:
+- `backtest.json` and `label_quality.json`: every heading's tables and bullets, verbatim;
+  `{"available": false}` while a report is missing (`reports/backtest.md` is not on `develop` yet);
+- `ledgers.json`: on this branch's ledgers, BigQuery 63 jobs / 376.83 GB billed, Jev 981 calls /
+  $0.0443 / median 377 ms (measured);
+- `index.json`.
+
+On the dev slice it writes 15.8 KiB. Three unit tests check that tables and bullets are kept
+verbatim and that the ledger totals equal the CSVs.
+
+**The final redeploy.** `scripts/redeploy_all.sh` (`make redeploy-all`, `ARGS=--run` to deploy):
+1. preconditions (gcloud project, Netlify site id, API URL, current min-instances);
+2. `topic_scores_weekly` is stable: same md5 5 s apart and written at least 2 min ago;
+3. `make deploy-cloudrun` (Cloud Build), then the shipped scores md5 must equal the lake's;
+4. `make deploy-static`;
+5. the web build with the API URL;
+6. the Netlify production deploy;
+7. `make demo-check`.
+
+The dry run at 01:44 passed every precondition and printed each deploy command without running it
+(8.5 s, measured).
+
+**Stories after WS4's syndication guard (READY FOR REDEPLOY 01:36).** `stories.md` was regenerated:
+- Single-pattern topics in the W42 top 10 fell from 5 to 1 (measured).
+- The new top 10 includes University College London, Sandisk, Comcast, Kroger, Founders Fund and
+  SB Energy.
+- Showcases are unchanged: Marsh McLennan, Rocket Lab, National Stock Exchange.
+- The remaining flag is `org:kroger` (#8). My stories rule (the strongest ring neighbour co-occurs
+  in 93% of its 201 articles) flags it, but WS1c's `topic_sources_weekly` shows 193 sources and a
+  pattern share of 0.59, so WS4's guard passes it rightly.
+- The two rules measure different things. Aligning the stories script with the pattern share would
+  make the demo text match the gate; it is a small change, left for the orchestrator to decide.
+
+**Interim redeploy (orchestrator's order, ~02:25 UTC-5), `make redeploy-all ARGS=--run`, measured:**
+- The `topic_scores_weekly` checksum was stable before the run, and the shipped copy equals the lake's
+  (md5 `8876536416ad47422b1ae3e2fc05483f`).
+- Cloud Run revision `radar-api-00004` (07:25 UTC), built with Cloud Build.
+- The static export and web build ran, then the Netlify production deploy (7 s, 334 files).
+- The whole run took 2 min 40 s.
+- The script's last step crashed: `make` passed the caller's `ARGS=--run` down into the nested
+  `make demo-check`, and `demo_check.py` does not accept `--run`.
+  - Every deploy before it had succeeded (the script stops on any earlier failure).
+  - Fixed in `scripts/redeploy_all.sh` (the nested call now clears `ARGS`).
+  - Re-run by hand: `make demo-check` **7/7 passed**.
+- The public 2026-W42 top 10, identical on the live API (`/api/radar?week=2026-W42`) and on Netlify's
+  static `/data/radar/2026-W42.json` (and `latest.json` equals the live list):
+  marsh mclennan, rocket lab, national stock exchange, university college london, citigroup, sandisk,
+  comcast, kroger, founders fund, sb energy.
+- **`org:euronext`, `org:adani enterprises`, `org:kioxia holdings`, `org:sterling` and `org:yahoo`
+  are absent from both (checked, measured).**
+
+**Rehearsal shots:** waiting for the Drive copy to end (~03:00). At 01:49, 54% of memory was free
+and Google Drive was still running.
 
 ## Done
 

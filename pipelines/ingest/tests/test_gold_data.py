@@ -140,3 +140,20 @@ def test_topic_sources_weekly_is_consistent():
     topics = _gold("topic_daily").select(pl.col("topic_id").unique())
     orphans = lf.select(pl.col("topic_id").unique()).join(topics, on="topic_id", how="anti")
     assert orphans.select(pl.len()).collect().item() == 0
+
+
+def test_topic_evidence_weekly_is_consistent():
+    lf = _gold("topic_evidence_weekly")
+    per_topic_week = lf.group_by(["topic_id", "week"]).agg(
+        pl.len().alias("n"),
+        pl.col("source").n_unique().alias("sources"),
+        pl.col("evidence_rank").max().alias("max_rank"),
+    )
+    bad = per_topic_week.filter(
+        (pl.col("n") > 5) | (pl.col("sources") != pl.col("n")) | (pl.col("max_rank") != pl.col("n"))
+    )
+    assert bad.select(pl.len()).collect().item() == 0
+    assert (
+        lf.filter(~pl.col("url").str.contains(r"^https?://")).select(pl.len()).collect().item() == 0
+    )
+    assert lf.filter(pl.col("week").dt.weekday() != 1).select(pl.len()).collect().item() == 0
