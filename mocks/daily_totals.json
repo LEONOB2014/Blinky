@@ -1,0 +1,58 @@
+[
+ {
+  "dt": "2026-08-24",
+  "is_missing": false,
+  "lang_bucket": "eng",
+  "n_all": 100539,
+  "n_all_med28": 96527.85714285714
+ },
+ {
+  "dt": "2026-08-24",
+  "is_missing": false,
+  "lang_bucket": "other",
+  "n_all": 153905,
+  "n_all_med28": 143410.2857142857
+ },
+ {
+  "dt": "2026-08-24",
+  "is_missing": false,
+  "lang_bucket": "por",
+  "n_all": 7037,
+  "n_all_med28": 7377.392857142857
+ },
+ {
+  "dt": "2026-08-24",
+  "is_missing": false,
+  "lang_bucket": "spa",
+  "n_all": 30104,
+  "n_all_med28": 29898.071428571428
+ },
+ {
+  "dt": "2026-08-25",
+  "is_missing": false,
+  "lang_bucket": "eng",
+  "n_all": 114425,
+  "n_all_med28": 96440.39285714286
+ },
+ {
+  "dt": "2026-08-25",
+  "is_missing": false,
+  "lang_bucket": "other",
+  "n_all": 160332,
+  "n_all_med28": 143426.9642857143
+ },
+ {
+  "dt": "2026-08-25",
+  "is_missing": false,
+  "lang_bucket": "por",
+  "n_all": 8669,
+  "n_all_med28": 7360.607142857143
+ },
+ {
+  "dt": "2026-08-25",
+  "is_missing": false,
+  "lang_bucket": "spa",
+  "n_all": 34643,
+  "n_all_med28": 29858.071428571428
+ }
+]

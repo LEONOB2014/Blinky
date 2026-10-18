@@ -28,8 +28,9 @@ GEMINI.local.md
 *.arrow
 *.jsonl
 *.csv
-# Committed exceptions: the BigQuery cost ledger and small reviewed tables
+# Committed exceptions: the BigQuery cost ledger, small reviewed tables and the real dev slice
 !reports/*.csv
+!fixtures/dev/*.parquet
 
 # Models and caches
 *.pkl

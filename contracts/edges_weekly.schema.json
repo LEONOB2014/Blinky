@@ -5,7 +5,7 @@
   "description": "BigQuery radar.edges_weekly (bq_sql/s4_aggregates.sql S4b) -> lake/gold/edges_weekly.parquet",
   "type": "object",
   "x-owner": "WS1 (built), WS3 (read)",
-  "x-mock": "pending-dev-slice",
+  "x-mock": "dev-slice",
   "properties": {
     "wk": {
       "type": "string",

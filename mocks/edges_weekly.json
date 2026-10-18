@@ -1,0 +1,112 @@
+[
+ {
+  "n": 484,
+  "n_docs": 397689,
+  "n_src": 430,
+  "npmi": 0.34156429016892037,
+  "nx": 3389,
+  "ny": 5738,
+  "wk": "2026-08-24",
+  "x": "loc:DA",
+  "y": "loc:PL"
+ },
+ {
+  "n": 484,
+  "n_docs": 397689,
+  "n_src": 357,
+  "npmi": 0.39257556210432787,
+  "nx": 5650,
+  "ny": 2444,
+  "wk": "2026-08-24",
+  "x": "loc:NO",
+  "y": "org:european union"
+ },
+ {
+  "n": 485,
+  "n_docs": 397689,
+  "n_src": 292,
+  "npmi": 0.010286419715088257,
+  "nx": 544,
+  "ny": 330913,
+  "wk": "2026-08-24",
+  "x": "loc:CB",
+  "y": "thm:WB_133_INFORMATION_AND_COMMUNICATION_TECHNOLOGIES"
+ },
+ {
+  "n": 485,
+  "n_docs": 397689,
+  "n_src": 171,
+  "npmi": 0.8754684622971612,
+  "nx": 1107,
+  "ny": 490,
+  "wk": "2026-08-24",
+  "x": "org:cleveland police",
+  "y": "org:cleveland police federation"
+ },
+ {
+  "n": 485,
+  "n_docs": 397689,
+  "n_src": 286,
+  "npmi": 0.15319749884061062,
+  "nx": 24393,
+  "ny": 2829,
+  "wk": "2026-08-24",
+  "x": "loc:GM",
+  "y": "loc:RI"
+ },
+ {
+  "n": 485,
+  "n_docs": 397689,
+  "n_src": 312,
+  "npmi": -0.09429403699704397,
+  "nx": 25494,
+  "ny": 14243,
+  "wk": "2026-08-24",
+  "x": "loc:IN",
+  "y": "loc:TU"
+ },
+ {
+  "n": 485,
+  "n_docs": 397689,
+  "n_src": 216,
+  "npmi": -0.0030700362715378837,
+  "nx": 595,
+  "ny": 330913,
+  "wk": "2026-08-24",
+  "x": "loc:GH",
+  "y": "thm:WB_133_INFORMATION_AND_COMMUNICATION_TECHNOLOGIES"
+ },
+ {
+  "n": 486,
+  "n_docs": 397689,
+  "n_src": 286,
+  "npmi": 0.057317549953704236,
+  "nx": 18016,
+  "ny": 7304,
+  "wk": "2026-08-24",
+  "x": "loc:UP",
+  "y": "org:white house"
+ },
+ {
+  "n": 486,
+  "n_docs": 397689,
+  "n_src": 246,
+  "npmi": -0.0017581959484921435,
+  "nx": 591,
+  "ny": 330913,
+  "wk": "2026-08-24",
+  "x": "org:volvo",
+  "y": "thm:WB_133_INFORMATION_AND_COMMUNICATION_TECHNOLOGIES"
+ },
+ {
+  "n": 487,
+  "n_docs": 397689,
+  "n_src": 342,
+  "npmi": 0.030399804549391674,
+  "nx": 2671,
+  "ny": 59139,
+  "wk": "2026-08-24",
+  "x": "loc:AE",
+  "y": "thm:LEGISLATION"
+ }
+]

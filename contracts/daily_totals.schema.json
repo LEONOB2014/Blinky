@@ -5,7 +5,7 @@
   "description": "BigQuery radar.daily_totals (bq_sql/s3_daily_totals.sql) -> lake/gold/daily_totals.parquet",
   "type": "object",
   "x-owner": "WS1",
-  "x-mock": "pending-dev-slice",
+  "x-mock": "dev-slice",
   "properties": {
     "dt": {
       "type": "string",
