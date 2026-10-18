@@ -115,3 +115,19 @@ def test_the_answer_starts_with_the_code_decision_line():
     assert first.startswith("Decisión del radar:")  # dev slice: no scores -> pendiente
     master = [m for m in model.calls if m[0]["content"].startswith("Eres el Maestro")][-1]
     assert "No la repitas" in master[1]["content"] and "z_7d" in master[1]["content"]
+
+
+@pytest.mark.unit
+def test_out_of_scope_questions_get_an_honest_answer_without_the_llm():
+    model = ScriptedChat("no debería llamarse")
+    for q in [
+        "¿Cuántos likes tendrá mi próximo post en LinkedIn?",
+        "¿Qué opina Sam Altman de la IA?",
+    ]:
+        response = runtime.run_turn(q, model=model)
+        assert response["answer_es"].startswith("Eso no lo puede responder el radar")
+        assert not runtime._numbers(response["answer_es"])
+        assert response["decision_cards"] == [] and response["view_commands"] == []
+    assert model.calls == []
+    assert runtime.out_of_scope("Escribe un gancho para un post de LinkedIn") is None
+    assert runtime.out_of_scope("¿Qué debería publicar 30X esta semana?") is None

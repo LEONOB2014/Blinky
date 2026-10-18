@@ -365,6 +365,37 @@ def route(question: str) -> list[str]:
     return [agent for pattern, agent in ROUTES if pattern.search(question)]
 
 
+# Questions no tool can answer, recognised by code (the LLM answered them with unrelated numbers).
+OUT_OF_SCOPE = [
+    (
+        re.compile(
+            r"\blikes?\b|me gusta|seguidores|engagement|alcance|impresiones|viraliz|"
+            r"cu[aá]nt[oa]s? .*tendr[aá]|predec|predic|pron[oó]stic",
+            re.I,
+        ),
+        "no predice likes, alcance ni resultados de una publicación: no lee LinkedIn ni redes "
+        "sociales",
+    ),
+    (
+        re.compile(r"\bopina\b|opini[oó]n|qu[eé] piensa|qu[eé] dijo|declaraci", re.I),
+        "no sigue lo que opinan o dicen personas concretas: no guarda nombres de personas",
+    ),
+]
+CAN_DO = (
+    "Lo que sí puedo decirte: qué temas de IA están subiendo esta semana y por qué, desde qué "
+    "ángulo contarlos a ejecutivos de LatAm, qué contenido preparar y qué tan frescos y confiables "
+    "son los datos. Prueba con «¿Qué debería publicar esta semana?»."
+)
+
+
+def out_of_scope(question: str) -> str | None:
+    """A short honest answer for questions no tool covers (code, no LLM, no numbers), else None."""
+    for pattern, why in OUT_OF_SCOPE:
+        if pattern.search(question):
+            return f"Eso no lo puede responder el radar: {why}. {CAN_DO}"
+    return None
+
+
 _DECISION_WORDS = re.compile(r"publicar ahora|no es tema caliente|\bpreparar\b(?= ya| ahora)", re.I)
 
 
@@ -602,6 +633,14 @@ def run_turn(
 ) -> dict[str, Any]:
     model = model or NebiusChat()
     turn = Turn(conversation_id or uuid.uuid4().hex[:12])
+    if refusal := out_of_scope(question):
+        turn.log("media_master", "answer", result_summary="fuera de alcance (ruta por código)")
+        answer, bad, decision_vetoed = _audit(turn, refusal, question)
+        turn.answer_es = answer
+        response = turn.as_response()
+        _tag_run(["out_of_scope"], bad, decision_vetoed, week)
+        _save_trace(question, response)
+        return response
     week = week or (m.group(1) if (m := _WEEK_IN_TEXT.search(question)) else None)
     entity = _entity_in_question(question, week)
     needed = route(question)
