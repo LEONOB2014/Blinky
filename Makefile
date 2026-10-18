@@ -90,6 +90,9 @@ deploy-web: ## Build web/dist with API_URL (empty = static only)
 redeploy-all: ## The final redeploy, in order (dry run by default; ARGS=--run deploys)
 	bash scripts/redeploy_all.sh $(ARGS)
 
+community-refresh: ## Re-fetch the AI community sensor (public feeds, 13 weeks) and rebuild its weekly table
+	uv run --env-file .env --extra crosssource python -m crosssource.community
+
 demo-check: ## Check the public site and API before the demo (ARGS=--chat adds one real chat turn)
 	RADAR_SOURCE=$(or $(RADAR_SOURCE),ai) uv run python scripts/demo_check.py $(ARGS)
 
