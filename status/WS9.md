@@ -6,7 +6,9 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 07:55 UTC-5 · branch `docs/ws9-submission-refresh` (submission kit refresh) · committed locally, not pushed.
+2026-10-18 08:30 UTC-5 · branch `docs/ws9-challenge-map` (submission mapped to the 30X brief) · committed locally, not pushed.
+
+Previous: 2026-10-18 07:55 UTC-5 · branch `docs/ws9-submission-refresh` (submission kit refresh) · committed locally, not pushed.
 
 Previous: 2026-10-18 07:20 UTC-5 · branch `docs/ws9-redeploy-0715` (batched redeploy of `develop` 3675f48) · committed locally, not pushed.
 
@@ -21,6 +23,24 @@ Previous: 2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 r
 Previous: 2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+
+## Submission mapped to the 30X brief (orchestrator's order, 08:08)
+
+`submission_text.md` now answers the reto's three questions, the example deliverable and the cost
+explicitly, with new sections: "Lo que pide el reto y lo que responde el radar", "Sin gastar una
+fortuna", "Por qué miramos aguas arriba de LinkedIn" and "JEV". `demo_script.md` opens with the
+same map. New numbers, with their sources:
+
+- **BigQuery:** 0.350 TiB billed, all in 2026-10 (*measured*, `reports/bq_ledger.csv`): inside the
+  1 TiB monthly free tier, so 0 USD (*estimate*: other use on the billing account is not checked);
+  2.18 USD at the 6.25 USD/TiB list price (*estimate*).
+- **LLM spend on Nebius, about 3.7 USD recorded (*estimate*):** labelling 2.30 (pilot 0.06, round 1
+  1.47, embeddings 0.02, round 2 0.75; `status/WS2.md`), agent evals and tests with a recorded
+  estimate 1.37 (`status/WS0-agents.md`, 05:05-07:45), live chat checks under 0.05 (this file).
+  Agent evals before 05:05 have no recorded dollar estimate.
+- **30X posts sheet:** `lake/manual/social_posts.csv` has 0 rows (*measured*); the editor test sheet
+  has no answers yet.
+- **Evidence:** 1,191 articles over 240 topic-weeks (*measured*).
 
 ## Submission kit refresh (orchestrator's order, 07:45)
 

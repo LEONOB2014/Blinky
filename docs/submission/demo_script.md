@@ -3,6 +3,19 @@
 Sitio público: https://radar-senal-temprana.netlify.app (la API en vivo está detrás; si cae, el sitio
 lee su copia estática y todo funciona salvo el chat).
 
+**Lo que pide el reto, en el orden de la demo.** El jurado lee la entrega contra el reto: cómo
+descubrir, de forma confiable y sin gastar una fortuna, qué temas despegan, por qué funcionan y si
+encajan con la audiencia. Cada bloque responde una parte, con la fuerza honesta de su respuesta
+(detalle y fuentes en `submission_text.md`, "Lo que pide el reto y lo que responde el radar"):
+
+| Pregunta del reto | Bloque | Qué se muestra | Fuerza de la respuesta |
+|---|---|---|---|
+| El entregable: "los 10 temas de IA que más crecen esta semana, por qué y cómo lo adaptamos" | 2 | El top 10 de la semana con sus "por qué" y el ángulo | Respondida, aguas arriba de LinkedIn: mide noticias globales, no LinkedIn |
+| 1. ¿Cómo se detecta una tendencia cuando apenas empieza a crecer? | 2 y 4 | Emergencia, ventana y el backtest | Adelanto mediano 3,0 semanas (2,0 .. 4,0); acierta 29,2% frente a 25,4% de base; le gana a la persistencia, no al conteo crudo (medido) |
+| 2. ¿Por qué funcionó: gancho, formato, tema, momento, autor? | 3 y 5 | Tono y ángulo, conexiones del grafo, evidencia, etapa y ventana | Respondida para el tema; para la pieza, solo en parte: la hoja manual de las publicaciones de 30X lo cierra y hoy tiene 0 filas (medido) |
+| 3. ¿Cómo se filtra lo relevante para ejecutivos de LatAm que aprenden IA? | 2 y 3 | Encaje (regla v1, estimación), ángulo, la línea de cobertura en español y portugués y la auditoría de LatAm | Respondida con reglas de código; la prueba ciega del editor está lista y sin respuestas |
+| Sin gastar una fortuna | 4 | El costo de BigQuery, Jev y los modelos | Unos pocos dólares en total (estimado), frente a "miles de dólares al año" |
+
 **La pantalla:** todo cabe en una sola vista.
 
 - Arriba: el título, el selector de semana, el botón **Confianza**, la frescura ("Datos al …",
@@ -148,9 +161,12 @@ lee su copia estática y todo funciona salvo el chat).
     alumno tiene precisión 0,9432 [0,8738; 0,9755] y recall 0,9540 [0,8877; 0,9820]
     (`reports/label_quality.md`, medido).
   - Costo: "Todos los trabajos de BigQuery del proyecto suman 384,35 GB decimales
-    (384.346.095.616 bytes facturados en 69 trabajos, medido en `reports/bq_ledger.csv`). El
-    registro de Jev suma 981 llamadas y 0,04428430 USD (`reports/jev_ledger.csv`, medido)." Si el
-    chat da otra cifra, decir la del chat y que el registro es el corte de este archivo.
+    (384.346.095.616 bytes facturados en 69 trabajos, medido en `reports/bq_ledger.csv`): 0 dólares
+    dentro del nivel gratuito, 2,18 a precio de lista (estimado). El registro de Jev suma 981
+    llamadas y 0,04428430 USD (`reports/jev_ledger.csv`, medido). Los modelos de lenguaje, unos 3,7
+    dólares registrados (estimado). El reto habla de miles de dólares al año en scraping; aquí no hay
+    ningún servicio de scraping." Si el chat da otra cifra, decir la del chat y que el registro es el
+    corte de este archivo.
   - Fuentes: "Solo fuentes públicas: GDELT en BigQuery, Wikipedia y Wikidata, y la analítica propia de
     30X. LinkedIn no se toca nunca."
 - **Si falla:** las cifras están en este bloque; decirlas sin el chat. El panel **Confianza** lee

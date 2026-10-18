@@ -12,15 +12,121 @@ pendiente. Cada cifra lleva su fuente en el repo; antes de enviar, verificar las
 **Qué tema de IA está por llegar a LinkedIn en español, por qué, y desde qué ángulo emocional contarlo
 a ejecutivos de LatAm. Solo con fuentes públicas.**
 
-El gancho de arriba se queda. `reports/backtest.md` no deja abrir con la etiqueta principal
-(pageviews de Wikipedia en español y portugués, coincidencias exactas, 43 semanas): la ventaja del
-radar publicado sobre el crecimiento del conteo crudo no se sostiene en el peor caso (−14,3 puntos,
-intervalo −20,2 .. −8,6). El adelanto mediano de 3,0 semanas (intervalo 2,0 .. 4,0, 47 positivos)
-es de la etiqueta secundaria, crecimiento de artículos de GDELT en español y portugués, no de
-Wikipedia.
-
 - Sitio: https://radar-senal-temprana.netlify.app
 - Código: https://github.com/LEONOB2014/Blinky
+
+### Lo que pide el reto y lo que responde el radar
+
+El reto pregunta cómo un equipo de contenido puede descubrir, de forma confiable y sin gastar una
+fortuna, qué temas y formatos están despegando en redes, por qué funcionan y si encajan con su
+audiencia. Hoy eso depende de servicios de scraping pagados que cuestan miles de dólares al año y
+responden la mitad. Estas son las tres preguntas del reto, con la fuerza honesta de cada respuesta.
+
+**1. ¿Cómo se detecta una tendencia cuando apenas está empezando a crecer?**
+
+- **Qué hace el radar:** cada tema tiene un puntaje de **emergencia**, el percentil esa semana de su
+  volumen inesperado, su crecimiento, su aceleración y sus vecinos nuevos en el grafo (medido). También
+  tiene una **ventana**, la estimación de cuántos días faltan para que llegue al
+  español y al portugués. La ventana sale del desfase mediano inglés → español/portugués medido en
+  temas del mismo subtema.
+- **Qué tan bien funciona** (`reports/backtest.md`, medido, 43 semanas):
+  - en el crecimiento de artículos en español y portugués, el radar marca los temas con un adelanto
+    mediano de **3,0 semanas** (intervalo 2,0 .. 4,0, 47 positivos);
+  - en la etiqueta principal (pageviews de Wikipedia en español y portugués), el top 10 publicado
+    acierta el **29,2%** de las veces (119/408, intervalo 24,4% .. 34,0%), frente a una tasa base de
+    **25,4%**;
+  - le gana a la persistencia (repetir lo que ya subió) incluso en el peor caso, +6,4 puntos
+    (0,7 .. 12,0). **No le gana** al crecimiento del conteo crudo: −14,3 puntos (−20,2 .. −8,6) en
+    el peor caso.
+- **Lectura:** es una señal temprana mejor que el azar y que la persistencia, no una garantía. Por eso
+  el radar lo dice en cada respuesta de confianza.
+
+**2. ¿Cómo se explica por qué una pieza funcionó: el gancho, el formato, el tema, el momento, quién la
+publicó?**
+
+- **Respondido para el tema:** por qué sube un tema y cuándo contarlo.
+  - **Crecimiento:** la serie diaria por idioma y la emergencia.
+  - **Tono y ángulo emocional:** una regla de código sobre el tono de las noticias elige alerta,
+    oportunidad, debate, giro o explicador.
+  - **Conexiones:** el anillo de 1 salto en el grafo de co-menciones (con quién aparece el tema y con
+    qué fuerza, NPMI) y las lentes Puente y Novedad.
+  - **Evidencia:** hasta 5 artículos por tema y semana, con cuántos artículos y de cuántos medios
+    (1.191 artículos, 0 duplicados, medido).
+  - **Momento:** la etapa, la saturación y la ventana.
+- **Solo en parte para la pieza:** el gancho, el formato y el autor de una publicación concreta no se
+  pueden leer en las noticias, y el radar no toca LinkedIn. El brief en español de cada tema, escrito
+  por el modelo, propone un gancho y un formato (carrusel, video corto, post de texto o newsletter), y
+  la evidencia nombra los medios, nunca personas. Eso propone, pero no mide qué pieza funcionó.
+- **Cómo se cierra:** con la hoja manual de las publicaciones públicas de 30X (`pipelines/social/`).
+  - Una persona anota de cada publicación el formato, la fecha, la cuenta y las reacciones, comentarios
+    y compartidos que la plataforma muestra en público. No hay automatización.
+  - El importador valida la hoja y calcula el engagement por cada 1.000 seguidores.
+  - El paso siguiente cruza cada publicación con lo que el radar decía de su tema esa semana.
+  - La hoja y el importador están hechos y probados, pero la hoja tiene 0 publicaciones hoy (medido):
+    esta parte espera los datos de 30X.
+
+**3. ¿Cómo se filtra lo que es relevante para una audiencia concreta, como ejecutivos y equipos de
+Latinoamérica aprendiendo IA?**
+
+- **Filtro de IA:** un modelo alumno separa las noticias de IA. Contra el panel de modelos tiene
+  precisión 0,9641 en la prueba congelada (n = 800, medido); la revisión humana sigue pendiente.
+- **Encaje con la audiencia:** un puntaje por tema (regla v1, estimación) que combina el subtema y el
+  peso de LatAm o del español y el portugués en la cobertura del tema. Entra en la prioridad que
+  ordena el top 10. Una prueba ciega del editor (`reports/editor_test.md`, 20 temas) está lista para
+  medirlo; aún no tiene respuestas.
+- **Ángulo:** el ángulo emocional de cada tema, para contarlo a ejecutivos.
+- **Cobertura en español y portugués escrita por código:** cada respuesta del chat sobre un tema trae
+  la línea "Cobertura en español y portugués de …: N artículos en español y M en portugués, de T". El
+  modelo no la puede cambiar.
+- **Auditoría de LatAm:** si esa línea da 0 artículos en español y portugués, el Auditor marca
+  cualquier frase que diga que el tema crece o está presente en Latinoamérica y añade una advertencia
+  (determinista, en código).
+
+**El entregable de ejemplo:** "¿cuáles son los 10 temas de IA que más están creciendo esta semana en
+LinkedIn, por qué y cómo lo adaptamos?".
+
+- El radar entrega cada semana los 10 temas de IA con más prioridad, con sus "por qué" marcados como
+  medidos o estimados, el ángulo y un brief en español para adaptarlos.
+- No mide el crecimiento dentro de LinkedIn. Mide el de las noticias globales antes de que el tema
+  llegue al español (ver "Por qué miramos aguas arriba de LinkedIn").
+
+**El costo:** unos pocos dólares en total, no miles al año (ver "Sin gastar una fortuna").
+
+### Sin gastar una fortuna
+
+El reto compara con servicios de scraping que cuestan miles de dólares al año. Lo que costó el radar,
+de punta a punta:
+
+| Qué | Costo | Fuente |
+|---|---|---|
+| BigQuery (GDELT, 69 trabajos) | **0 USD** dentro del nivel gratuito de 1 TiB al mes (estimado): se facturaron 0,35 TiB, todos en octubre de 2026 (medido). A precio de lista, 6,25 USD por TiB, serían **2,18 USD** (estimado) | `reports/bq_ledger.csv` |
+| Jev (casos dudosos del filtro) | **0,044 USD**, 981 llamadas (medido) | `reports/jev_ledger.csv` |
+| Modelos de lenguaje en Nebius | Unos **3,7 USD** registrados (estimado desde los tokens medidos). Etiquetado con el panel de modelos: unos 2,30 USD. Corridas de evaluación y pruebas de los agentes con estimación registrada: unos 1,37 USD. Comprobaciones del chat en vivo: menos de 0,05 USD. Las evaluaciones anteriores a las 05:05 UTC-5 del 18 de octubre no tienen estimación registrada (unos 0,2 USD por evaluación completa, estimado) | `reports/label_quality.md`, `status/WS2.md`, `status/WS0-agents.md`, `status/WS9.md` |
+| Servicio de scraping | **0 USD**: no se usa ninguno | — |
+
+Cada trabajo de BigQuery pasa por un dry run y un tope de gasto antes de correr, y cada llamada
+a Jev queda en su registro.
+
+### Por qué miramos aguas arriba de LinkedIn
+
+LinkedIn prohíbe la recolección automática en su acuerdo de usuario, así que el radar no lo toca.
+En su lugar mira la cadena abierta que viene antes: GDELT, que según su propia documentación sigue
+noticias de todo el mundo en 65 idiomas. Lo que se valida es si un tema marcado gana atención de
+referencia después, en las pageviews de Wikipedia en español y portugués. LinkedIn solo se observa a
+través de la analítica propia de 30X, anotada a mano y con su permiso.
+
+### JEV
+
+El reto sugiere a JEV como aliado, y el radar lo usa donde más rinde: en cascada.
+
+- El modelo alumno clasifica cada noticia y solo manda a Jev los casos dudosos, con probabilidad
+  entre 0,20 y 0,80. Eso es el 3,12% de las noticias (medido en validación).
+- Costo: **0,0014 USD por cada 1.000 noticias** (medido), y 0,044 USD en total por 981 llamadas
+  (medido, `reports/jev_ledger.csv`).
+- **Con honestidad:** en los casos dudosos Jev acertó 9 de 10 frente a 7 de 10 del alumno, pero el
+  intervalo (+0,00 .. +0,50) toca el cero. Los datos aún no prueban que Jev mejore el filtro.
+  Mantenerlo para esos casos es una decisión de diseño, barata, no una mejora medida
+  (`reports/label_quality.md`).
 
 ### Qué hace
 
@@ -31,7 +137,7 @@ En la semana 2026-W42 puntuó 430 temas (medido, `topic_scores_weekly`). Cada ta
 - la **ventana**: cuánto falta para que llegue al español y al portugués. Es una estimación hecha con
   el desfase mediano inglés → español/portugués medido en temas del mismo subtema;
 - el **encaje** con la audiencia de 30X y el **ángulo emocional** para contarlo (alerta, oportunidad,
-  giro, explicador);
+  debate, giro, explicador);
 - la **decisión** (publicar, preparar, esperar…) con sus "por qué", cada uno marcado como medido o
   estimación.
 
