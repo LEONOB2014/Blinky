@@ -156,7 +156,7 @@ and the graph gets the screen it deserves. Everything below uses the installed `
 ### Contract note
 
 If a lens needs a value that `view_command` cannot express, use the existing fields first (`color_by`
-values: `decision`, `ring`, `tone`, `window`); if that is not enough, write it in the status and the
+values, merged in PR #26: `decision`, `segment` (the ring), `tone`, `window`; merge origin/develop to get them); if that is not enough, write it in the status and the
 orchestrator changes the contract. The orchestrator will make the Cartographer emit `color_by` per
 question type.
 
