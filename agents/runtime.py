@@ -1190,8 +1190,8 @@ def run_turn(
         needed = ["signal_analyst", "cartographer"]
     if entity and _EVIDENCE_Q.search(question) and "signal_analyst" not in needed:
         needed = ["signal_analyst", *needed]  # it reads the topic's articles and outlets
-    if _COMMUNITY_Q.search(question) and "signal_analyst" not in needed:
-        needed = ["signal_analyst", *needed]  # it reads the community sensor
+    if _COMMUNITY_Q.search(question):  # the community sensor only: other notes drift (q26)
+        needed = ["signal_analyst"]
     if not needed:  # unrecognised question: the Media Master delegates freely
         answer = _loop(
             model,

@@ -90,6 +90,7 @@ def test_community_questions_get_the_code_written_line(
     assert not [s for s in response["trace"] if s["action"] == "veto"]  # every number traced
     calls = [s for s in response["trace"] if s.get("tool") == "get_community_signal"]
     assert calls and calls[0]["agent"] == "signal_analyst"
+    assert not [s for s in response["trace"] if s["agent"] == "cartographer"]  # no graph drift
 
 
 def test_graph_communities_are_not_the_ai_community():
