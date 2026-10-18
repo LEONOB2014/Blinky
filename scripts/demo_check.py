@@ -6,6 +6,10 @@ credit; the rest are cheap reads.
 
     make demo-check                 # reads only
     make demo-check ARGS=--chat     # plus one chat turn
+
+The radar's source is `RADAR_SOURCE` (default `ai`, the AI-lexicon run): the top 10 must then be
+`ai:` topics. `RADAR_SOURCE=gdelt` checks v0.2 (`org:`/`thm:` topics). The chat question names a
+topic of the live top 10 (its first lab, model or product, else #1) and expects a card for it.
 """
 
 import argparse
@@ -24,7 +28,19 @@ from radar.paths import REPO_ROOT
 
 SITE = "https://radar-senal-temprana.netlify.app"
 SERVICE, REGION = "radar-api", "us-central1"
-CHAT_QUESTION = "¿Qué tema de IA sube esta semana y por qué?"
+SOURCE = os.environ.get("RADAR_SOURCE", "ai")
+NAMED = ("ai:lab:", "ai:model:", "ai:product:")  # entries a person names in a question
+
+
+def chat_topic(top: list[dict[str, Any]]) -> dict[str, Any]:
+    """The top-10 row the chat question names: the first lab, model or product, else #1."""
+    return next((x for x in top if str(x["topic_id"]).startswith(NAMED)), top[0])
+
+
+def source_ok(ids: list[str]) -> bool:
+    """Under the AI source every top-10 id is an `ai:` topic; under gdelt none is."""
+    is_ai = [i.startswith("ai:") for i in ids]
+    return all(is_ai) if SOURCE == "ai" else not any(is_ai)
 
 
 def api_url() -> str:
@@ -94,9 +110,11 @@ def main(argv: list[str] | None = None) -> int:
 
     def api_top10() -> tuple[bool, str]:
         r = c.get(f"{api}/api/radar")
-        state["live"] = [x["topic_id"] for x in r.json()] if r.status_code == 200 else []
+        state["rows"] = r.json() if r.status_code == 200 else []
+        state["live"] = [x["topic_id"] for x in state["rows"]]
         top = state["live"][0] if state["live"] else "-"
-        return len(state["live"]) == 10, f"HTTP {r.status_code}, #1 {top}"
+        ok = len(state["live"]) == 10 and source_ok(state["live"])
+        return ok, f"HTTP {r.status_code}, #1 {top}, source {SOURCE}"
 
     def live_matches_static() -> tuple[bool, str]:
         same = state.get("live") == state.get("static")
@@ -116,13 +134,18 @@ def main(argv: list[str] | None = None) -> int:
         return bool(ring) and not persons, f"{topic}: {len(ring)} neighbours, {persons} persons"
 
     def api_chat() -> tuple[bool, str]:
-        r = c.client.post(f"{api}/api/chat", json={"message": CHAT_QUESTION})
+        if not state.get("rows"):
+            return False, "no live top 10 to name a topic from"
+        topic = chat_topic(state["rows"])
+        label = topic.get("label_es") or topic["topic_id"]
+        r = c.client.post(f"{api}/api/chat", json={"message": f"¿Qué está pasando con {label}?"})
         if r.status_code != 200:
             return False, f"HTTP {r.status_code}: {r.text[:80]}"
         body = r.json()
-        ok = bool(body.get("answer_es")) and bool(body.get("trace"))
-        steps, cards = len(body.get("trace", [])), len(body.get("decision_cards", []))
-        return ok, f"{steps} trace steps, {cards} cards"
+        cards = [x.get("topic_id") for x in body.get("decision_cards", [])]
+        ok = bool(body.get("answer_es")) and bool(body.get("trace")) and topic["topic_id"] in cards
+        steps = len(body.get("trace", []))
+        return ok, f"asked about {topic['topic_id']}: {steps} trace steps, cards {cards}"
 
     c.run("site: page", site_page)
     c.run("site: static top 10", site_static_top10)
