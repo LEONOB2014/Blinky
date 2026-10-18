@@ -82,27 +82,3 @@ def test_prefix_resolution_only_adds_a_company_suffix(monkeypatch):
     monkeypatch.setattr(tools, "known_topics", lambda: topics)
     assert tools.resolve_topic("OpenAI") == "org:openai inc"
     assert tools.resolve_topic("Altman") == "Altman"
-
-
-def test_human_formatted_fields():
-    from agents import tools
-
-    assert tools.pct(0.6455) == "65%" and tools.pct(3.648, signed=True) == "+365%"
-    assert tools.tone_word(-3.4) == "negativo" and tools.tone_word(0.2) == "neutral"
-    assert tools.human_name("org:openai inc") == "openai inc"
-    assert tools.human_name("chips_infra") == "Chips e infraestructura"
-    row = {"topic_id": "org:x", "label_es": "X Corp", "decision": "preparar", "stage": "semilla",
-           "emergence_pct": 92.39, "saturation": 0.0, "audience_fit": 0.6455,
-           "window": {"days_left": 12}}  # fmt: skip
-    s = tools._score_summary(row)
-    assert s.startswith("X Corp: Preparar") and "percentil 92" in s and "65%" in s
-    assert "12 días" in s and "audience_fit" not in s
-
-
-def test_cost_and_freshness_carry_plain_summaries():
-    from agents import tools
-
-    cost = tools.get_cost_ledger()
-    assert "GB procesados" in cost["resumen_es"] and cost["list_price_usd_estimate"] >= 0
-    fresh = tools.get_freshness()
-    assert "resumen_es" in fresh and set(fresh["dias_desde_ultimo_dato"]) == set(fresh["newest"])

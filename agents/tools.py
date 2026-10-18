@@ -7,7 +7,6 @@ import csv
 import datetime as dt
 import functools
 import json
-import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -80,55 +79,6 @@ def week_bounds(week: str | None) -> tuple[str, dt.date, dt.date]:
 def labels_es() -> dict[str, str]:
     tax = yaml.safe_load((REPO_ROOT / "contracts" / "taxonomy.yaml").read_text(encoding="utf-8"))
     return {"ai_all": "IA en general"} | {k: v["label_es"] for k, v in tax["subtopics"].items()}
-
-
-# --- Human-formatted fields: numbers already written the way an executive reads them, so the LLM
-# copies them instead of re-computing (raw fields stay for code and the Auditor).
-
-DECISION_ES = {
-    "publicar_ahora": "Publicar ahora",
-    "preparar": "Preparar",
-    "esperar": "Esperar",
-    "no_es_tema_caliente": "No es tema caliente",
-}
-LIST_PRICE_USD_PER_TIB = 6.25  # BigQuery on-demand list price (estimate for the cost line)
-
-
-def human_name(topic_id: str) -> str:
-    """'org:openai inc' -> 'openai inc', 'chips_infra' -> its Spanish label, 'domain:x' -> 'x'."""
-    if topic_id in labels_es():
-        return labels_es()[topic_id]
-    return topic_id.split(":", 1)[1] if ":" in topic_id else topic_id
-
-
-def pct(x: float | None, signed: bool = False) -> str | None:
-    """0.6455 -> '65%'; signed: 3.648 -> '+365%' (no decimals, as an executive reads it)."""
-    if x is None:
-        return None
-    return f"{x * 100:+.0f}%" if signed else f"{x * 100:.0f}%"
-
-
-def tone_word(tone: float | None) -> str | None:
-    if tone is None:
-        return None
-    return "negativo" if tone < -1.5 else "positivo" if tone > 1.5 else "neutral"
-
-
-def _score_summary(r: dict[str, Any]) -> str:
-    name = r.get("label_es") if r.get("label_es") not in (None, r.get("topic_id")) else None
-    parts = [f"{name or human_name(r['topic_id'])}: {DECISION_ES.get(r.get('decision'), '?')}"]
-    if r.get("stage"):
-        parts.append(f"etapa {r['stage']}")
-    if r.get("emergence_pct") is not None:
-        parts.append(f"emergencia en el percentil {r['emergence_pct']:.0f} de la semana")
-    if r.get("saturation") is not None:
-        parts.append(f"saturación en español {pct(r['saturation'])}")
-    if r.get("audience_fit") is not None:
-        parts.append(f"encaje con ejecutivos de LatAm {pct(r['audience_fit'])}")
-    days = (r.get("window") or {}).get("days_left")
-    if days is not None:
-        parts.append(f"unos {days} días antes de llegar al español (estimado)")
-    return "; ".join(parts)
 
 
 def _cap(z: float | None) -> float | str | None:
@@ -241,14 +191,7 @@ def list_subtopic_trends(week: str | None = None, lang_bucket: str = "all") -> d
     )
     for r in rows:
         r["z_7d"] = _cap(r["z_7d"])
-        r["label_es"] = labels_es().get(r["topic"], human_name(r["topic"]))
-        g = r["growth_7d_log"]
-        r["crecimiento_7d"] = pct(math.exp(g) - 1, signed=True) if g is not None else None
-        r["tono"] = tone_word(r["mean_tone_7d"])
-        r["resumen_es"] = (
-            f"{r['label_es']}: {r['articles_7d']:.0f} artículos en 7 días, "
-            f"{r['crecimiento_7d'] or 'sin variación medida'} vs. la semana anterior, tono {r['tono']}"
-        )
+        r["label_es"] = labels_es().get(r["topic"], r["topic"])
     subtopics = [r for r in rows if r["topic"] != "ai_all" and r["growth_7d_log"] is not None]
     leader = subtopics[0]["topic"] if subtopics else None
     return {
@@ -283,28 +226,7 @@ def get_topic_series(topic: str, lang_bucket: str = "all", weeks: int = 8) -> di
         GROUP BY 1 ORDER BY 1 DESC LIMIT {int(weeks)}""",  # noqa: S608
         params,
     )
-    return _series_summary(
-        {"available": True, "topic": topic, "lang_bucket": lang_bucket, "rows": rows[::-1]}
-    )
-
-
-def _series_summary(out: dict[str, Any]) -> dict[str, Any]:
-    """Adds 'resumen_es': the last week's articles, change vs. the week before, tone, LatAm share."""
-    rows = out.get("rows") or []
-    if not rows:
-        return out
-    last = rows[-1]
-    parts = [f"{human_name(out['topic'])}: {last['articles']:.0f} artículos en {last['week']}"]
-    if len(rows) > 1 and rows[-2]["articles"]:
-        parts.append(
-            f"{pct(last['articles'] / rows[-2]['articles'] - 1, signed=True)} vs. la semana anterior"
-        )
-    if last.get("mean_tone") is not None:
-        parts.append(f"tono {tone_word(last['mean_tone'])}")
-    if last.get("latam_share") is not None:
-        parts.append(f"{pct(last['latam_share'])} desde LatAm")
-    out["resumen_es"] = ", ".join(parts)
-    return out
+    return {"available": True, "topic": topic, "lang_bucket": lang_bucket, "rows": rows[::-1]}
 
 
 def _entity_series(topic: str, lang_bucket: str, weeks: int) -> dict[str, Any]:
@@ -322,9 +244,7 @@ def _entity_series(topic: str, lang_bucket: str, weeks: int) -> dict[str, Any]:
         GROUP BY 1 ORDER BY 1 DESC LIMIT {int(weeks)}""",  # noqa: S608
         params,
     )
-    return _series_summary(
-        {"available": bool(rows), "topic": topic, "lang_bucket": lang_bucket, "rows": rows[::-1]}
-    )
+    return {"available": bool(rows), "topic": topic, "lang_bucket": lang_bucket, "rows": rows[::-1]}
 
 
 def get_top10(week: str | None = None) -> dict[str, Any]:
@@ -344,8 +264,6 @@ def get_top10(week: str | None = None) -> dict[str, Any]:
         [label],
         con,
     )
-    for r in rows:
-        r["resumen_es"] = _score_summary(r)
     return {"available": True, "week": label, "rows": rows}
 
 
@@ -359,8 +277,6 @@ def get_topic_scores(topic_id: str, week: str | None = None) -> dict[str, Any]:
     if week is None:
         label = con.execute("SELECT max(week) FROM scores").fetchone()[0]
     rows = _rows("SELECT * FROM scores WHERE week = ? AND topic_id = ?", [label, topic_id], con)
-    for r in rows:
-        r["resumen_es"] = _score_summary(r)
     return {"available": bool(rows), "week": label, "topic_id": topic_id, "rows": rows}
 
 
@@ -379,18 +295,12 @@ def get_context_1hop(entity: str, week: str | None = None, k: int = 10) -> dict[
             "AND neighbor NOT LIKE 'per:%' ORDER BY rank LIMIT ?",
             [entity, monday, k],
         )
-        for r in rows:
-            r["nombre"] = human_name(r["neighbor"])
-        top = ", ".join(f"{r['nombre']} ({r['n']} co-menciones)" for r in rows[:5])
         return {
             "available": True,
             "source": "topic_context_1hop",
             "entity": entity,
             "week": label,
             "rows": rows,
-            "resumen_es": f"Lo que más aparece junto a {human_name(entity)} esta semana: {top}"
-            if rows
-            else f"No hay vecinos de {human_name(entity)} esta semana",
         }
     edges = _table("edges_weekly")
     if not edges:
@@ -485,30 +395,7 @@ def get_freshness() -> dict[str, Any]:
             if table
             else None
         )
-    today = dt.datetime.now(dt.UTC).date()
-    days = {}
-    for name, value in out.items():
-        try:
-            days[name] = (today - dt.date.fromisoformat(value)).days if value else None
-        except ValueError:
-            days[name] = None
-    news = days.get("daily_topic")
-    summary = (
-        "Datos al día: las noticias llegan hasta hoy"
-        if news == 0
-        else f"Las noticias llegan hasta hace {news} días"
-        if news is not None
-        else "Sin fecha de noticias"
-    )
-    if out.get("topic_scores_weekly"):
-        summary += f"; las puntuaciones son de la semana {out['topic_scores_weekly']}"
-    return {
-        "available": True,
-        "profile": profile(),
-        "newest": out,
-        "dias_desde_ultimo_dato": days,
-        "resumen_es": summary,
-    }
+    return {"available": True, "profile": profile(), "newest": out}
 
 
 def get_cost_ledger() -> dict[str, Any]:
@@ -517,16 +404,11 @@ def get_cost_ledger() -> dict[str, Any]:
     with path.open(encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     billed = sum(int(r["billed_bytes"] or 0) for r in rows)
-    usd = billed / 2**40 * LIST_PRICE_USD_PER_TIB
     return {
         "available": True,
         "jobs": len(rows),
         "billed_gb": round(billed / 1e9, 2),
         "free_tier_share": round(billed / 1e12, 4),
-        "list_price_usd_estimate": round(usd, 2),
-        "resumen_es": f"{billed / 1e9:.0f} GB procesados en {len(rows)} consultas, "
-        f"{pct(billed / 1e12)} de la capa gratuita mensual de 1 TB; a precio de lista serían "
-        f"unos US${usd:.2f} (estimado, US$6.25 por TiB)",
     }
 
 
