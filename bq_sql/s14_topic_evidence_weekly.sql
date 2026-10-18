@@ -6,8 +6,12 @@
 --      orgs and themes in at most 10% of that week's ring-1 articles, the topic itself excluded, ties by name);
 --   2. at most one article per normalized title (the earliest copy), so one syndicated story repeated by several
 --      outlets fills one slot, not five (measured on 2026-W42: the #1 topic's 5 articles were one wire title);
---      titles are normalized by lowercasing and collapsing everything that is not a letter or digit; an article
---      without a title counts as its own title;
+--      titles are normalized by decoding HTML dash and no-break-space entities, dropping a trailing site suffix (the
+--      last " - X", " | X" or " :: X" segment, also with an en/em dash, when X is at most 40 characters without
+--      another separator and at least 25 characters
+--      remain), then lowercasing and collapsing everything that is not a letter or digit; an article without a
+--      title counts as its own title. The suffix rule only builds the grouping key: the title shown is untouched
+--      (measured before this rule: 16 topic-week groups were one story with and without a site name appended);
 --   2b. then at most one article per source (the best one by the order below), so one outlet cannot fill the card;
 --   3. order: relevance desc, then es/pt first, then earliest, then gkg_id; keep 5. Articles without an http(s) URL
 --      are skipped.
@@ -71,14 +75,29 @@ articles AS (
     AND REGEXP_CONTAINS(IFNULL(g.url, ''), r'^https?://')
     AND IFNULL(g.source, '') != ''
 ),
+keyed AS (
+  -- the grouping key of a title: HTML dash and no-break-space entities decoded (GDELT titles are escaped:
+  -- "&#x2013;" is the most common entity, often before a site name), then the trailing site suffix dropped,
+  -- then lowercased with every run of non-letters and non-digits collapsed
+  SELECT
+    *,
+    IFNULL(NULLIF(TRIM(REGEXP_REPLACE(LOWER(
+      IF(LENGTH(TRIM(REGEXP_REPLACE(decoded, r'\s+(?:-|–|—|\||::)\s+[^-–—|:]{1,40}$', ''))) >= 25,
+         REGEXP_REPLACE(decoded, r'\s+(?:-|–|—|\||::)\s+[^-–—|:]{1,40}$', ''), decoded)
+    ), r'[^\p{L}\p{N}]+', ' ')), ''), gkg_id) AS title_key
+  FROM (
+    SELECT
+      *,
+      REGEXP_REPLACE(
+        REGEXP_REPLACE(title, r'(?i)&#x(?:2012|2013|2014|2015);', ' - '),
+        r'(?i)&#x(?:a0|202f);|&nbsp;', ' ') AS decoded
+    FROM articles
+  )
+),
 one_per_title AS (
-  SELECT *
-  FROM articles
-  QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY topic_id, week,
-      IFNULL(NULLIF(TRIM(REGEXP_REPLACE(LOWER(title), r'[^\p{L}\p{N}]+', ' ')), ''), gkg_id)
-    ORDER BY ts, gkg_id
-  ) = 1
+  SELECT * EXCEPT (decoded, title_key)
+  FROM keyed
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY topic_id, week, title_key ORDER BY ts, gkg_id) = 1
 ),
 one_per_source AS (
   SELECT *
