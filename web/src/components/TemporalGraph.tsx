@@ -211,10 +211,15 @@ export function TemporalGraph({
         if (accepted.length >= maxLabels && !cand.isFocused) break;
         const estW = Math.min(185, Math.max(54, cand.text.length * 6.4 + 14));
         const estH = 20;
+        const half = estW / 2;
+        const pad = 4;
+        if (cand.x - half < pad) cand.x = half + pad;
+        if (cand.x + half > width - pad) cand.x = width - pad - half;
+        if (cand.x - half < pad || cand.x + half > width - pad) continue;
         const box = {
-          x0: cand.x - estW / 2,
+          x0: cand.x - half,
           y0: cand.y - estH - 5,
-          x1: cand.x + estW / 2,
+          x1: cand.x + half,
           y1: cand.y + 4,
         };
         let collides = false;
@@ -1092,20 +1097,42 @@ export function TemporalGraph({
       recomputeLabelsRef.current(weekIdxRef.current);
     };
 
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      const w = rect.width;
-      const h = rect.height;
-      if (w < 2 || h < 2) return;
-      if (lastW >= 0 && Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return;
-      lastW = w;
-      lastH = h;
+    const scheduleFit = () => {
       if (!graphReadyRef.current) return;
+      const rect = host.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return;
+      if (
+        lastW >= 0 &&
+        Math.abs(rect.width - lastW) < 2 &&
+        Math.abs(rect.height - lastH) < 2
+      ) {
+        return;
+      }
+      lastW = rect.width;
+      lastH = rect.height;
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(fitToHost);
+    };
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect || rect.width < 2 || rect.height < 2) return;
+      scheduleFit();
     });
     observer.observe(host);
+
+    // The first size often arrives before the graph is ready. Keep trying
+    // until a fit lands, or that size is remembered and the labels never show.
+    let tries = 0;
+    const kick = () => {
+      tries += 1;
+      scheduleFit();
+      if (lastW < 0 && tries < 180) {
+        frame = requestAnimationFrame(kick);
+      }
+    };
+    kick();
+
     return () => {
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();

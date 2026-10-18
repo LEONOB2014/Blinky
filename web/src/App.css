@@ -1374,6 +1374,9 @@ body {
   min-height: 0;
   height: auto;
   margin: 0;
+  /* The dock sits on the stage's right edge. Keep the graph, its labels and
+     its legend in the space to the left of that column. */
+  padding-right: calc(24px + min(420px, 100% - 1.5rem) + 12px);
 }
 
 .workspace-stage .temporal-split,
