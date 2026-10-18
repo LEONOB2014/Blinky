@@ -11,7 +11,7 @@ import { StoryGraph } from "./components/StoryGraph";
 import { TemporalGraph } from "./components/TemporalGraph";
 import { TrustPanel } from "./components/TrustPanel";
 import { type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
-import { publicLine, rowWhy } from "./publicCopy";
+import { publicLine } from "./publicCopy";
 import { placeNamedTopic, type StoryPlacement } from "./temporalNodes";
 import type {
   AgentTraceStep,
@@ -204,6 +204,32 @@ function formatWindow(w: TopicWindow): string {
     default:
       return `Sin estimación · ${n}`;
   }
+}
+
+function shortWindow(w: TopicWindow): string {
+  switch (w.state) {
+    case "dias_restantes":
+      return `~${w.days_left ?? "?"} días ○`;
+    case "en_cualquier_momento":
+      return "En cualquier momento ○";
+    case "ya_en_espanol":
+      return "Ya en español ●";
+    case "sin_estimacion":
+    default:
+      return "Sin estimación";
+  }
+}
+
+function RowSignals({ card }: { card: TopicScoreWeekly }) {
+  return (
+    <span className="rail-signals">
+      {card.emergence_pct != null && (
+        <span>Emergencia {card.emergence_pct.toFixed(1)} pct ●</span>
+      )}
+      <span>Ventana {shortWindow(card.window)}</span>
+      {card.framing_angle ? <span>Ángulo {card.framing_angle}</span> : null}
+    </span>
+  );
 }
 
 const ES_MONTHS = [
@@ -680,7 +706,6 @@ export function App() {
             <div className="cards-grid rail-list">
               {radarItems.map((card) => {
                 const open = detailTopicId === card.topic_id;
-                const whyLine = rowWhy(card.why);
                 return (
                   <article
                     key={card.topic_id}
@@ -711,7 +736,7 @@ export function App() {
                       <span className={`decision-badge decision-${card.decision}`}>
                         {DECISION_LABELS[card.decision]}
                       </span>
-                      {whyLine && <span className="rail-why">{whyLine}</span>}
+                      <RowSignals card={card} />
                     </button>
                     {open && (
                       <TopicDetail
@@ -860,7 +885,7 @@ export function App() {
                     <div className="drawer-card-name">
                       {topicName(card.topic_id, card.label_es)}
                     </div>
-                    {rowWhy(card.why) && <p className="rail-why">{rowWhy(card.why)}</p>}
+                    <RowSignals card={card} />
                   </div>
                 ))}
               </div>

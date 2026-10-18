@@ -1407,6 +1407,23 @@ body {
   white-space: nowrap;
 }
 
+.rail-signals {
+  grid-area: why;
+  display: flex;
+  gap: 0.45rem;
+  min-width: 0;
+  overflow: hidden;
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.rail-signals span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rail-detail {
   margin-top: 0.55rem;
 }

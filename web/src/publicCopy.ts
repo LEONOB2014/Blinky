@@ -33,9 +33,3 @@ export function publicLine(text: string): string {
 export function markForKind(kind: string | undefined): string {
   return kind === "estimate" || kind === "estimado" ? "○" : "●";
 }
-
-export function rowWhy(lines: string[]): string {
-  const cleaned = lines.map(publicLine).filter(Boolean);
-  const substantive = cleaned.find((line) => !/^decisión:/i.test(line));
-  return substantive ?? cleaned[0] ?? "";
-}
