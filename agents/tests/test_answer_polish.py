@@ -100,11 +100,33 @@ def test_latam_growth_claims_are_flagged_only_without_es_or_pt_articles():
         "Aún no hay cobertura en la región. Tiene alta participación en América Latina."
     )
     assert runtime.latam_claims(text, _turn(ZERO)) == [
-        "Marsh crece muy rápido en Latinoamérica.",
-        "Tiene alta participación en América Latina.",
+        "crece muy rápido en Latinoamérica",
+        "participación en América Latina",
     ]
     assert runtime.latam_claims(text, _turn(ZERO | {"articulos_es": 3})) == []
     assert runtime.latam_claims(text, runtime.Turn("t")) == []  # no coverage data: no check
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [  # from the answer-polish eval: true statements or other claims, never flagged
+        "Un video sobre la brecha de cobertura en LatAm.",
+        "Datos de crecimiento global y vacío de cobertura en LatAm.",
+        "Su impacto en LatAm es casi nulo.",
+        "Es relevante para ejecutivos de LatAm por su presencia en seguros.",
+        "Crecimiento rápido (emergencia 92%) y alto potencial de impacto en LatAm.",
+        "Sin presencia en la región todavía.",
+    ],
+)
+def test_latam_check_ignores_gaps_and_other_claims(sentence):
+    assert runtime.latam_claims(sentence, _turn(ZERO)) == []
+
+
+@pytest.mark.unit
+def test_thousands_separators_are_traced():
+    results = [{"result": {"articulos_total": 4117}}]
+    assert runtime.untraced_numbers("4.117 artículos o 4,117.", results, "") == []
+    assert runtime.untraced_numbers("4.118 artículos.", results, "") == ["4.118"]
 
 
 @pytest.mark.unit

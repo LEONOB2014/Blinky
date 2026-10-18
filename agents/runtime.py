@@ -329,6 +329,9 @@ def _source_dates(results: list[dict[str, Any]], extra: str) -> set[tuple[int | 
     return {d for t in texts for _, d in _dates(t)}
 
 
+_THOUSANDS = re.compile(r"^[1-9]\d{0,2}(?:[.,]\d{3})+$")
+
+
 def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
     """Numbers in the answer that match no tool result (allowing rounding and % of a share)."""
     sources = _source_numbers(results, question)
@@ -347,8 +350,12 @@ def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) 
         candidates = [value, value / 100] if token.endswith("%") else [value]
         decimals = len(token.rstrip("%").replace(",", ".").partition(".")[2])
         tol = 0.5 * 10**-decimals
-        if not any(abs(s - c) <= max(tol, abs(c) * 0.005) for s in sources for c in candidates):
-            bad.append(token)
+        if any(abs(s - c) <= max(tol, abs(c) * 0.005) for s in sources for c in candidates):
+            continue
+        # "4.117" or "4,117" written for 4117: an exact integer, no rounding allowance
+        if _THOUSANDS.match(token) and float(re.sub(r"[.,]", "", token)) in sources:
+            continue
+        bad.append(token)
     return bad
 
 
@@ -611,17 +618,23 @@ def coverage_line(turn: Turn) -> str:
     )
 
 
-_REGION = re.compile(r"latinoam[eé]rica|am[eé]rica latina|\blatam\b|la regi[oó]n", re.I)
-_REGION_CLAIM = re.compile(
-    r"crec|\bsub[eiao]|aument|tracci[oó]n|expan|particip|presencia|cobertura|conversaci|se habla|"
-    r"gana(?:ndo)? (?:fuerza|terreno)|tendencia|repunt",
+# a growth or presence word followed within three words by "en <LatAm>", e.g. "crecimiento muy
+# rápido en Latinoamérica", "alta participación en América Latina"; a gap word just before it
+# ("brecha de cobertura en LatAm", "sin presencia en la región") makes it the opposite claim
+_LATAM_CLAIM = re.compile(
+    r"\b(?:crec\w*|sub\w*|aument\w*|gan\w*|tracci[oó]n|expan\w*|particip\w*|presencia|"
+    r"cobertura|conversaci[oó]n|se habla|repunt\w*)(?:\s+\S+){0,3}?\s+en\s+"
+    r"(?:latinoam[eé]rica|am[eé]rica latina|latam|la regi[oó]n)\b",
     re.I,
 )
-_NEGATION = re.compile(r"\bno\b|\bsin\b|nadie|todav[ií]a no|a[uú]n no|\bcero\b|\b0\b", re.I)
+_GAP = re.compile(
+    r"\b(?:no|sin|nul[oa]|cero|brecha|vac[ií]o|ausencia|falta|baj[oa]|poc[oa]|escas[oa]|nadie)\b",
+    re.I,
+)
 
 
 def latam_claims(answer: str, turn: Turn) -> list[str]:
-    """Sentences claiming growth or presence in LatAm while the topic has 0 es and 0 pt articles."""
+    """Phrases claiming growth or presence in LatAm while the topic has 0 es and 0 pt articles."""
     cov = next(
         (
             r["result"]
@@ -632,12 +645,12 @@ def latam_claims(answer: str, turn: Turn) -> list[str]:
     )
     if not cov or cov["articulos_es"] + cov["articulos_pt"] > 0:
         return []
-    sentences = re.split(r"(?<=[.!?\n])\s*", answer)
-    return [
-        s.strip()
-        for s in sentences
-        if _REGION.search(s) and _REGION_CLAIM.search(s) and not _NEGATION.search(s)
-    ]
+    claims = []
+    for m in _LATAM_CLAIM.finditer(answer):
+        before = answer[max(0, m.start() - 30) : m.start()]
+        if not _GAP.search(before) and not _GAP.search(m.group(0)):
+            claims.append(m.group(0))
+    return claims
 
 
 def strip_echo(body: str, code_text: str) -> str:
