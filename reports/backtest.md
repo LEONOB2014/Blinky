@@ -1,10 +1,26 @@
 # Backtest: the radar's weekly top 10
 
-Generated 2026-10-18 01:34 UTC-5 by `models/backtest.py` on the `full` profile. Every number below is **measured** on the lake unless marked otherwise. Protocol: `docs/designs/radar-build-plan.md` (Evaluation, Backtest) and the module docstring. The score weights and thresholds are hand-set (estimate), not fitted to either label. The syndication guard (Addendum 5) was added after WS9 saw syndicated topics in the 2026-W42 top 10; its thresholds come from WS1's source distributions, not from either label, but its design is not blind to the data. Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build (no lake table maps gkg_id to topics yet); the backtest does not use them.
+Generated 2026-10-18 01:39 UTC-5 by `models/backtest.py` on the `full` profile. Every number below is **measured** on the lake unless marked otherwise. Protocol: `docs/designs/radar-build-plan.md` (Evaluation, Backtest) and the module docstring. The score weights and thresholds are hand-set (estimate), not fitted to either label. The syndication guard (Addendum 5) was added after WS9 saw syndicated topics in the 2026-W42 top 10; its thresholds come from WS1's source distributions, not from either label, but its design is not blind to the data. Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build (no lake table maps gkg_id to topics yet); the backtest does not use them.
 
 The primary label (es+pt Wikipedia pageviews) is not reportable yet (coverage). The secondary label (es+pt GDELT article growth) is the fallback card when pageviews are missing.
 
-## Primary label: es+pt Wikipedia pageview growth
+## Primary label: es+pt Wikipedia pageview growth (exact Wikidata matches only)
+
+- Ranked topics: 4945; with an es or pt Wikipedia article (the backtest ranks those only): 816 (16.5%, measured). Unmapped topic-weeks: 11137 (measured).
+
+Label coverage of each ranker's top 10, over evaluable weeks:
+
+| Ranker | Labelled / needed topic-weeks | Coverage |
+|---|---|---|
+| Radar, with the eligibility gate and the syndication guard (published) | 96/440 | 21.8% (measured) |
+| Radar, with the eligibility gate, without the syndication guard | 87/440 | 19.8% (measured) |
+| Radar, without the gate (Priority alone) | 87/440 | 19.8% (measured) |
+| Baseline: raw-count growth | 52/440 | 11.8% (measured) |
+| Baseline: persistence (the label's own last 2 weeks) | 428/440 | 97.3% (measured) |
+
+**Not reported:** coverage is below 90.0% for at least one ranker, so precision@10 could move by more than 10.0% once the missing labels arrive. Rerun `RADAR_PROFILE=full uv run python -m models.backtest` after the next WS6 write.
+
+## Primary label, alias matches included (separate row; aliases are confidence 0.6 and several are wrong)
 
 - Ranked topics: 4945; with an es or pt Wikipedia article (the backtest ranks those only): 1094 (22.1%, measured). Unmapped topic-weeks: 9649 (measured).
 
@@ -12,11 +28,11 @@ Label coverage of each ranker's top 10, over evaluable weeks:
 
 | Ranker | Labelled / needed topic-weeks | Coverage |
 |---|---|---|
-| Radar, with the eligibility gate and the syndication guard (published) | 60/440 | 13.6% (measured) |
-| Radar, with the eligibility gate, without the syndication guard | 58/440 | 13.2% (measured) |
-| Radar, without the gate (Priority alone) | 50/440 | 11.4% (measured) |
-| Baseline: raw-count growth | 29/440 | 6.6% (measured) |
-| Baseline: persistence (the label's own last 2 weeks) | 427/439 | 97.3% (measured) |
+| Radar, with the eligibility gate and the syndication guard (published) | 93/440 | 21.1% (measured) |
+| Radar, with the eligibility gate, without the syndication guard | 87/440 | 19.8% (measured) |
+| Radar, without the gate (Priority alone) | 74/440 | 16.8% (measured) |
+| Baseline: raw-count growth | 45/440 | 10.2% (measured) |
+| Baseline: persistence (the label's own last 2 weeks) | 429/440 | 97.5% (measured) |
 
 **Not reported:** coverage is below 90.0% for at least one ranker, so precision@10 could move by more than 10.0% once the missing labels arrive. Rerun `RADAR_PROFILE=full uv run python -m models.backtest` after the next WS6 write.
 

@@ -47,8 +47,14 @@ violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060
   - Lead time: median 3.0 weeks (2.0..4.0) over 47 flagged positives.
   - Caveat in the report: the guard was designed after seeing W42; its thresholds come from
     WS1's distributions, not from the label.
-- **Backtest, primary label** (pageviews, 01:34 write): coverage 60/440 (13.6%) for the published
-  radar, so precision is withheld. The missing-topic list for WS6 still stands (below).
+- **Backtest, primary label** (Addendum 4b: exact Wikidata matches only; the alias-included run is
+  a separate section). At the 01:39 write, coverage for the published radar is 96/440 (21.8%)
+  exact and 93/440 (21.1%) with aliases, so precision is withheld for both (measured). The
+  missing-topic list for WS6 still stands (below).
+- Addendum 5b: done as written (the pattern share as a gate on headlining only, and the top
+  source share for one-outlet weeks). The guard also needs >= 5 sources, a stricter extra
+  condition 5b does not ask for. In W42 it alone holds 6 topics, all below the top-10 cutoff
+  (best Priority 0.178 vs 0.291 at rank 10), so it does not change the top 10 (measured).
 - Editor sheet regenerated from the guarded top 10: 10 + 10 items, no overlap.
 - Memory (measured): build 1.15 GB, backtest 1.31 GB peak.
 

@@ -95,7 +95,9 @@ NAMES = {
     "base_rate": "Base rate (top quartile; ties at the cutoff excluded, measured share)",
 }
 LABELS = {
-    "pageviews": "Primary label: es+pt Wikipedia pageview growth",
+    "pageviews": "Primary label: es+pt Wikipedia pageview growth (exact Wikidata matches only)",
+    "pageviews_alias": "Primary label, alias matches included (separate row; aliases are "
+    "confidence 0.6 and several are wrong)",
     "gdelt_espt": "Secondary label: es+pt GDELT article growth",
 }
 
@@ -394,11 +396,17 @@ def gdelt_espt_label(roll: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def pageview_label() -> tuple[pl.DataFrame, set[str]]:
-    """The primary label series (es+pt pageviews per unit and day) and the mapped units."""
+def pageview_label(matches: tuple[str, ...] = ("exact",)) -> tuple[pl.DataFrame, set[str]]:
+    """The primary label series (es+pt pageviews per unit and day) and the mapped units.
+
+    Addendum 4b: only `exact` Wikidata matches by default. A wrong alias (confidence 0.6, several
+    wrong on W42) would give a topic another entity's pageviews; the alias-included run is
+    reported separately.
+    """
     wd = pl.read_parquet(gold("topic_wikidata"))
     m = wd.filter(
         pl.col("qid").is_not_null()
+        & pl.col("match").is_in(list(matches))
         & (pl.col("article_es").is_not_null() | pl.col("article_pt").is_not_null())
     ).select(pl.col("topic_id").alias("unit_id"), "qid")
     path = gold("wiki_pageviews_daily")
@@ -427,8 +435,9 @@ def run_all(labels: list[str]) -> dict[str, Result]:
     s, raw, own, gated = scored_units()
     out = {}
     for label in labels:
-        if label == "pageviews":
-            daily, mapped = pageview_label()
+        if label.startswith("pageviews"):
+            matches = ("exact", "alias") if label == "pageviews_alias" else ("exact",)
+            daily, mapped = pageview_label(matches)
             # needed weeks follow the data calendar, so labels WS6 has not fetched count as missing
             end = s["asof"].max()
             out[label] = evaluate(s, raw, daily, mapped, label, gated, MIN_COVERAGE, end)
@@ -520,7 +529,7 @@ def render_section(res: Result) -> list[str]:
             f"| {NAMES[key]} | {e['hits']}/{e['total']} | {_pct(e['precision'])} (measured) "
             f"| {ci_s} |"
         )
-    if res.coverage and res.label == "pageviews":
+    if res.coverage and res.label.startswith("pageviews"):
         worst = min(h / n for h, n in res.coverage.values() if n)
         lines += [
             "",
@@ -621,7 +630,7 @@ def render(results: Result | dict[str, Result]) -> str:
             "label (es+pt GDELT article growth) is the fallback card when pageviews are "
             "missing.",
         ]
-    for label in ("pageviews", "gdelt_espt"):
+    for label in ("pageviews", "pageviews_alias", "gdelt_espt"):
         if label in results:
             lines += ["", *render_section(results[label])]
     return "\n".join(lines) + "\n"
@@ -668,19 +677,25 @@ def diagnosis(res: Result) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
-        "--label", choices=["both", "pageviews", "gdelt_espt"], default="both", help="default: both"
+        "--label",
+        choices=["all", "pageviews", "pageviews_alias", "gdelt_espt"],
+        default="all",
+        help="default: all three",
     )
     args = ap.parse_args(argv)
-    labels = ["pageviews", "gdelt_espt"] if args.label == "both" else [args.label]
+    all_labels = ["pageviews", "pageviews_alias", "gdelt_espt"]
+    labels = all_labels if args.label == "all" else [args.label]
     results = run_all(labels)
-    if "pageviews" in results:
-        p = results["pageviews"]
-        print("Primary label coverage (labelled / needed topic-weeks):")  # noqa: T201
+    for label in ("pageviews", "pageviews_alias"):
+        if label not in results:
+            continue
+        p = results[label]
+        print(f"{label} coverage (labelled / needed topic-weeks):")  # noqa: T201
         for name, (have, need) in p.coverage.items():
             cov = f"{100 * have / need:.1f}%" if need else "n/a"
             print(f"  {name:18s} {have:5d}/{need:<5d} {cov}")  # noqa: T201
         state = f"refused (< {100 * MIN_COVERAGE:.0f}%)" if p.refused else "reported"
-        print(f"Primary precision: {state}")  # noqa: T201
+        print(f"{label} precision: {state}")  # noqa: T201
     text = render(results)
     if profile() == "full":
         REPORT.write_text(text, encoding="utf-8")
