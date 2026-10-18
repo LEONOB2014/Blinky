@@ -372,8 +372,10 @@ def route(question: str) -> list[str]:
 OUT_OF_SCOPE = [
     (
         re.compile(
-            r"\blikes?\b|me gusta|seguidores|engagement|alcance|impresiones|viraliz|"
-            r"cu[aá]nt[oa]s? .*tendr[aá]|predec|predic|pron[oó]stic",
+            # social-network metrics only: "predice", "pronóstico" or "cuántos días tendrá" are
+            # questions the radar answers, so they must not land here
+            r"\blikes?\b|me gusta|seguidores|followers|engagement|impresiones|viraliz|"
+            r"alcance (?:de|tendr[aá]|en) (?:mi|un|el|nuestro) (?:post|publicaci[oó]n)",
             re.I,
         ),
         "no predice likes, alcance ni resultados de una publicación: no lee LinkedIn ni redes "

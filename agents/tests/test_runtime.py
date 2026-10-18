@@ -151,3 +151,33 @@ def test_cartographer_reads_the_leaders_ring_when_no_entity_is_named():
     turn = runtime.Turn("t")
     runtime.gather(turn, "cartographer", "grafo", ctx | {"leader": "chips_infra"})
     assert not [s for s in turn.trace if s["tool"] == "get_context_1hop"]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "¿Qué predice el radar para la próxima semana?",
+        "¿Cuántos días tendrá la ventana del tema principal?",
+        "¿Qué pronóstico hay para la IA en salud?",
+        "¿Qué tema tiene más alcance en español?",
+    ],
+)
+def test_radar_questions_are_not_refused(question):
+    from agents.runtime import out_of_scope
+
+    assert out_of_scope(question) is None
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "¿Cuántos likes tendrá mi próximo post en LinkedIn?",
+        "¿Cuántos seguidores tiene 30X?",
+        "¿Qué opina Sam Altman de la regulación?",
+        "¿Qué alcance tendrá mi post?",
+    ],
+)
+def test_social_metrics_and_opinions_are_refused(question):
+    from agents.runtime import out_of_scope
+
+    assert out_of_scope(question) is not None
