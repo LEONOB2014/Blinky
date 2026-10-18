@@ -1,103 +1,147 @@
-import type { DecisionValue, TopicStage } from "./contracts";
+import type { DecisionValue, TopicScoreWeekly } from "./contracts";
 
 export interface TemporalMover {
   id: string;
   label_es: string;
-  deg_growth: number;
-  pagerank_pct: number;
-  decision: DecisionValue;
+  rank: number | null;
+  decision: DecisionValue | null;
+  pagerank: number | null;
+  pr_rank_delta: number | null;
+  deg_growth: number | null;
 }
 
 export interface TemporalGraphMeta {
-  n_nodes: number;
-  n_labeled: number;
-  n_edges_total: number;
-  edges_per_week: number[];
-  n_weeks: number;
-  min_n: number;
-  max_nodes: number;
-  top_k: number;
+  profile: string;
+  view: string;
   layout: string;
-  top_movers_per_week: TemporalMover[][];
-}
-
-export interface TemporalGraphData {
   weeks: string[];
-  nodes: string[];
-  labels: string[];
-  labels_es: string[];
-  show_label: boolean[];
-  positions: [number, number][];
-  node_metrics: Record<string, (number | null)[][]>;
-  edges_by_week: [number, number, number, number][][];
-  _meta: TemporalGraphMeta;
+  iso_weeks: string[];
+  params: {
+    span_weeks: number;
+    max_nodes: number;
+    min_n: number;
+    min_npmi_exclusive: number;
+    top_k_per_node: number;
+    top_labels: number;
+  };
+  n_nodes: number;
+  n_labeled_nodes: number;
+  n_edges: number;
+  edges_per_week: number[];
+  top_movers_per_week: TemporalMover[][];
+  decisions: string[];
 }
 
-export interface StoryNode {
+export interface TemporalNodeEntry {
   id: string;
   label: string;
   label_es: string;
-  role: "center" | "neighbor";
-  rank: number;
+  etype: string;
+  x: number;
+  y: number;
+  show_label: boolean;
+  deg_span: number;
+  pagerank: (number | null)[];
+  pr_rank_delta: (number | null)[];
+  deg_growth: (number | null)[];
+  rank: (number | null)[];
+  decision: (DecisionValue | null)[];
+}
+
+export interface TemporalEdgesColumnar {
+  source: number[];
+  target: number[];
+  week: number[];
+  n: number[];
+  npmi: number[];
+}
+
+export interface TemporalGraphData {
+  _meta: TemporalGraphMeta;
+  nodes: TemporalNodeEntry[];
+  edges: TemporalEdgesColumnar;
+}
+
+export interface StoryNodeAttributes {
+  label: string;
+  label_es: string;
+  x: number;
+  y: number;
+  size: number;
+  role: "topic" | "ring";
+  rank?: number;
   n?: number;
   npmi?: number;
-  segment: string | null;
-  domain: string | null;
+  etype: "org" | "thm" | "loc" | string;
 }
 
-export interface StoryEdge {
-  source: string;
-  target: string;
+export interface StoryNodeEntry {
+  key: string;
+  attributes: StoryNodeAttributes;
+}
+
+export interface StoryEdgeAttributes {
   n: number;
   npmi: number;
+  size: number;
+  kind: "ring" | "among";
 }
 
-export interface StoryCenterScores {
-  rank?: number | null;
-  priority?: number | null;
-  decision?: DecisionValue | null;
-  stage?: TopicStage | null;
-  emergence_pct?: number | null;
-  saturation?: number | null;
-  audience_fit?: number | null;
-  emotional_charge_pct?: number | null;
-  framing_angle?: string | null;
-  label_es?: string | null;
+export interface StoryEdgeEntry {
+  key: string;
+  source: string;
+  target: string;
+  attributes: StoryEdgeAttributes;
 }
 
 export interface StoryGraphData {
-  wk: string;
-  center: string;
-  center_label?: string;
-  center_label_es?: string;
-  center_scores: StoryCenterScores;
-  nodes: StoryNode[];
-  edges: StoryEdge[];
   _meta: {
-    n_nodes: number;
-    n_edges: number;
-    slug?: string;
+    profile: string;
+    view: string;
+    topic_id: string;
+    label_es: string;
+    week: string;
+    wk: string;
+    n_ring: number;
+    n_among_edges: number;
   };
+  attributes: {
+    topic_id: string;
+    label_es: string;
+    week: string;
+    scores: Partial<TopicScoreWeekly> | null;
+  };
+  options?: {
+    type: string;
+    multi: boolean;
+  };
+  nodes: StoryNodeEntry[];
+  edges: StoryEdgeEntry[];
 }
 
 export interface StoriesIndexEntry {
   topic_id: string;
-  slug: string;
-  file: string;
   label_es: string;
+  week: string;
   rank: number | null;
-  in_top10?: boolean;
-  priority: number | null;
   decision: DecisionValue | null;
-  stage: TopicStage | null;
-  emergence_pct: number | null;
-  n_neighbors: number;
+  n_ring: number;
+  n_among_edges: number;
+  file: string;
+  in_top10: boolean;
 }
 
 export interface StoriesIndexData {
-  wk: string;
-  default_topic_id: string | null;
-  stories: StoriesIndexEntry[];
+  _meta: {
+    profile: string;
+    week: string;
+    wk: string;
+    default_topic: string;
+    n_top10: number;
+    n_total_stories: number;
+  };
+  top10: StoriesIndexEntry[];
+  stories: Record<string, StoriesIndexEntry>;
 }
 
 export interface GraphWindowMetrics {

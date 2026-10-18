@@ -346,6 +346,13 @@ export function App() {
     if (!trimmed || chatLoading) return;
     setChatLoading(true);
     setChatError(null);
+    const immediateCmd = resolveChatViewCommand(trimmed, [], contextWeek);
+    if (immediateCmd) {
+      setActiveView(immediateCmd);
+      if (immediateCmd.focus_topic) {
+        selectTopic(immediateCmd.focus_topic);
+      }
+    }
     try {
       const res = await sendChatTurn({
         message: trimmed,
@@ -369,11 +376,6 @@ export function App() {
       }
     } catch (err: unknown) {
       setChatError(err instanceof Error ? err.message : String(err));
-      // Even if the LLM backend errors/times out, allow graph view commands to open from chat intent
-      const fallbackCmd = resolveChatViewCommand(trimmed, [], contextWeek);
-      if (fallbackCmd) {
-        setActiveView(fallbackCmd);
-      }
     } finally {
       setChatLoading(false);
     }

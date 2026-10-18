@@ -22,13 +22,6 @@ interface LabelItem {
   isFocused: boolean;
 }
 
-const DECISION_CODE_TO_VALUE: Record<number, DecisionValue> = {
-  3: "publicar_ahora",
-  2: "preparar",
-  1: "esperar",
-  0: "no_es_tema_caliente",
-};
-
 const DECISION_LABELS_ES: Record<DecisionValue, string> = {
   publicar_ahora: "Publicar ahora",
   preparar: "Preparar",
@@ -51,6 +44,7 @@ export function TemporalGraph({
     widths: Float32Array[];
     sizes: Float32Array[];
     colors: Float32Array[];
+    edgeCounts: number[];
   } | null>(null);
 
   const [data, setData] = useState<TemporalGraphData | null>(null);
@@ -80,47 +74,40 @@ export function TemporalGraph({
 
       const rect = host.getBoundingClientRect();
       const width = rect.width || 680;
-      const height = rect.height || 460;
-
-      const prArr = d.node_metrics.pagerank_pct;
-      const decArr = d.node_metrics.decision_code;
-      const rankArr = d.node_metrics.rank;
-      const degGrowthArr = d.node_metrics.deg_growth;
+      const height = rect.height || 440;
 
       const candidates: LabelItem[] = [];
       for (let i = 0; i < d.nodes.length; i++) {
-        const nodeId = d.nodes[i];
-        const isFocused = highlightSet.has(nodeId.toLowerCase());
-        const rk = rankArr?.[i]?.[w] ?? null;
+        const node = d.nodes[i];
+        const isFocused = highlightSet.has(node.id.toLowerCase());
+        const rk = node.rank?.[w] ?? null;
         const isTop10 = rk !== null && rk >= 1 && rk <= 10;
-        const show = d.show_label?.[i] || isTop10 || isFocused;
+        const show = node.show_label || isTop10 || isFocused;
         if (!show) continue;
 
-        const pos = d.positions[i];
-        if (!pos) continue;
-        const screen = g.spaceToScreenPosition([pos[0], pos[1]]);
+        const screen = g.spaceToScreenPosition([node.x, node.y]);
         const sx = screen[0];
         const sy = screen[1];
-        if (sx < 24 || sx > width - 24 || sy < 18 || sy > height - 18) {
+        if (sx < 28 || sx > width - 28 || sy < 18 || sy > height - 22) {
           continue;
         }
 
-        const pr = prArr?.[i]?.[w] ?? 0;
-        const dg = degGrowthArr?.[i]?.[w] ?? 0;
-        const decCode = decArr?.[i]?.[w] ?? 0;
-        const decision = DECISION_CODE_TO_VALUE[decCode] ?? "no_es_tema_caliente";
+        const pr = node.pagerank?.[w] ?? 0;
+        const dg = node.deg_growth?.[w] ?? 0;
+        const decision: DecisionValue =
+          node.decision?.[w] ?? "no_es_tema_caliente";
 
         const priority =
           (isFocused ? 10000 : 0) +
           (isTop10 ? 5000 - (rk ?? 10) * 100 : 0) +
-          (decCode >= 2 ? 600 : 0) +
-          pr * 3 +
+          (decision === "publicar_ahora" || decision === "preparar" ? 600 : 0) +
+          pr * 100000 +
           Math.max(0, dg) * 40;
 
         candidates.push({
           idx: i,
-          id: nodeId,
-          text: d.labels_es?.[i] || d.labels?.[i] || nodeId,
+          id: node.id,
+          text: node.label_es || node.label || node.id,
           x: sx,
           y: sy,
           priority,
@@ -131,14 +118,14 @@ export function TemporalGraph({
 
       candidates.sort((a, b) => b.priority - a.priority);
 
-      // Greedy bounding-box collision avoidance so labels stay readable
+      // Greedy bounding-box collision avoidance so labels never overlap
       const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
       const accepted: LabelItem[] = [];
       const maxLabels = 24;
 
       for (const cand of candidates) {
         if (accepted.length >= maxLabels && !cand.isFocused) break;
-        const estW = Math.min(180, Math.max(54, cand.text.length * 6.4 + 14));
+        const estW = Math.min(185, Math.max(54, cand.text.length * 6.4 + 14));
         const estH = 20;
         const box = {
           x0: cand.x - estW / 2,
@@ -203,20 +190,24 @@ export function TemporalGraph({
         const tParseDone = performance.now();
 
         if (cancelled) return;
+        const isoWeeks = parsed._meta.iso_weeks ?? parsed._meta.weeks;
         window.__metrics = {
           ...window.__metrics,
           t_fetch_ms: Math.round((tFetchDone - t0) * 10) / 10,
           t_parse_ms: Math.round((tParseDone - tFetchDone) * 10) / 10,
           n_nodes: parsed.nodes.length,
-          n_weeks: parsed.weeks.length,
+          n_weeks: isoWeeks.length,
         };
         dataRef.current = parsed;
         setData(parsed);
 
-        const defaultIdx =
-          week && parsed.weeks.includes(week)
-            ? parsed.weeks.indexOf(week)
-            : parsed.weeks.length - 1;
+        let defaultIdx = isoWeeks.length - 1;
+        if (week) {
+          const idxIso = isoWeeks.indexOf(week);
+          const idxWk = parsed._meta.weeks.indexOf(week);
+          if (idxIso >= 0) defaultIdx = idxIso;
+          else if (idxWk >= 0) defaultIdx = idxWk;
+        }
         setWeekIdx(Math.max(0, defaultIdx));
         setLoading(false);
       })
@@ -234,10 +225,11 @@ export function TemporalGraph({
   // Update week index when prop `week` changes
   useEffect(() => {
     if (!data || !week) return;
-    const idx = data.weeks.indexOf(week);
-    if (idx >= 0) {
-      setWeekIdx(idx);
-    }
+    const isoWeeks = data._meta.iso_weeks ?? data._meta.weeks;
+    const idxIso = isoWeeks.indexOf(week);
+    const idxWk = data._meta.weeks.indexOf(week);
+    if (idxIso >= 0) setWeekIdx(idxIso);
+    else if (idxWk >= 0) setWeekIdx(idxWk);
   }, [week, data]);
 
   // Initialize cosmos.gl Graph once `data` and `canvasHostRef` are available
@@ -247,32 +239,46 @@ export function TemporalGraph({
     const tInit0 = performance.now();
 
     const nNodes = data.nodes.length;
-    const nWeeks = data.weeks.length;
+    const nWeeks = data._meta.weeks.length;
     const positions = new Float32Array(nNodes * 2);
     for (let i = 0; i < nNodes; i++) {
-      const xy = data.positions?.[i] ?? [2048, 2048];
-      positions[i * 2] = xy[0];
-      positions[i * 2 + 1] = xy[1];
+      const node = data.nodes[i];
+      positions[i * 2] = node.x ?? 2048;
+      positions[i * 2 + 1] = node.y ?? 2048;
     }
 
-    const prArr = data.node_metrics.pagerank_pct;
-    const dgArr = data.node_metrics.deg_growth;
-    const decArr = data.node_metrics.decision_code;
-    const rankArr = data.node_metrics.rank;
+    // Group columnar edges by week index
+    const bucketSrc: number[][] = Array.from({ length: nWeeks }, () => []);
+    const bucketTgt: number[][] = Array.from({ length: nWeeks }, () => []);
+    const bucketNpmi: number[][] = Array.from({ length: nWeeks }, () => []);
+    const srcCol = data.edges.source;
+    const tgtCol = data.edges.target;
+    const wkCol = data.edges.week;
+    const npmiCol = data.edges.npmi;
+    for (let e = 0; e < srcCol.length; e++) {
+      const w = wkCol[e];
+      if (w >= 0 && w < nWeeks) {
+        bucketSrc[w].push(srcCol[e]);
+        bucketTgt[w].push(tgtCol[e]);
+        bucketNpmi[w].push(npmiCol[e]);
+      }
+    }
 
     const linksPerWeek: Float32Array[] = [];
     const widthsPerWeek: Float32Array[] = [];
     const sizesPerWeek: Float32Array[] = [];
     const colorsPerWeek: Float32Array[] = [];
+    const edgeCounts: number[] = [];
 
     for (let w = 0; w < nWeeks; w++) {
-      const rawEdges = data.edges_by_week[w] ?? [];
-      const links = new Float32Array(rawEdges.length * 2);
-      const widths = new Float32Array(rawEdges.length);
-      for (let e = 0; e < rawEdges.length; e++) {
-        links[e * 2] = rawEdges[e][0];
-        links[e * 2 + 1] = rawEdges[e][1];
-        const npmi = rawEdges[e][3] ?? 0.2;
+      const m = bucketSrc[w].length;
+      edgeCounts.push(m);
+      const links = new Float32Array(m * 2);
+      const widths = new Float32Array(m);
+      for (let e = 0; e < m; e++) {
+        links[e * 2] = bucketSrc[w][e];
+        links[e * 2 + 1] = bucketTgt[w][e];
+        const npmi = bucketNpmi[w][e] ?? 0.2;
         widths[e] = Math.max(0.45, Math.min(2.2, npmi * 2.5));
       }
       linksPerWeek.push(links);
@@ -281,55 +287,50 @@ export function TemporalGraph({
       const sizes = new Float32Array(nNodes);
       const colors = new Float32Array(nNodes * 4);
       for (let i = 0; i < nNodes; i++) {
-        const nodeId = data.nodes[i].toLowerCase();
-        const isFocused = highlightSet.has(nodeId);
-        const pr = prArr?.[i]?.[w] ?? 20;
-        const dg = dgArr?.[i]?.[w] ?? 0;
-        const dec = decArr?.[i]?.[w] ?? 0;
-        const rk = rankArr?.[i]?.[w] ?? null;
+        const node = data.nodes[i];
+        const isFocused = highlightSet.has(node.id.toLowerCase());
+        const pr = node.pagerank?.[w] ?? 0.0002;
+        const dg = node.deg_growth?.[w] ?? 0;
+        const dec = node.decision?.[w] ?? null;
+        const rk = node.rank?.[w] ?? null;
         const isTop10 = rk !== null && rk >= 1 && rk <= 10;
 
-        let sz = 2.8 + (pr / 100) * 8.5;
-        if (isTop10) sz = Math.max(sz, 11.5);
-        if (isFocused) sz = Math.max(sz, 14.5);
+        const prNorm = Math.min(1, Math.sqrt(Math.max(0, pr) / 0.008));
+        let sz = 3.2 + prNorm * 9.0;
+        if (isTop10) sz = Math.max(sz, 12.0);
+        if (isFocused) sz = Math.max(sz, 15.0);
         sizes[i] = sz;
 
         if (isFocused) {
-          // Rose highlight
-          colors[i * 4] = 244;
-          colors[i * 4 + 1] = 63;
-          colors[i * 4 + 2] = 94;
-          colors[i * 4 + 3] = 255;
-        } else if (dec === 3) {
-          // publicar_ahora: emerald green
-          colors[i * 4] = 34;
-          colors[i * 4 + 1] = 197;
-          colors[i * 4 + 2] = 94;
-          colors[i * 4 + 3] = 245;
-        } else if (dec === 2) {
-          // preparar: bright sky blue
-          colors[i * 4] = 56;
-          colors[i * 4 + 1] = 189;
-          colors[i * 4 + 2] = 248;
-          colors[i * 4 + 3] = 240;
-        } else if (dec === 1) {
-          // esperar: amber
-          colors[i * 4] = 245;
-          colors[i * 4 + 1] = 158;
-          colors[i * 4 + 2] = 11;
-          colors[i * 4 + 3] = 225;
-        } else if (dg >= 0.35) {
-          // Fast-growing unranked neighbor: teal
-          colors[i * 4] = 45;
-          colors[i * 4 + 1] = 212;
-          colors[i * 4 + 2] = 191;
-          colors[i * 4 + 3] = 195;
+          colors[i * 4] = 244 / 255;
+          colors[i * 4 + 1] = 63 / 255;
+          colors[i * 4 + 2] = 94 / 255;
+          colors[i * 4 + 3] = 1.0;
+        } else if (dec === "publicar_ahora") {
+          colors[i * 4] = 34 / 255;
+          colors[i * 4 + 1] = 197 / 255;
+          colors[i * 4 + 2] = 94 / 255;
+          colors[i * 4 + 3] = 0.96;
+        } else if (dec === "preparar") {
+          colors[i * 4] = 56 / 255;
+          colors[i * 4 + 1] = 189 / 255;
+          colors[i * 4 + 2] = 248 / 255;
+          colors[i * 4 + 3] = 0.95;
+        } else if (dec === "esperar") {
+          colors[i * 4] = 245 / 255;
+          colors[i * 4 + 1] = 158 / 255;
+          colors[i * 4 + 2] = 11 / 255;
+          colors[i * 4 + 3] = 0.9;
+        } else if (dg >= 0.4) {
+          colors[i * 4] = 45 / 255;
+          colors[i * 4 + 1] = 212 / 255;
+          colors[i * 4 + 2] = 191 / 255;
+          colors[i * 4 + 3] = 0.82;
         } else {
-          // Background context node: slate
-          colors[i * 4] = 100;
-          colors[i * 4 + 1] = 116;
-          colors[i * 4 + 2] = 139;
-          colors[i * 4 + 3] = 135;
+          colors[i * 4] = 100 / 255;
+          colors[i * 4 + 1] = 116 / 255;
+          colors[i * 4 + 2] = 139 / 255;
+          colors[i * 4 + 3] = 0.55;
         }
       }
       sizesPerWeek.push(sizes);
@@ -341,14 +342,15 @@ export function TemporalGraph({
       widths: widthsPerWeek,
       sizes: sizesPerWeek,
       colors: colorsPerWeek,
+      edgeCounts,
     };
 
     const graph = new Graph(host, {
       spaceSize: 4096,
       backgroundColor: "#0f172a",
       pointDefaultSize: 4,
-      linkDefaultWidth: 0.7,
-      linkDefaultColor: [148, 163, 184, 42],
+      linkDefaultWidth: 0.65,
+      linkDefaultColor: [148 / 255, 163 / 255, 184 / 255, 0.16],
       curvedLinks: false,
       scalePointsOnZoom: true,
       enableSimulation: false,
@@ -356,12 +358,11 @@ export function TemporalGraph({
       fitViewOnInit: false,
       attribution: "",
       onZoom: () => {
-        const currentW = weekIdxRef.current;
-        recomputeLabels(currentW);
+        recomputeLabels(weekIdxRef.current);
       },
       onClick: (index) => {
         if (index !== undefined && data.nodes[index]) {
-          onSelectTopic?.(data.nodes[index]);
+          onSelectTopic?.(data.nodes[index].id);
         }
       },
     });
@@ -389,7 +390,6 @@ export function TemporalGraph({
               10,
           ) / 10;
 
-        // Detect WebGL renderer string
         let renderer = "WebGL2 (cosmos.gl)";
         const canvas = host.querySelector("canvas");
         const gl =
@@ -405,7 +405,7 @@ export function TemporalGraph({
           ...window.__metrics,
           renderer,
           t_first_frame_ms: firstFrameMs,
-          n_edges_w: (data.edges_by_week[initialW] ?? []).length,
+          n_edges_w: edgeCounts[initialW] ?? 0,
         };
         setMetricsSnapshot((prev) => ({ ...prev, firstFrameMs }));
         recomputeLabels(initialW);
@@ -431,7 +431,7 @@ export function TemporalGraph({
     window.__metrics = {
       ...window.__metrics,
       week_switch_ms: list,
-      n_edges_w: (data.edges_by_week[weekIdx] ?? []).length,
+      n_edges_w: weekArraysRef.current?.edgeCounts[weekIdx] ?? 0,
     };
   }, [weekIdx, data, applyWeekToGraph]);
 
@@ -448,7 +448,7 @@ export function TemporalGraph({
     rafId = requestAnimationFrame(countFrame);
 
     let stepCount = 0;
-    const totalWeeks = data.weeks.length;
+    const totalWeeks = data._meta.weeks.length;
     const interval = window.setInterval(() => {
       stepCount += 1;
       setWeekIdx((prev) => (prev + 1) % totalWeeks);
@@ -479,8 +479,13 @@ export function TemporalGraph({
     };
   }, [playing, data]);
 
-  const currentWeekStr = data?.weeks[weekIdx] ?? week ?? "2026-W42";
-  const currentEdgesCount = data?.edges_by_week[weekIdx]?.length ?? 0;
+  const isoWeeks = data?._meta?.iso_weeks ?? data?._meta?.weeks ?? [];
+  const currentWeekStr =
+    isoWeeks[weekIdx] ?? data?._meta?.weeks?.[weekIdx] ?? week ?? "2026-W42";
+  const currentEdgesCount =
+    data?._meta?.edges_per_week?.[weekIdx] ??
+    weekArraysRef.current?.edgeCounts[weekIdx] ??
+    0;
   const topMovers: TemporalMover[] =
     data?._meta?.top_movers_per_week?.[weekIdx] ?? [];
 
@@ -502,7 +507,7 @@ export function TemporalGraph({
           <input
             type="range"
             min={0}
-            max={Math.max(0, (data?.weeks.length ?? 1) - 1)}
+            max={Math.max(0, isoWeeks.length - 1)}
             value={weekIdx}
             onChange={(e) => {
               setPlaying(false);
@@ -521,7 +526,7 @@ export function TemporalGraph({
             <>
               <strong>{data.nodes.length.toLocaleString()}</strong> nodos ·{" "}
               <strong>{currentEdgesCount.toLocaleString()}</strong> aristas (top-
-              {data._meta.top_k} NPMI/nodo, medido)
+              {data._meta.params.top_k_per_node} NPMI/nodo, medido)
             </>
           ) : (
             "Cargando..."
@@ -577,7 +582,7 @@ export function TemporalGraph({
               <span className="legend-dot legend-esp" /> Esperar
             </span>
             <span className="legend-item">
-              <span className="legend-dot legend-grow" /> En ascenso (grado +35%)
+              <span className="legend-dot legend-grow" /> En ascenso (grado +40%)
             </span>
             <span className="legend-item">
               <span className="legend-dot legend-ctx" /> Contexto IA
@@ -585,39 +590,63 @@ export function TemporalGraph({
           </div>
         </div>
 
-        <aside className="temporal-movers-aside" aria-label="Mayores subidas de la semana">
+        <aside
+          className="temporal-movers-aside"
+          aria-label="Mayores subidas de la semana"
+        >
           <div className="movers-header">
-            <h4>Subidas de la semana ({currentWeekStr})</h4>
-            <span className="muted">Crecimiento de grado vs media 4 sem (medido)</span>
+            <h4>Temas destacados ({currentWeekStr})</h4>
+            <span className="muted">
+              Top priorizados y subidas de grado (medido)
+            </span>
           </div>
           <ul className="movers-list">
-            {topMovers.map((m) => (
-              <li key={m.id} className="mover-item">
-                <div className="mover-top">
-                  <button
-                    type="button"
-                    className="mover-link"
-                    onClick={() => {
-                      onSelectTopic?.(m.id);
-                      onOpenStory?.(m.id);
-                    }}
-                  >
-                    {m.label_es}
-                  </button>
-                  <span className={`decision-badge decision-${m.decision}`}>
-                    {DECISION_LABELS_ES[m.decision]}
-                  </span>
-                </div>
-                <div className="mover-meta">
-                  <code>{m.id}</code> · grado{" "}
-                  <strong>
-                    {m.deg_growth >= 0 ? "+" : ""}
-                    {(m.deg_growth * 100).toFixed(0)}%
-                  </strong>{" "}
-                  · PageRank <strong>{m.pagerank_pct.toFixed(0)} pct</strong>
-                </div>
-              </li>
-            ))}
+            {topMovers.map((m) => {
+              const dec = m.decision ?? "no_es_tema_caliente";
+              return (
+                <li key={m.id} className="mover-item">
+                  <div className="mover-top">
+                    <button
+                      type="button"
+                      className="mover-link"
+                      onClick={() => {
+                        onSelectTopic?.(m.id);
+                        onOpenStory?.(m.id);
+                      }}
+                    >
+                      {m.rank != null ? `#${m.rank} ` : ""}
+                      {m.label_es}
+                    </button>
+                    <span className={`decision-badge decision-${dec}`}>
+                      {DECISION_LABELS_ES[dec]}
+                    </span>
+                  </div>
+                  <div className="mover-meta">
+                    <code>{m.id}</code>
+                    {m.deg_growth != null && (
+                      <>
+                        {" "}
+                        · grado{" "}
+                        <strong>
+                          {m.deg_growth >= 0 ? "+" : ""}
+                          {(m.deg_growth * 100).toFixed(0)}%
+                        </strong>
+                      </>
+                    )}
+                    {m.pr_rank_delta != null && (
+                      <>
+                        {" "}
+                        · ΔPR{" "}
+                        <strong>
+                          {m.pr_rank_delta >= 0 ? "+" : ""}
+                          {m.pr_rank_delta}
+                        </strong>
+                      </>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
           {metricsSnapshot.firstFrameMs !== undefined && (
             <div className="graph-perf-footer">
