@@ -79,7 +79,10 @@ ignore = [
 "bq_sql/**" = ["E401", "E501", "BLE001", "S608"]
 # Pipeline and model jobs build SQL from fixed table and column names in code, never from input.
 "pipelines/**" = ["S608"]
-"models/**" = ["N803", "N806"]  # math-style names (X, y_hat) are normal in model code
+"models/**" = ["N803", "N806"]
+# Orchestrator scripts call the bq CLI with fixed arguments, build SQL from constants in code (never
+# from input) and print what they wrote.
+"scripts/**" = ["S603", "S607", "S608", "T201"]  # math-style names (X, y_hat) are normal in model code
 
 [tool.ruff.lint.isort]
 known-first-party = ["radar"]

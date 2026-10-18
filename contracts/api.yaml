@@ -1,0 +1,74 @@
+openapi: 3.1.0
+info:
+  title: Radar API
+  version: 0.1.0
+  description: >
+    Read-only API over the lake (DuckDB over Parquet) plus the agent chat. Owner: WS5 (API),
+    orchestrator (chat). Schemas reference the JSON Schemas in this folder.
+paths:
+  /api/radar:
+    get:
+      summary: Weekly top 10
+      parameters:
+        - {name: week, in: query, schema: {type: string, pattern: "^[0-9]{4}-W[0-9]{2}$"}}
+        - {name: limit, in: query, schema: {type: integer, default: 10, maximum: 50}}
+      responses:
+        "200":
+          description: Ranked topics
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "topic_scores_weekly.schema.json"}}
+  /api/topic/{topic_id}/timeline:
+    get:
+      summary: Daily series of one topic by language
+      parameters: [{name: topic_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200":
+          description: Series
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "topic_daily.schema.json"}}
+  /api/topic/{topic_id}/context:
+    get:
+      summary: The 1-hop context ring
+      parameters:
+        - {name: topic_id, in: path, required: true, schema: {type: string}}
+        - {name: week, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: Neighbours
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "topic_context_1hop.schema.json"}}
+  /api/freshness:
+    get:
+      summary: Newest data per source and the profile served (dev or full)
+      responses:
+        "200": {description: Freshness}
+  /api/chat:
+    post:
+      summary: One turn with the Media Master
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                conversation_id: {type: string}
+                message: {type: string, maxLength: 2000}
+                week: {type: string}
+      responses:
+        "200":
+          description: The answer, its decision cards, view commands and trace
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [conversation_id, answer_es, decision_cards, view_commands, trace]
+                properties:
+                  conversation_id: {type: string}
+                  answer_es: {type: string}
+                  decision_cards: {type: array, items: {$ref: "decision_card.schema.json"}}
+                  view_commands: {type: array, items: {$ref: "view_command.schema.json"}}
+                  trace: {type: array, items: {$ref: "agent_trace.schema.json"}}

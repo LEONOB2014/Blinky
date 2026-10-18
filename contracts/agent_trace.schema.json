@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/agent_trace.schema.json",
+  "title": "One step of an agent conversation, shown in the trace panel",
+  "description": "agents/ runtime -> API -> web trace panel; also written to lake/agent_traces/ for the evaluation",
+  "type": "object",
+  "x-owner": "orchestrator (agents/)",
+  "x-mock": "pending-first-agent-run",
+  "properties": {
+    "conversation_id": {
+      "type": "string"
+    },
+    "step": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "agent": {
+      "type": "string",
+      "enum": [
+        "media_master",
+        "scout",
+        "curator",
+        "signal_analyst",
+        "cartographer",
+        "audience_strategist",
+        "editor",
+        "auditor"
+      ]
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "delegate",
+        "tool_call",
+        "tool_result",
+        "answer",
+        "veto"
+      ]
+    },
+    "tool": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "arguments": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "result_summary": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    },
+    "latency_ms": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "tokens": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "model": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "conversation_id",
+    "step",
+    "agent",
+    "action"
+  ],
+  "additionalProperties": false
+}

@@ -9,21 +9,24 @@ about to land on LinkedIn, why, and from which emotional angle to tell them to L
 
 ## Project map
 
-| Path | Workstream | Owner | What it is |
-|---|---|---|---|
-| `contracts/`, `mocks/` | WS0 | lead | Data and API contracts (JSON Schema, `api.yaml`, `taxonomy.yaml`) and their mocks |
-| `bq_sql/` | WS0 / WS1 | lead | BigQuery scripts Q1–Q4 and S1–S10 |
-| `pipelines/ingest/` | WS1 | claude-work | `run_bq.py` (dry run, cap, ledger), exports to Parquet, raw-file poller, DQ |
-| `pipelines/taxonomy/` | WS2 | claude-extend | Labeling functions, LLM labels, embeddings routing, gold set |
-| `graph/` | WS3 | claude-home | Weekly co-occurrence graphs, metrics, GPU tier-1 layout, story-view JSON |
-| `models/` | WS4 | claude-cacho | Six scores, sentiment, LightGBM + SHAP backtest |
-| `models/tgnn/` | WS7 | claude-extend | TGNN stretch (gated, never blocks WS4) |
-| `api/`, `web/` | WS5 | Gemini CLI | FastAPI over DuckDB (Modal), Lovable UI (Netlify) |
-| `entity/`, `crosssource/` | WS6 | Grok CLI | Wikidata resolution, HN / Wikipedia / X / YouTube lead-lag |
-| `src/radar/` | all | lead | Shared helpers: lake paths, contract validation |
-| `status/` | all | each WS | `WS<N>.md`, updated before every sync |
-| `reports/` | all | each WS | Evidence: `bq_ledger.csv`, backtest, label quality, TGNN go/no-go |
-| `lake/` | all | — | Parquet outputs, **never in git** |
+| Path | Workstream | Account | Agent it implements | What it is |
+|---|---|---|---|---|
+| `contracts/`, `mocks/`, `fixtures/dev/` | WS0 | orchestrator (this repo's lead Claude) | — | Contracts, mocks copied from real output, the real dev slice |
+| `agents/` | WS0 | orchestrator | Media Master + runtime tools | Multi-agent runtime (Qwen3-30B on Nebius), decision cards, view commands, traces |
+| `bq_sql/`, `pipelines/ingest/` | WS1 | Claude #2 | Scout | BigQuery jobs (dry run, cap, ledger), backfill, exports, DQ |
+| `pipelines/taxonomy/` | WS2 | Claude #2 | Curator | Segments, subtopics, labels, filter P/R |
+| `models/` | WS4 | Claude #3 | Signal analyst, Audience strategist | Six scores, window, decision, backtest, editor-test sheet |
+| `graph/` | WS3 | Claude #4 | Cartographer | Graph metrics, 1-hop ring; the graph views last (after the gate) |
+| `models/tgnn/` | WS7 | Claude #4 | — | Baseline table only (EdgeBank, persistence) |
+| `entity/`, `crosssource/` | WS6 | Grok CLI | Scout (cross-source) | Wikidata, Wikipedia pageviews (the backtest label), HN, YouTube |
+| `api/`, `web/` | WS5 | Gemini (Antigravity) | — | FastAPI over DuckDB, a plain contract-driven UI with chat and trace panels; Lovable restyles it later |
+| `reports/` | all | each WS | Auditor | Evidence: `bq_ledger.csv`, backtest, label quality |
+| `src/radar/` | all | orchestrator | — | Shared helpers: lake paths, profiles, contract validation |
+| `status/` | all | each WS | — | `WS<N>.md`, updated before every sync |
+| `lake/` | all | — | — | Parquet outputs, **never in git** |
+
+The agents are defined in [`contracts/agents.yaml`](contracts/agents.yaml): each owns part of the
+system, its tools and a decision log. Code computes every decision; the LLM explains it.
 
 Work only in your workstream's directory. Anything outside it (the shared core, CI, contracts)
 goes through a PR the lead reviews.

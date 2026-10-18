@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/edges_weekly.schema.json",
+  "title": "Weekly entity co-occurrence with NPMI (n >= 3)",
+  "description": "BigQuery radar.edges_weekly (bq_sql/s4_aggregates.sql S4b) -> lake/gold/edges_weekly.parquet",
+  "type": "object",
+  "x-owner": "WS1 (built), WS3 (read)",
+  "x-mock": "dev-slice",
+  "properties": {
+    "wk": {
+      "type": "string",
+      "format": "date"
+    },
+    "x": {
+      "type": "string",
+      "description": "'<etype>:<entity>', etype in org, per, thm, loc"
+    },
+    "y": {
+      "type": "string"
+    },
+    "n": {
+      "type": "integer",
+      "minimum": 3
+    },
+    "n_src": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "distinct sources"
+    },
+    "nx": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "docs with x"
+    },
+    "ny": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "docs with y"
+    },
+    "n_docs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "docs that week"
+    },
+    "npmi": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "normalized PMI, -1..1"
+    }
+  },
+  "required": [
+    "wk",
+    "x",
+    "y",
+    "n",
+    "nx",
+    "ny",
+    "n_docs",
+    "npmi"
+  ],
+  "additionalProperties": false
+}
