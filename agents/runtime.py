@@ -271,8 +271,43 @@ def run_specialist(model: ChatModel, turn: Turn, agent: str, question: str) -> s
 _NUM = re.compile(r"(?<![\w-])-?\d+(?:[.,]\d+)?%?")
 
 
+_MONTHS_ES = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+]
+_DATE = re.compile(
+    r"\b(\d{4})-(\d{2})-(\d{2})\b"
+    rf"|\b(\d{{1,2}}) de ({'|'.join(_MONTHS_ES)})(?: de(?:l)? (\d{{4}}))?\b",
+    re.I,
+)
+
+
+def _dates(text: str) -> list[tuple[str, tuple[int | None, int, int]]]:
+    """Dates in a text, ISO ("2026-10-18") or Spanish ("18 de octubre de 2026", year optional)."""
+    out = []
+    for m in _DATE.finditer(text):
+        if m.group(1):
+            out.append((m.group(0), (int(m.group(1)), int(m.group(2)), int(m.group(3)))))
+        else:
+            month = _MONTHS_ES.index(m.group(5).lower()) + 1
+            year = int(m.group(6)) if m.group(6) else None
+            out.append((m.group(0), (year, month, int(m.group(4)))))
+    return out
+
+
 def _numbers(text: str) -> list[str]:
-    return [m.group(0) for m in _NUM.finditer(text)]
+    """Numbers outside dates: a date is read whole (see _dates), never as loose parts."""
+    return [m.group(0) for m in _NUM.finditer(_DATE.sub(" ", text))]
 
 
 def _as_float(token: str) -> float:
@@ -282,14 +317,27 @@ def _as_float(token: str) -> float:
 def _source_numbers(results: list[dict[str, Any]], extra: str) -> list[float]:
     found = [_as_float(t) for t in _numbers(extra)]
     for r in results:
-        found += [_as_float(t) for t in _numbers(json.dumps(r["result"], default=str))]
+        text = json.dumps(r["result"], default=str)
+        found += [_as_float(t) for t in _numbers(text)]
+        found += [float(d[0]) for _, d in _dates(text) if d[0]]  # a source date's year ("en 2026")
     return found
+
+
+def _source_dates(results: list[dict[str, Any]], extra: str) -> set[tuple[int | None, int, int]]:
+    texts = [extra] + [json.dumps(r["result"], default=str) for r in results]
+    return {d for t in texts for _, d in _dates(t)}
 
 
 def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
     """Numbers in the answer that match no tool result (allowing rounding and % of a share)."""
     sources = _source_numbers(results, question)
-    bad = []
+    dates = _source_dates(results, question)
+    # a date is traced when the same day appears in the data (a date without a year matches any year)
+    bad = [
+        text
+        for text, (y, m, d) in _dates(answer)
+        if not any(sm == m and sd == d and (y is None or sy in (y, None)) for sy, sm, sd in dates)
+    ]
     for token in _numbers(answer):
         value = _as_float(token)
         if abs(value) <= 12 and value == int(value):

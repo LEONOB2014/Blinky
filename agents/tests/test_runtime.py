@@ -288,3 +288,21 @@ def test_media_master_forbids_stories_beyond_the_data_like_the_briefs():
     assert runtime.MASTER_NO_NARRATIVE in prompt
     assert "no el negocio de la empresa" in prompt and "está redefiniendo" in prompt
     assert runtime.NO_NARRATIVE in briefs.SYSTEM  # one wording for both
+
+
+def test_auditor_reads_dates_whole_and_still_catches_numbers_beside_them():
+    from agents.runtime import untraced_numbers
+
+    results = [{"result": {"newest": {"daily_totals": "2026-10-18"}, "billed_gb": 380.75}}]
+    ok = "Los datos más recientes son del 18 de octubre de 2026 (2026-10-18), del 18 de octubre."
+    assert untraced_numbers(ok, results, "") == []
+    beside = "Datos al 2026-10-18, con 9999 artículos y 380.75 GB."
+    assert untraced_numbers(beside, results, "") == ["9999"]
+    assert untraced_numbers("Datos al 2026-10-19.", results, "") == ["2026-10-19"]
+    assert untraced_numbers("Datos del 19 de octubre de 2026.", results, "") == [
+        "19 de octubre de 2026"
+    ]
+    assert untraced_numbers("Datos del 18 de octubre de 2025.", results, "") == [
+        "18 de octubre de 2025"
+    ]
+    assert untraced_numbers("Todo en 2026.", results, "") == []  # the year of a source date
