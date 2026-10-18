@@ -61,3 +61,12 @@ pushes.
 ## Deadline (UTC-5)
 
 Items 1-4 by **06:45**; 5-7 by **07:30**.
+
+## Addendum (orchestrator, 05:25 UTC-5): two more from the live-site check
+
+8. **FINDING-008 (high, honesty):** the card says "Encaje LatAm: 65% (medido)", but audience fit is a
+   rule-based estimate (`why` says "regla v1, estimación"). Mark it estimated wherever it appears.
+9. **FINDING-009 (medium):** the trust panel shows the label-quality and backtest reports as raw markdown
+   (tables as pipes). Render them properly: either a small markdown-table renderer for the existing
+   `evidence/*.json`, or the key numbers as a compact table (coverage, precision@10 with interval,
+   baselines, base rate; filter precision/recall vs the model panel, "verificación humana pendiente").
