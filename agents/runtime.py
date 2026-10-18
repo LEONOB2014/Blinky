@@ -352,7 +352,10 @@ ROUTES = [
         re.compile(r"public|sube|subiendo|crece|caliente|tendenc|top|semana|tema", re.I),
         "signal_analyst",
     ),
-    (re.compile(r"[aá]ngulo|ejecutiv|latam|audiencia|encaj", re.I), "audience_strategist"),
+    (
+        re.compile(r"[aá]ngulo|ejecutiv|latam|audiencia|encaj|\btono\b|sentimiento|emoci", re.I),
+        "audience_strategist",
+    ),
     (re.compile(r"contenido|guion|gancho|post|formato|escrib|brief", re.I), "editor"),
     (re.compile(r"cost[oóa]|costad|cuesta|gast|factur|fresc|actualiz|fuente", re.I), "scout"),
     (re.compile(r"conf[ií]a|backtest|precisi|evidencia|calidad", re.I), "auditor"),
@@ -363,6 +366,39 @@ ROUTES = [
 def route(question: str) -> list[str]:
     """Specialists the question needs, by keyword (Qwen3-30B routes poorly on its own)."""
     return [agent for pattern, agent in ROUTES if pattern.search(question)]
+
+
+# Questions no tool can answer, recognised by code (the LLM answered them with unrelated numbers).
+OUT_OF_SCOPE = [
+    (
+        re.compile(
+            # social-network metrics only: "predice", "pronóstico" or "cuántos días tendrá" are
+            # questions the radar answers, so they must not land here
+            r"\blikes?\b|me gusta|seguidores|followers|engagement|impresiones|viraliz|"
+            r"alcance (?:de|tendr[aá]|en) (?:mi|un|el|nuestro) (?:post|publicaci[oó]n)",
+            re.I,
+        ),
+        "no predice likes, alcance ni resultados de una publicación: no lee LinkedIn ni redes "
+        "sociales",
+    ),
+    (
+        re.compile(r"\bopina\b|opini[oó]n|qu[eé] piensa|qu[eé] dijo|declaraci", re.I),
+        "no sigue lo que opinan o dicen personas concretas: no guarda nombres de personas",
+    ),
+]
+CAN_DO = (
+    "Lo que sí puedo decirte: qué temas de IA están subiendo esta semana y por qué, desde qué "
+    "ángulo contarlos a ejecutivos de LatAm, qué contenido preparar y qué tan frescos y confiables "
+    "son los datos. Prueba con «¿Qué debería publicar esta semana?»."
+)
+
+
+def out_of_scope(question: str) -> str | None:
+    """A short honest answer for questions no tool covers (code, no LLM, no numbers), else None."""
+    for pattern, why in OUT_OF_SCOPE:
+        if pattern.search(question):
+            return f"Eso no lo puede responder el radar: {why}. {CAN_DO}"
+    return None
 
 
 _DECISION_WORDS = re.compile(r"publicar ahora|no es tema caliente|\bpreparar\b(?= ya| ahora)", re.I)
@@ -378,6 +414,58 @@ def _decisions_by_code(turn: Turn) -> dict[str, str]:
 
 
 _WEEK_IN_TEXT = re.compile(r"\b(\d{4}-W\d{2})\b")
+
+DECISION_ES = {
+    "publicar_ahora": "Publicar ahora",
+    "preparar": "Preparar",
+    "esperar": "Esperar",
+    "no_es_tema_caliente": "No es tema caliente",
+}
+_PLURAL = re.compile(r"\btop\b|\btemas\b|\d", re.I)
+
+# How the Media Master writes for an executive (measured: the judge penalised raw ids, field names,
+# long data dumps and decisions about topics nobody asked about).
+PLAIN = (
+    "Escribe para un ejecutivo de medios, en español llano. Nunca uses nombres de campos ni "
+    "identificadores internos (z_7d, emergence_pct, saturation, npmi, growth_7d_log, 'org:…', "
+    "'thm:…', 'funding_markets'): di el nombre del tema y lo que significa ('crece muy rápido', "
+    "'casi nadie lo cuenta en español'). Redondea: porcentajes sin decimales y como mucho tres "
+    "cifras. Responde primero exactamente lo que se pregunta."
+)
+
+
+def topic_name(row: dict[str, Any]) -> str:
+    """How an executive reads a topic: its Spanish label, else the name without the 'org:' prefix."""
+    tid = row.get("topic_id") or ""
+    label = row.get("label_es")
+    if label and label != tid:
+        return label
+    return tools.labels_es().get(tid) or (tid.split(":", 1)[1] if ":" in tid else tid)
+
+
+def decision_line(turn: Turn, entity: str | None, question: str) -> str:
+    """The first line of the answer, written by code from WS4's decisions, in plain words.
+
+    An entity question gets that entity's decision only (or says it has none); otherwise the #1
+    topic, or the top 3 when the question asks for several.
+    """
+    rows: list[dict[str, Any]] = []
+    for r in turn.tool_results:
+        if r["tool"] in {"get_top10", "get_topic_scores"} and r["result"].get("available"):
+            rows += r["result"]["rows"]
+    if entity:
+        mine = [r for r in rows if r.get("topic_id") == entity]
+        name = entity.split(":", 1)[1] if ":" in entity else entity
+        if not mine:
+            return f"Decisión del radar: {name} no está entre los temas puntuados esta semana."
+        return f"Decisión del radar para {topic_name(mine[0])}: {DECISION_ES[mine[0]['decision']]}."
+    top = [r for r in rows if r.get("rank") is not None]
+    top = sorted({r["topic_id"]: r for r in top}.values(), key=lambda r: r["rank"])
+    if not top:
+        return "Decisión del radar: pendiente (las puntuaciones de esta semana aún no están)."
+    n = 3 if _PLURAL.search(question) else 1
+    parts = [f"{DECISION_ES[r['decision']]} — {topic_name(r)}" for r in top[:n]]
+    return "Decisión del radar: " + "; ".join(parts) + "."
 
 
 _WORD = re.compile(r"[\wáéíóúñü&.-]+", re.I)
@@ -471,7 +559,10 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
-        "cartographer": [("get_context_1hop", {"entity": entity, "week": week})] if entity else [],
+        # no entity named: the ring of the week's #1 topic, so the answer has real neighbours
+        "cartographer": [("get_context_1hop", {"entity": entity or leader, "week": week})]
+        if (entity or (leader and ":" in leader))
+        else [],
         "editor": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa", "weeks": 4})
         ],
@@ -550,6 +641,14 @@ def run_turn(
 ) -> dict[str, Any]:
     model = model or NebiusChat()
     turn = Turn(conversation_id or uuid.uuid4().hex[:12])
+    if refusal := out_of_scope(question):
+        turn.log("media_master", "answer", result_summary="fuera de alcance (ruta por código)")
+        answer, bad, decision_vetoed = _audit(turn, refusal, question)
+        turn.answer_es = answer
+        response = turn.as_response()
+        _tag_run(["out_of_scope"], bad, decision_vetoed, week)
+        _save_trace(question, response)
+        return response
     week = week or (m.group(1) if (m := _WEEK_IN_TEXT.search(question)) else None)
     entity = _entity_in_question(question, week)
     needed = route(question)
@@ -591,11 +690,16 @@ def run_turn(
                 )
             )
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
-        decided = _decisions_by_code(turn)
-        decision_line = (
-            ", ".join(f"{k}: {v}" for k, v in list(decided.items())[:3])
-            if decided
-            else "PENDIENTE (las puntuaciones formales aún no están calculadas)"
+        decides = "signal_analyst" in needed or "editor" in needed
+        line = decision_line(turn, entity, question) if decides else ""
+        instructions = (
+            f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
+            "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
+            "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
+            "(formato y enfoque). Máximo 6 líneas en total."
+            if decides
+            else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
+            "los informes; no agregues KPIs ni decisiones que no estén en ellos."
         )
         reply = model.chat(
             [
@@ -603,14 +707,7 @@ def run_turn(
                 {
                     "role": "user",
                     "content": f"Pregunta: {question}\n\nInformes de tu equipo:\n{team}\n\n"
-                    + (
-                        f"Decisión calculada por código: {decision_line}. Cópiala tal cual en una "
-                        "línea 'Decisión:'; no propongas otra. Luego integra (máx. 8 líneas): por qué, "
-                        "KPIs con sus números y qué contenido preparar."
-                        if "signal_analyst" in needed or "editor" in needed
-                        else "Responde la pregunta directamente (máx. 5 líneas) usando solo lo que "
-                        "dicen los informes; no agregues KPIs ni decisiones que no estén en ellos."
-                    ),
+                    f"{instructions} {PLAIN}",
                 },
             ],
             [],
@@ -623,7 +720,8 @@ def run_turn(
             tokens=reply.tokens,
             model=reply.model,
         )
-        answer = reply.content or ""
+        body = (reply.content or "").strip()
+        answer = f"{line}\n\n{body}" if line else body
     answer, bad, decision_vetoed = _audit(turn, answer, question)
     turn.answer_es = answer
     # cards only when the question is about what to publish, not about cost or freshness

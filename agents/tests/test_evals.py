@@ -38,3 +38,16 @@ def test_routing_and_entity():
     assert ev.routing(out, {"agents": ["cartographer", "signal_analyst"]})["score"] == 0.5
     assert ev.entity_resolved(out, {"entity": "org:nvidia"})["score"] == 1
     assert ev.entity_resolved(out, {"entity": None})["score"] is None
+
+
+def test_summarize_reports_mean_and_repetition_spread():
+    rows = [
+        {"qid": "q01", "scores": {"usefulness": 0.5, "grounding": 1}},
+        {"qid": "q02", "scores": {"usefulness": 1.0, "grounding": 1}},
+        {"qid": "q01", "scores": {"usefulness": 0.0, "grounding": 0}},
+        {"qid": "q02", "scores": {"usefulness": 0.5, "grounding": None}},
+    ]
+    s = ev.summarize(rows, repetitions=2)
+    assert s["usefulness"] == {"mean": 0.5, "rep_min": 0.25, "rep_max": 0.75, "n": 4}
+    assert s["grounding"]["n"] == 3 and s["grounding"]["rep_min"] == 0.0
+    assert s["latency_s"]["mean"] is None

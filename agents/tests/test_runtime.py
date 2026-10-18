@@ -74,3 +74,110 @@ def test_cost_questions_reach_the_scout():
 
     assert "scout" in route("¿Cuánto ha costado BigQuery hasta ahora?")
     assert "scout" in route("¿Cuánto se ha gastado?")
+
+
+def _turn_with(rows, tool="get_top10"):
+    turn = runtime.Turn("t")
+    turn.tool_results.append(
+        {"source": "t:1", "tool": tool, "args": {}, "result": {"available": True, "rows": rows}}
+    )
+    return turn
+
+
+_ROWS = [
+    {"topic_id": "org:marsh mclennan", "label_es": "Marsh & McLennan", "rank": 1,
+     "decision": "preparar"},
+    {"topic_id": "org:euronext", "label_es": "org:euronext", "rank": 2, "decision": "esperar"},
+    {"topic_id": "chips_infra", "label_es": None, "rank": 3, "decision": "publicar_ahora"},
+]  # fmt: skip
+
+
+@pytest.mark.unit
+def test_decision_line_is_plain_words_for_what_was_asked():
+    turn = _turn_with(_ROWS)
+    one = runtime.decision_line(turn, None, "¿Qué tema sube esta semana?")
+    assert one == "Decisión del radar: Preparar — Marsh & McLennan."
+    three = runtime.decision_line(turn, None, "Dame el top 3")
+    assert three.endswith("Esperar — euronext; Publicar ahora — Chips e infraestructura.")
+    assert "org:" not in three and "_" not in three
+    mine = runtime.decision_line(turn, "org:euronext", "¿Euronext es tema caliente?")
+    assert mine == "Decisión del radar para euronext: Esperar."
+    none = runtime.decision_line(turn, "org:nvidia", "¿Qué pasa con Nvidia?")
+    assert "nvidia no está entre los temas puntuados" in none
+    assert "pendiente" in runtime.decision_line(runtime.Turn("t"), None, "¿Qué sube?")
+
+
+@pytest.mark.unit
+def test_the_answer_starts_with_the_code_decision_line():
+    model = ScriptedChat("Por qué:\n- crece rápido\nQué hacer: un carrusel.")
+    response = runtime.run_turn("¿Qué tema sube esta semana?", model=model)
+    first = response["answer_es"].splitlines()[0]
+    assert first.startswith("Decisión del radar:")  # dev slice: no scores -> pendiente
+    master = [m for m in model.calls if m[0]["content"].startswith("Eres el Maestro")][-1]
+    assert "No la repitas" in master[1]["content"] and "z_7d" in master[1]["content"]
+
+
+@pytest.mark.unit
+def test_out_of_scope_questions_get_an_honest_answer_without_the_llm():
+    model = ScriptedChat("no debería llamarse")
+    for q in [
+        "¿Cuántos likes tendrá mi próximo post en LinkedIn?",
+        "¿Qué opina Sam Altman de la IA?",
+    ]:
+        response = runtime.run_turn(q, model=model)
+        assert response["answer_es"].startswith("Eso no lo puede responder el radar")
+        assert not runtime._numbers(response["answer_es"])
+        assert response["decision_cards"] == [] and response["view_commands"] == []
+    assert model.calls == []
+    assert runtime.out_of_scope("Escribe un gancho para un post de LinkedIn") is None
+    assert runtime.out_of_scope("¿Qué debería publicar 30X esta semana?") is None
+
+
+@pytest.mark.unit
+def test_tone_questions_reach_the_audience_strategist():
+    assert "audience_strategist" in runtime.route("¿Cómo está el tono de las noticias de IA?")
+    assert "audience_strategist" in runtime.route("¿Qué sentimiento hay sobre la IA?")
+
+
+@pytest.mark.unit
+def test_cartographer_reads_the_leaders_ring_when_no_entity_is_named():
+    turn = runtime.Turn("t")
+    ctx = {"week": None, "leader": "org:google", "entity": None, "signals": {}}
+    runtime.gather(turn, "cartographer", "Muéstrame el grafo de la semana", ctx)
+    calls = [
+        s for s in turn.trace if s["action"] == "tool_call" and s["tool"] == "get_context_1hop"
+    ]
+    assert calls and calls[0]["arguments"]["entity"] == "org:google"
+    turn = runtime.Turn("t")
+    runtime.gather(turn, "cartographer", "grafo", ctx | {"leader": "chips_infra"})
+    assert not [s for s in turn.trace if s["tool"] == "get_context_1hop"]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "¿Qué predice el radar para la próxima semana?",
+        "¿Cuántos días tendrá la ventana del tema principal?",
+        "¿Qué pronóstico hay para la IA en salud?",
+        "¿Qué tema tiene más alcance en español?",
+    ],
+)
+def test_radar_questions_are_not_refused(question):
+    from agents.runtime import out_of_scope
+
+    assert out_of_scope(question) is None
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "¿Cuántos likes tendrá mi próximo post en LinkedIn?",
+        "¿Cuántos seguidores tiene 30X?",
+        "¿Qué opina Sam Altman de la regulación?",
+        "¿Qué alcance tendrá mi post?",
+    ],
+)
+def test_social_metrics_and_opinions_are_refused(question):
+    from agents.runtime import out_of_scope
+
+    assert out_of_scope(question) is not None
