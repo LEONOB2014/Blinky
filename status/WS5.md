@@ -6,7 +6,15 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 03:40 UTC-5 · Branch: `feat/ws5-graph-views` · Addendum 5 items 1–7 committed locally (item 8 not started). The orchestrator pushes. Counts below were recomputed from `lake/views/temporal.json` (3,794,275 bytes) after the unpruned edge-state re-export. The 02:55 figures marked **wrong** are not in that file.
+2026-10-18 03:51 UTC-5 · Branch: `feat/ws5-graph-views` · Addendum 5 items 1–8 committed locally. The orchestrator pushes. Graph counts below were recomputed from `lake/views/temporal.json` (3,794,275 bytes). The 02:55 figures marked **wrong** are not in that file.
+
+## Addendum 4 — Brief, Evidence, Trust (2026-10-18 03:51 UTC-5)
+
+The three cards read static JSON. A missing file, a non-JSON body (the preview server returns `index.html` with HTTP 200), or `"available": false` shows **pendiente** and does not throw. No brief text is written in the UI.
+
+`RADAR_PROFILE=full uv run --extra api python deploy/export_static.py --cards` writes the files under git-ignored `web/public/data/` and does not delete `views/`. This run *(measured)*: briefs 32,008 bytes (`2026-W41.json` and `2026-W42.json`, 10 rows each, `auditor_ok` true on 20/20), evidence topics 627,291 bytes (212 files), trust 26,323 bytes. `org:marsh mclennan` in W42 has 5 articles. `org:nvidia` is not in the W42 brief rows and has no `evidence/topics/org_nvidia.json`.
+
+Headed Chrome against `bun run preview` (`http://127.0.0.1:4173`, build `index-nBFIs8--.js` 301.68 kB): the Marsh brief headline matched the JSON file, the badge said “verificado por el Auditor”, and the view stayed on cards. Its evidence list had 5 links, each `target=_blank` and `http`. Nvidia’s brief said “Brief pendiente briefs/2026-W42.json” and its evidence said “Evidencia pendiente evidence/topics/org_nvidia.json”. The header button opened Confianza: BigQuery 379.54 GB over 65 jobs (379,543,617,536 bytes, medido, `reports/bq_ledger.csv`); Jev 0.044284 USD over 981 calls, median latency 377 ms (medido, `reports/jev_ledger.csv`). The backtest block cites `reports/backtest.md` and was not pendiente. Screenshot: `lake/views/ui_trust_cards.png` (not committed).
 
 ## Addendum 5 — corrected measurements (2026-10-18 03:40 UTC-5)
 

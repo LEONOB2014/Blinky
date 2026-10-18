@@ -18,12 +18,15 @@ Topics: every topic in a top 10 of the last 4 weeks, the subtopics (timelines on
 entities the UI offers by default.
 """
 
+import csv
 import datetime as dt
 import json
 import os
 import re
 import shutil
+import statistics
 import sys
+from collections import defaultdict
 from pathlib import Path
 from urllib.parse import quote
 
@@ -123,6 +126,8 @@ def export(out: Path = OUT) -> dict[str, int]:
         sizes["context"] += _write(tmp / "context" / slugs[topic] / "latest.json", get(base))
 
     sizes["other"] += _write(tmp / "freshness.json", get("/api/freshness"))
+    for part, n in export_demo_cards(tmp).items():
+        sizes[part] = sizes.get(part, 0) + n
     index = {
         "generated_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "profile": "full",
@@ -146,7 +151,117 @@ def export(out: Path = OUT) -> dict[str, int]:
     return sizes
 
 
+def _iso_week(day: dt.date) -> str:
+    iso = day.isocalendar()
+    return f"{iso.year}-W{iso.week:02d}"
+
+
+def _ledger_json(reports: Path) -> dict[str, object]:
+    """Totals from the committed ledgers. The UI prints these fields; it does not retype them."""
+    out: dict[str, object] = {}
+    bq = reports / "bq_ledger.csv"
+    if bq.exists():
+        with bq.open(newline="", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        by_ws: dict[str, int] = defaultdict(int)
+        for row in rows:
+            billed = (row.get("billed_bytes") or "").strip()
+            by_ws[row.get("workstream") or "?"] += int(billed) if billed.isdigit() else 0
+        total = sum(by_ws.values())
+        out["bigquery"] = {
+            "source": "reports/bq_ledger.csv",
+            "jobs": len(rows),
+            "billed_bytes": total,
+            "billed_gb": round(total / 1e9, 2),
+            "billed_gb_by_workstream": {k: round(v / 1e9, 2) for k, v in sorted(by_ws.items())},
+            "kind": "measured",
+        }
+    jev = reports / "jev_ledger.csv"
+    if jev.exists():
+        with jev.open(newline="", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        latencies = [float(row["latency_ms"]) for row in rows if row.get("latency_ms")]
+        out["jev"] = {
+            "source": "reports/jev_ledger.csv",
+            "calls": len(rows),
+            "input_tokens": sum(int(row.get("input_tokens") or 0) for row in rows),
+            "cost_usd": round(sum(float(row.get("cost_usd") or 0) for row in rows), 6),
+            "median_latency_ms": statistics.median(latencies) if latencies else None,
+            "kind": "measured",
+        }
+    return out
+
+
+def export_demo_cards(out: Path = OUT) -> dict[str, int]:
+    """Write brief, article, and trust JSON under ``out``. Does not delete other files.
+
+    Missing lake tables are skipped (the UI then says pendiente). Trust JSON is the
+    report text and the ledger totals, not a hand-typed summary.
+    """
+    require_full_profile()
+    import polars as pl
+
+    from radar.paths import gold
+
+    sizes = {"briefs": 0, "evidence_topics": 0, "evidence_trust": 0}
+    reports = REPO / "reports"
+    briefs_path = gold("topic_briefs_weekly")
+    if briefs_path.exists():
+        frame = pl.read_parquet(briefs_path)
+        for week in frame["week"].unique().to_list():
+            rows = frame.filter(pl.col("week") == week).sort("rank").to_dicts()
+            sizes["briefs"] += _write(out / "briefs" / f"{week}.json", rows)
+    evidence_path = gold("topic_evidence_weekly")
+    if evidence_path.exists():
+        frame = pl.read_parquet(evidence_path)
+        grouped: dict[str, dict[str, list[dict[str, object]]]] = {}
+        ids: dict[str, str] = {}
+        for row in frame.sort(["topic_id", "week", "evidence_rank"]).iter_rows(named=True):
+            topic_id = str(row["topic_id"])
+            name = slug(topic_id)
+            ids[name] = topic_id
+            weeks = grouped.setdefault(name, {})
+            week_value = row["week"]
+            week_key = _iso_week(week_value) if isinstance(week_value, dt.date) else str(week_value)
+            article = {
+                key: value.isoformat() if isinstance(value, dt.date) else value
+                for key, value in row.items()
+                if key not in {"topic_id", "week"}
+            }
+            weeks.setdefault(week_key, []).append(article)
+        for name, weeks in grouped.items():
+            body = {"topic_id": ids[name], "weeks": weeks}
+            sizes["evidence_topics"] += _write(out / "evidence" / "topics" / f"{name}.json", body)
+    for report_name in ("backtest.md", "label_quality.md"):
+        path = reports / report_name
+        stem = report_name.removesuffix(".md")
+        if path.exists():
+            body = {
+                "available": True,
+                "source": f"reports/{report_name}",
+                "markdown": path.read_text(encoding="utf-8"),
+                "kind": "measured",
+            }
+        else:
+            body = {
+                "available": False,
+                "source": f"reports/{report_name}",
+                "reason": "not written yet",
+            }
+        sizes["evidence_trust"] += _write(out / "evidence" / f"{stem}.json", body)
+    sizes["evidence_trust"] += _write(out / "evidence" / "ledgers.json", _ledger_json(reports))
+    return sizes
+
+
 def main() -> int:
+    if "--cards" in sys.argv:
+        sizes = export_demo_cards()
+        print(
+            "cards -> "
+            + ", ".join(f"{name} {n} bytes" for name, n in sizes.items())
+            + f" under {OUT}"
+        )
+        return 0
     export()
     return 0
 

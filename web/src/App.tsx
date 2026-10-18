@@ -6,8 +6,10 @@ import {
   fetchTopicTimeline,
   sendChatTurn,
 } from "./api";
+import { BriefBlock, EvidenceBlock, StoryIndexCards } from "./components/BriefEvidence";
 import { StoryGraph } from "./components/StoryGraph";
 import { TemporalGraph } from "./components/TemporalGraph";
+import { TrustPanel } from "./components/TrustPanel";
 import { LENS_NAMES, type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
 import { placeNamedTopic, type StoryPlacement } from "./temporalNodes";
 import type {
@@ -285,6 +287,7 @@ export function App() {
   const [splitPct, setSplitPct] = useState<number>(35);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [showTrust, setShowTrust] = useState(false);
   const [isCardsDrawerOpen, setIsCardsDrawerOpen] = useState<boolean>(false);
   const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(true);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
@@ -555,6 +558,15 @@ export function App() {
             qué ángulo contarlos a ejecutivos de LatAm (solo fuentes públicas).
           </p>
         </div>
+        <div className="header-actions">
+          <button
+            type="button"
+            className={showTrust ? "pill pill-active" : "pill"}
+            data-testid="trust-toggle"
+            onClick={() => setShowTrust((open) => !open)}
+          >
+            {showTrust ? "Ocultar confianza" : "Confianza"}
+          </button>
         <div className="freshness-box">
           <div className="freshness-title">
             Frescura de datos (`GET /api/freshness`) · perfil:{" "}
@@ -569,7 +581,10 @@ export function App() {
               ))}
           </div>
         </div>
+        </div>
       </header>
+
+      {showTrust && <TrustPanel />}
 
       <main className="split-view-container" ref={splitContainerRef}>
         {/* Left column: Top 10 cards + Chat + Timeline + Context + Trace */}
@@ -590,6 +605,7 @@ export function App() {
             </div>
 
             {radarItems.length === 0 ? (
+              <>
               <div className="empty-state" data-testid="radar-empty-notice">
                 <p>
                   <strong>Tabla `topic_scores_weekly` pendiente:</strong>{" "}
@@ -614,6 +630,8 @@ export function App() {
                   ))}
                 </div>
               </div>
+              <StoryIndexCards />
+              </>
             ) : (
               <div className="cards-grid">
                 {radarItems.map((card) => (
@@ -681,6 +699,8 @@ export function App() {
                         ))}
                       </ul>
                     )}
+                    <BriefBlock topicId={card.topic_id} week={card.week} />
+                    <EvidenceBlock topicId={card.topic_id} week={card.week} />
                   </article>
                 ))}
               </div>
@@ -1171,6 +1191,8 @@ export function App() {
                           </span>
                         )}
                       </div>
+                      <BriefBlock topicId={card.topic_id} week={card.week} />
+                      <EvidenceBlock topicId={card.topic_id} week={card.week} />
                     </div>
                   ))}
                 </div>

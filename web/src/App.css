@@ -1081,3 +1081,97 @@ li {
   border: 1px solid #475569;
   color: #f8fafc;
 }
+
+.header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.brief-block,
+.evidence-block {
+  margin-top: 0.55rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.88rem;
+}
+
+.brief-block summary,
+.evidence-block summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.brief-label {
+  font-weight: 600;
+  color: #334155;
+}
+
+.brief-body p {
+  margin: 0.35rem 0;
+}
+
+.auditor-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.auditor-review {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.pendiente {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  color: #475569;
+}
+
+.evidence-list {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.evidence-list a {
+  color: #1d4ed8;
+}
+
+.trust-panel {
+  margin-bottom: 1rem;
+}
+
+.trust-markdown {
+  max-height: 18rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.6rem;
+  font-size: 0.78rem;
+}
+
+.trust-slot {
+  margin-top: 0.8rem;
+}
+
+.trust-slot h3,
+.trust-slot h4 {
+  font-size: 0.95rem;
+  margin: 0.4rem 0;
+}
+
+.trust-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.trust-table td {
+  border-top: 1px solid #e2e8f0;
+  padding: 0.2rem 0.35rem;
+  vertical-align: top;
+}
