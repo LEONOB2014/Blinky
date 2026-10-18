@@ -1,0 +1,107 @@
+[
+  {
+    "week": "2026-W42",
+    "topic_id": "org:marsh mclennan",
+    "rank": 1,
+    "label_es": "Marsh & McLennan Companies",
+    "decision": "preparar",
+    "headline_es": "Marsh & McLennan Companies: un tema que crece muy rápido",
+    "what_happened_es": "Esta semana, 44 artículos en inglés hablaron de Marsh & McLennan Companies, sin ningún contenido en español ni portugués. El tema está en etapa de semilla, con una emergencia del 92 por ciento y cero saturación. Aún no hay noticias en español, pero su crecimiento es notable.",
+    "why_latam_es": "Aunque no hay datos específicos de LatAm, el tema tiene un encaje del 65 por ciento con intereses regionales, especialmente en inversiones y tecnología. Su relevancia creciente en mercados globales puede afectar decisiones de negocio en la región.",
+    "angle_es": "Explicar de forma neutral el surgimiento de Marsh & McLennan Companies como un tema de crecimiento acelerado, sin conexión directa con los subtemas, y destacar que aún no hay cobertura en español.",
+    "hook_es": "Marsh & McLennan Companies está apareciendo en medios internacionales con fuerza, pero aún no se habla de ello en español. ¿Qué está pasando y por qué importa?",
+    "format_es": "carrusel, porque permite mostrar el crecimiento semanal, la ausencia de contenido en español y el contexto global de forma clara y visual",
+    "numbers_cited": [
+      {
+        "name": "emergencia_percentil",
+        "value": 92,
+        "kind": "measured",
+        "source": "topic_scores_weekly"
+      },
+      {
+        "name": "encaje_latam_pct",
+        "value": 65,
+        "kind": "estimate",
+        "source": "topic_scores_weekly"
+      },
+      {
+        "name": "articulos_semana",
+        "value": 44,
+        "kind": "measured",
+        "source": "topic_sources_weekly"
+      },
+      {
+        "name": "articulos_ingles_semana_4",
+        "value": 44,
+        "kind": "measured",
+        "source": "get_topic_series"
+      }
+    ],
+    "auditor_ok": true,
+    "untraced_numbers": [],
+    "model": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "generated_at": "2026-10-18T08:31:13Z"
+  },
+  {
+    "week": "2026-W42",
+    "topic_id": "org:rocket lab",
+    "rank": 2,
+    "label_es": "Rocket Lab",
+    "decision": "esperar",
+    "headline_es": "Rocket Lab: crece rápido, pero aún no se habla de él en español",
+    "what_happened_es": "Esta semana, el número de artículos sobre Rocket Lab en inglés aumentó a 23, un salto significativo respecto a semanas anteriores. Aún no hay contenido en español ni portugués, aunque el tema está en etapa emergente con alta carga emocional y crece muy rápido.",
+    "why_latam_es": "Es un tema de inversión y tecnología que puede afectar mercados, infraestructura y modelos de negocio en LatAm, aunque aún no ha llegado al español. Su crecimiento acelerado indica que podría aparecer pronto en los medios locales.",
+    "angle_es": "Giro: Rocket Lab está pasando de ser un nombre poco conocido a un caso de crecimiento acelerado en tecnología espacial, con una ventana de oportunidad para posicionarse antes de que se haga visible en español.",
+    "hook_es": "Rocket Lab está creciendo muy rápido en inglés, pero en español aún no se habla de él. ¿Qué está pasando y por qué podría ser relevante para LatAm?",
+    "format_es": "carrusel, porque permite mostrar el crecimiento en artículos, la falta de contenido en español y los datos clave de forma visual y clara",
+    "numbers_cited": [
+      {
+        "name": "articulos_ingles_semana_4",
+        "value": 23,
+        "kind": "measured",
+        "source": "get_topic_series"
+      }
+    ],
+    "auditor_ok": true,
+    "untraced_numbers": [],
+    "model": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "generated_at": "2026-10-18T08:31:21Z"
+  },
+  {
+    "week": "2026-W42",
+    "topic_id": "org:national stock exchange",
+    "rank": 3,
+    "label_es": "national stock exchange",
+    "decision": "preparar",
+    "headline_es": "El mercado de valores nacional crece rápido: ¿cómo aprovecharlo?",
+    "what_happened_es": "Esta semana, el tema 'national stock exchange' mostró un crecimiento muy rápido en inglés, con 24 artículos publicados, pero aún no se ha mencionado en español. Según la estimación del radar, faltan unos 5 días para que llegue al español.",
+    "why_latam_es": "Aunque no hay datos específicos de LatAm, el tema está en una etapa emergente con alta relevancia global, lo que puede ofrecer oportunidades tempranas para ejecutivos que quieran anticiparse a tendencias financieras internacionales.",
+    "angle_es": "Oportunidad: aprovechar el crecimiento temprano de un tema que aún no se cuenta en español, antes de que se vuelva común.",
+    "hook_es": "¿Sabías que un mercado de valores nacional está creciendo muy rápido en inglés, pero aún no se habla de él en español? Faltan unos 5 días para que llegue. Es momento de prepararse.",
+    "format_es": "carrusel, porque permite mostrar datos clave, el contexto global y las oportunidades de forma visual y clara",
+    "numbers_cited": [
+      {
+        "name": "dias_restantes_ventana",
+        "value": 5,
+        "kind": "estimate",
+        "source": "topic_scores_weekly.window"
+      },
+      {
+        "name": "articulos_semana",
+        "value": 24,
+        "kind": "measured",
+        "source": "topic_sources_weekly"
+      },
+      {
+        "name": "articulos_ingles_semana_4",
+        "value": 24,
+        "kind": "measured",
+        "source": "get_topic_series"
+      }
+    ],
+    "auditor_ok": true,
+    "untraced_numbers": [],
+    "model": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+    "generated_at": "2026-10-18T08:31:27Z"
+  }
+]

@@ -5,7 +5,7 @@
   "description": "Written ahead of time by the Editor agent from tool data only, checked by the Auditor, for the latest weeks' top 10 -> lake/gold/topic_briefs_weekly.parquet. The UI shows it on the card; the chat can cite it. Every number in the text must come from numbers_cited.",
   "type": "object",
   "x-owner": "WS0",
-  "x-mock": "pending-first-agent-run",
+  "x-mock": "first-agent-run",
   "properties": {
     "week": {"type": "string", "pattern": "^\\d{4}-W\\d{2}$"},
     "topic_id": {"type": "string"},
