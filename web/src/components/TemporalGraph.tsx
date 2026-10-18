@@ -1019,7 +1019,7 @@ export function TemporalGraph({
               10,
           ) / 10;
 
-        let renderer = "WebGL2 (cosmos.gl 3.5.1)";
+        let renderer = "WebGL2";
         const canvas = host.querySelector("canvas");
         const gl = canvas?.getContext("webgl2") || canvas?.getContext("webgl");
         if (gl) {
@@ -1254,7 +1254,7 @@ export function TemporalGraph({
             <>
               <strong>{data.nodes.length.toLocaleString()}</strong> nodos ·{" "}
               <strong>{currentEdgesCount.toLocaleString()}</strong> aristas (top-
-              {data._meta.params.top_k_per_node} NPMI/nodo, medido)
+              {data._meta.params.top_k_per_node} NPMI/nodo) ●
             </>
           ) : (
             "Cargando..."
@@ -1272,8 +1272,7 @@ export function TemporalGraph({
       {focusTopic && focusTopicIdx === null && (
         <div className="graph-notice-box">
           <span>
-            <code>{focusTopic}</code> no figura entre los 1.000 nodos del grafo temporal de
-            esta semana.
+            Este tema no figura entre los 1.000 nodos del grafo de esta semana.
           </span>
           {onOpenStory && (
             <button
@@ -1291,7 +1290,7 @@ export function TemporalGraph({
         <div className="temporal-canvas-wrap">
           {loading && (
             <div className="graph-loading-overlay">
-              Cargando grafo temporal GPU (`temporal.json`)...
+              Cargando el grafo…
             </div>
           )}
           <div
@@ -1314,7 +1313,7 @@ export function TemporalGraph({
                 }}
                 onClick={() => onSelectTopic?.(lbl.id)}
                 onMouseEnter={(ev) => handleNodeHover(lbl.idx, ev)}
-                title={`${lbl.text} (${lbl.id})`}
+                title={lbl.text}
               >
                 {lbl.text}
               </button>
@@ -1342,7 +1341,7 @@ export function TemporalGraph({
             {activeLens === "segment" && (
               <>
                 <span className="legend-item">
-                  Sector (regla por nombre): IA / TI / otros sectores
+                  Sector: IA / TI / otros sectores
                 </span>
                 <span className="legend-item">
                   <span className="legend-dot legend-ring-ai" /> IA
@@ -1358,10 +1357,10 @@ export function TemporalGraph({
             {activeLens === "bridge" && (
               <>
                 <span className="legend-item">
-                  <span className="legend-dot legend-bridge-high" /> cruce de sector (regla) 70%+ (Oro)
+                  <span className="legend-dot legend-bridge-high" /> cruce de sector 70%+ (Oro)
                 </span>
                 <span className="legend-item">
-                  <span className="legend-dot legend-bridge-mid" /> cruce de sector (regla) 35%+ (Naranja)
+                  <span className="legend-dot legend-bridge-mid" /> cruce de sector 35%+ (Naranja)
                 </span>
                 <span className="legend-item">
                   <span className="legend-dot legend-bridge-low" /> mismo sector (Azul marino)
@@ -1442,7 +1441,7 @@ export function TemporalGraph({
         <aside className="temporal-movers-aside" aria-label="Mayores subidas de la semana">
           <div className="movers-header">
             <h4>Temas destacados ({currentWeekStr})</h4>
-            <span className="muted">Top priorizados y subidas de grado (medido)</span>
+            <span className="muted">Top priorizados y subidas de grado ●</span>
           </div>
           <ul className="movers-list">
             {topMovers.map((m) => {
@@ -1466,12 +1465,10 @@ export function TemporalGraph({
                     </span>
                   </div>
                   <div className="mover-meta">
-                    <code>{m.id}</code>
                     {m.deg_growth != null && Number.isFinite(m.deg_growth) && (
                       <>
-                        {" "}
-                        · grado{" "}
-                        <strong title="exp(log del grado) − 1, medido">
+                        grado{" "}
+                        <strong title="variación del grado">
                           {formatDegreeGrowth(m.deg_growth)}
                         </strong>
                       </>
@@ -1503,7 +1500,7 @@ export function TemporalGraph({
               {metricsSnapshot.fpsRelayout !== undefined && (
                 <> · re-layout <strong>{metricsSnapshot.fpsRelayout} fps</strong> ({metricsSnapshot.settleTimeMs} ms)</>
               )}{" "}
-              (medido)
+              ●
             </div>
           )}
         </aside>
@@ -1522,14 +1519,13 @@ export function TemporalGraph({
             <strong>{hoveredTooltip.node.label_es}</strong>
             <span
               className={`badge ring-badge-${hoveredTooltip.node.ring}`}
-              title="Sector (regla por nombre): IA / TI / otros sectores"
+              title="Sector: IA / TI / otros sectores"
             >
               {hoveredTooltip.node.ring.toUpperCase()}
             </span>
           </div>
           <div className="tooltip-sub">
-            <code>{hoveredTooltip.node.id}</code>
-            {hoveredTooltip.node.domain && ` · ${hoveredTooltip.node.domain}`}
+            {hoveredTooltip.node.domain ?? ""}
           </div>
           <div className="tooltip-metrics-grid">
             <div>
@@ -1551,7 +1547,7 @@ export function TemporalGraph({
               </strong>
             </div>
             <div>
-              cruce de sector (regla):{" "}
+              cruce de sector:{" "}
               <strong>
                 {hoveredTooltip.node.cross_ring_share?.[weekIdx] !== null &&
                 hoveredTooltip.node.cross_ring_share?.[weekIdx] !== undefined

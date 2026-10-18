@@ -11,6 +11,7 @@ import { StoryGraph } from "./components/StoryGraph";
 import { TemporalGraph } from "./components/TemporalGraph";
 import { TrustPanel } from "./components/TrustPanel";
 import { type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
+import { publicLine, rowWhy } from "./publicCopy";
 import { placeNamedTopic, type StoryPlacement } from "./temporalNodes";
 import type {
   AgentTraceStep,
@@ -73,8 +74,8 @@ function namedTopicView(
   }
   const captionEs =
     placement === "sigma"
-      ? `${label} no está entre los 1.000 nodos del grafo temporal; anillo sigma de 1 salto.`
-      : `Anillo sigma de 1 salto: ${label}. No se pudo comprobar si está en el grafo temporal.`;
+      ? `${label} no está entre los 1.000 nodos del grafo temporal; anillo de 1 salto.`
+      : `Anillo de 1 salto: ${label}. No se pudo comprobar si está en el grafo temporal.`;
   return {
     view: "story",
     week,
@@ -191,16 +192,17 @@ const DECISION_LABELS: Record<DecisionValue, string> = {
 };
 
 function formatWindow(w: TopicWindow): string {
+  const n = `n=${w.n_onsets}`;
   switch (w.state) {
     case "dias_restantes":
-      return `~${w.days_left ?? "?"} días restantes (estimado, n=${w.n_onsets})`;
+      return `~${w.days_left ?? "?"} días restantes · ${n} ○`;
     case "en_cualquier_momento":
-      return `En cualquier momento (estimado, n=${w.n_onsets})`;
+      return `En cualquier momento · ${n} ○`;
     case "ya_en_espanol":
-      return `Ya en español (medido, n=${w.n_onsets})`;
+      return `Ya en español · ${n} ●`;
     case "sin_estimacion":
     default:
-      return `Sin estimación (n=${w.n_onsets})`;
+      return `Sin estimación · ${n}`;
   }
 }
 
@@ -606,6 +608,36 @@ export function App() {
           <p className="freshness-line" data-testid="freshness-line">
             {freshnessLine(freshness, coverage)}
           </p>
+          <p className="measure-legend">● medido · ○ estimado</p>
+          <details className="tech-details">
+            <summary>Detalles técnicos</summary>
+            <div className="freshness-grid">
+              {freshness &&
+                Object.entries(freshness.tables).map(([table, dt]) => (
+                  <span key={table} className="freshness-chip">
+                    <code>{table}</code>: {dt ?? "pendiente"}
+                  </span>
+                ))}
+              {freshness && (
+                <span className="freshness-chip">
+                  perfil: <code>{freshness.profile}</code>
+                </span>
+              )}
+              {detailTopicId && (
+                <span className="freshness-chip">
+                  tema: <code>{detailTopicId}</code>
+                </span>
+              )}
+            </div>
+            {radarEmptyReason && <p className="muted">{radarEmptyReason}</p>}
+            {detailCard && detailCard.why.length > 0 && (
+              <ul className="why-list">
+                {detailCard.why.map((reason, idx) => (
+                  <li key={idx}>{reason}</li>
+                ))}
+              </ul>
+            )}
+          </details>
         </div>
       </header>
 
@@ -624,13 +656,9 @@ export function App() {
           {radarItems.length === 0 ? (
             <div className="empty-state" data-testid="radar-empty-notice">
               <p>
-                <strong>Tabla `topic_scores_weekly` pendiente:</strong>{" "}
-                <code>{radarEmptyReason ?? "sin filas todavía"}</code>
+                <strong>Sin temas puntuados para esta semana.</strong>
               </p>
-              <p>
-                Sin tarjetas para esta semana. Explora abajo las series diarias reales
-                por subtema y el anillo de 1 salto:
-              </p>
+              <p>Elige un subtema para ver su serie diaria y su anillo de 1 salto:</p>
               <div className="subtopic-pills">
                 {SUBTOPICS.map((st) => (
                   <button
@@ -642,7 +670,7 @@ export function App() {
                       selectTopic(st.id);
                     }}
                   >
-                    {st.label_es} (<code>{st.id}</code>)
+                    {st.label_es}
                   </button>
                 ))}
               </div>
@@ -652,7 +680,7 @@ export function App() {
             <div className="cards-grid rail-list">
               {radarItems.map((card) => {
                 const open = detailTopicId === card.topic_id;
-                const whyLine = card.why[0] ?? "";
+                const whyLine = rowWhy(card.why);
                 return (
                   <article
                     key={card.topic_id}
@@ -832,7 +860,7 @@ export function App() {
                     <div className="drawer-card-name">
                       {topicName(card.topic_id, card.label_es)}
                     </div>
-                    {card.why[0] && <p className="rail-why">{card.why[0]}</p>}
+                    {rowWhy(card.why) && <p className="rail-why">{rowWhy(card.why)}</p>}
                   </div>
                 ))}
               </div>
@@ -989,23 +1017,17 @@ function TopicDetail({
         <span className="chip">Etapa: {card.stage}</span>
         <span className="chip chip-window">Ventana: {formatWindow(card.window)}</span>
         {card.emergence_pct != null && (
-          <span className="chip">
-            Emergencia: {card.emergence_pct.toFixed(1)} pct (medido)
-          </span>
+          <span className="chip">Emergencia: {card.emergence_pct.toFixed(1)} pct ●</span>
         )}
         {card.saturation != null && (
-          <span className="chip">
-            Saturación: {(card.saturation * 100).toFixed(1)}% (medido)
-          </span>
+          <span className="chip">Saturación: {(card.saturation * 100).toFixed(1)}% ●</span>
         )}
         {card.audience_fit != null && (
-          <span className="chip">
-            Encaje LatAm: {(card.audience_fit * 100).toFixed(0)}% (medido)
-          </span>
+          <span className="chip">Encaje LatAm: {(card.audience_fit * 100).toFixed(0)}% ●</span>
         )}
         {card.emotional_charge_pct != null && (
           <span className="chip">
-            Carga emocional: {card.emotional_charge_pct.toFixed(0)} pct (medido)
+            Carga emocional: {card.emotional_charge_pct.toFixed(0)} pct ●
           </span>
         )}
         {card.framing_angle && <span className="chip">Ángulo: {card.framing_angle}</span>}
@@ -1013,7 +1035,7 @@ function TopicDetail({
       {card.why.length > 0 && (
         <ul className="why-list">
           {card.why.map((reason, idx) => (
-            <li key={idx}>{reason}</li>
+            <li key={idx}>{publicLine(reason)}</li>
           ))}
         </ul>
       )}
@@ -1079,8 +1101,7 @@ function TopicSeries({
                     <strong>{lang.toUpperCase()}</strong>
                   </div>
                   <div>
-                    Artículos (serie completa): <strong>{info.articles.toLocaleString()}</strong>{" "}
-                    (medido)
+                    Artículos (serie completa): <strong>{info.articles.toLocaleString()}</strong> ●
                   </div>
                   <div>
                     Última participación:{" "}
@@ -1089,12 +1110,11 @@ function TopicSeries({
                         ? `${(info.latestShare * 100).toFixed(3)}%`
                         : "NULL"}
                     </strong>{" "}
-                    (medido)
+                    ●
                   </div>
                   <div>
                     Tono medio:{" "}
-                    <strong>{info.meanTone !== null ? info.meanTone.toFixed(2) : "NULL"}</strong>{" "}
-                    (medido)
+                    <strong>{info.meanTone !== null ? info.meanTone.toFixed(2) : "NULL"}</strong> ●
                   </div>
                 </div>
               );

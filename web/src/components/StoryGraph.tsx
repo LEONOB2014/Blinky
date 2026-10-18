@@ -180,13 +180,13 @@ export function StoryGraph({
     const wkLabel = indexData._meta?.week ?? "2026-W42";
     if (!exactMatch && requestedClean) {
       setUnmatchedTopicNotice(
-        `El tema "${requestedClean}" no está entre las 10 historias priorizadas de ${wkLabel}. Mostrando #1 (${entry.label_es} · ${entry.topic_id}).`,
+        `El tema "${requestedClean}" no está entre las 10 historias priorizadas de ${wkLabel}. Mostrando #1 (${entry.label_es}).`,
       );
     } else if (!entry.in_top10) {
       const rankInfo =
         entry.rank != null ? `puesto #${entry.rank}` : "sin rango Top-10";
       setUnmatchedTopicNotice(
-        `Nota: "${entry.label_es}" (${entry.topic_id}) no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}, decisión: ${entry.decision ?? "referencia"}); abajo se muestra su anillo real de 1 salto medido en GDELT.`,
+        `Nota: "${entry.label_es}" no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}, decisión: ${entry.decision ?? "referencia"}); abajo se muestra su anillo de 1 salto ●.`,
       );
     } else {
       setUnmatchedTopicNotice(null);
@@ -487,7 +487,7 @@ export function StoryGraph({
                   const rankInfo =
                     s.rank != null ? `puesto #${s.rank}` : "sin rango Top-10";
                   setUnmatchedTopicNotice(
-                    `Nota: "${s.label_es}" (${s.topic_id}) no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}); viendo su anillo real de 1 salto medido.`,
+                    `Nota: "${s.label_es}" no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}); viendo su anillo de 1 salto ●.`,
                   );
                   onSelectTopic?.(s.topic_id);
                 }}
@@ -526,7 +526,7 @@ export function StoryGraph({
                 : "Referencia"}
           </span>
           <span className="topic-title-lg">
-            {storyData._meta.label_es} (<code>{storyData._meta.topic_id}</code>)
+            {storyData._meta.label_es}
           </span>
           {scores?.decision && (
             <span className={`decision-badge decision-${scores.decision}`}>
@@ -536,7 +536,7 @@ export function StoryGraph({
           )}
           {scores?.priority != null && (
             <span className="chip">
-              Prioridad: <strong>{scores.priority.toFixed(3)}</strong> (medido)
+              Prioridad: <strong>{scores.priority.toFixed(3)}</strong> ●
             </span>
           )}
           {scores?.emergence_pct != null && (
@@ -561,7 +561,7 @@ export function StoryGraph({
         <div className="story-canvas-wrap">
           {loading && (
             <div className="graph-loading-overlay">
-              Cargando grafo de 1 salto (sigma.js 3)...
+              Cargando la historia…
             </div>
           )}
           <div
@@ -574,7 +574,7 @@ export function StoryGraph({
               <span className="legend-dot legend-focus" /> ★ Tema central
             </span>
             <span className="legend-item">
-              Sector (regla por nombre): IA / TI / otros sectores
+              Sector: IA / TI / otros sectores
             </span>
             <span className="legend-item">
               <span className="legend-dot legend-ring-ai" /> IA
@@ -595,7 +595,7 @@ export function StoryGraph({
           <div className="movers-header">
             <h4>Anillo de 1 salto ({neighborsList.length} vecinos)</h4>
             <span className="muted">
-              Ordenados por NPMI descendente (medido en GDELT)
+              Ordenados por NPMI descendente ●
             </span>
           </div>
           <ul className="story-neighbors-list">
@@ -610,19 +610,19 @@ export function StoryGraph({
                       type="button"
                       className="neighbor-link"
                       onClick={() => onSelectTopic?.(n.key)}
-                      title={`Seleccionar ${n.key}`}
+                      title={`Seleccionar ${lbl}`}
                     >
                       {lbl}
                     </button>
                     <span
                       className={`badge ring-badge-${a.ring ?? "ai_domain"}`}
-                      title="Sector (regla por nombre): IA / TI / otros sectores"
+                      title="Sector: IA / TI / otros sectores"
                     >
                       {(a.ring ?? "ai_domain").toUpperCase()}
                     </span>
                   </div>
                   <div className="story-neighbor-meta">
-                    <code>{n.key}</code> · n=<strong>{a.n}</strong> · NPMI=
+                    n=<strong>{a.n}</strong> · NPMI=
                     <strong>{a.npmi?.toFixed(4)}</strong>
                     {a.edge_state && ` · ${a.edge_state}`}
                   </div>

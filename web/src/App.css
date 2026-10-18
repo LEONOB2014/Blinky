@@ -1209,6 +1209,39 @@ body {
   white-space: nowrap;
 }
 
+.measure-legend {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.tech-details {
+  font-size: 0.75rem;
+  color: #334155;
+  max-width: 280px;
+}
+
+.tech-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tech-details[open] {
+  position: absolute;
+  right: 0.75rem;
+  top: 3.4rem;
+  z-index: 50;
+  width: min(420px, calc(100vw - 1.5rem));
+  max-height: 40svh;
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
 .workspace .dev-banner {
   margin: 0;
   border-radius: 0;
