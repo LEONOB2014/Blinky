@@ -421,23 +421,6 @@ DECISION_ES = {
     "esperar": "Esperar",
     "no_es_tema_caliente": "No es tema caliente",
 }
-# Questions that ask for a decision: what to publish, what is rising or hot, whether a topic is worth
-# writing about, what reaches Spanish soon. Graph, audience-only and tone questions do not get the
-# decision line (the judge penalised it there as an unrequested decision).
-DECISION_ASK = re.compile(
-    r"public|sube|subiendo|crece|caliente|\btop\b|conviene|deber[ií]a|decisi|vale la pena|"
-    r"escribir sobre|llegar al espa[nñ]ol|a punto",
-    re.I,
-)
-
-
-def asks_for_decision(question: str, needed: list[str], entity: str | None = None) -> bool:
-    """A decision is asked, or a named topic is asked about outside the graph ('¿Qué pasa con X?')."""
-    if "editor" in needed or DECISION_ASK.search(question):
-        return True
-    return bool(entity) and not ROUTES[0][0].search(question)  # ROUTES[0]: the graph keywords
-
-
 _PLURAL = re.compile(r"\btop\b|\btemas\b|\d", re.I)
 
 # How the Media Master writes for an executive (measured: the judge penalised raw ids, field names,
@@ -719,7 +702,7 @@ def run_turn(
                 )
             )
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
-        decides = asks_for_decision(question, needed, entity)
+        decides = "signal_analyst" in needed or "editor" in needed
         line = decision_line(turn, entity, question) if decides else ""
         instructions = (
             f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "

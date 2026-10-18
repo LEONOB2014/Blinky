@@ -202,28 +202,3 @@ def test_entity_resolution_needs_whole_words(monkeypatch):
 
     for q in load_questions()["questions"]:
         assert runtime._entity_in_question(q["question"], None) == q.get("entity"), q["id"]
-
-
-@pytest.mark.unit
-def test_the_decision_line_shows_only_when_a_decision_is_asked():
-    from agents.evals.run_evals import load_questions
-
-    qs = {q["id"]: q for q in load_questions()["questions"]}
-    yes = {"q01", "q02", "q03", "q04", "q05", "q06", "q08", "q09", "q11"}
-    no = {"q07", "q10", "q12", "q13", "q14", "q15", "q16", "q17"}
-    got = {
-        q
-        for q in yes | no
-        if runtime.asks_for_decision(
-            qs[q]["question"], runtime.route(qs[q]["question"]), qs[q].get("entity")
-        )
-    }
-    assert got == yes
-    assert runtime.asks_for_decision("Escribe un gancho", ["editor"])
-
-
-@pytest.mark.unit
-def test_an_audience_question_gets_no_decision_line():
-    model = ScriptedChat("Ángulo: explicador.")
-    response = runtime.run_turn("¿Desde qué ángulo le cuento el tema principal?", model=model)
-    assert not response["answer_es"].startswith("Decisión del radar")
