@@ -64,14 +64,17 @@ def onsets(days: Sequence[dt.date], z: Sequence[float | None]) -> list[dt.date]:
     return out
 
 
-def onset_table(roll: pl.DataFrame, key: str = "unit_id") -> pl.DataFrame:
-    """One row per unit x language group (`eng`, `espt`) x onset day, from `features.rolling`."""
+def onset_table(roll: pl.DataFrame, key: str = "unit_id", z: str = "z_7d_r") -> pl.DataFrame:
+    """One row per unit x language group (`eng`, `espt`) x onset day, from `features.rolling`.
+
+    Onsets read the robust z (`features.SD_FLOOR_REL`) by default.
+    """
     rows = []
     for (unit, group), g in roll.filter(pl.col("group").is_in(["eng", "espt"])).group_by(
         key, "group"
     ):
         g = g.sort("dt")
-        for day in onsets(g["dt"].to_list(), g["z_7d"].to_list()):
+        for day in onsets(g["dt"].to_list(), g[z].to_list()):
             rows.append({key: unit, "group": group, "onset": day})
     schema = {key: pl.String, "group": pl.String, "onset": pl.Date}
     return pl.DataFrame(rows, schema=schema)

@@ -73,10 +73,10 @@ def test_saturation_is_the_mean_of_hot_days_and_espt_onset_days(w42, roll):
         pl.col("dt") <= r["asof"],
         pl.col("dt") > r["asof"] - pl.duration(days=28),
     )
-    eng_all = days.filter(pl.col("group") == "all", pl.col("z_7d").is_not_null())
-    hot = (eng_all["z_7d"] > 1).mean()
+    eng_all = days.filter(pl.col("group") == "all", pl.col("z_7d_r").is_not_null())
+    hot = (eng_all["z_7d_r"] > 1).mean()
     espt = days.filter(pl.col("group") == "espt").sort("dt").tail(7)
-    onset = (espt["z_7d"] > 2).cast(pl.Float64).mean()
+    onset = (espt["z_7d_r"] > 2).cast(pl.Float64).mean()
     assert r["saturation"] == pytest.approx((hot + onset) / 2)
     assert 0 <= r["saturation"] <= 1
 

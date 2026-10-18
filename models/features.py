@@ -29,6 +29,20 @@ TONE_COLS = ("n_tone", "sum_tone", "sum_polarity", "n_pos_x", "n_neg_x")
 
 EPS = 1e-7  # the S8 view's guard in ln(share_7d / share_7d a week ago)
 
+# Robust z (orchestrator's addendum): the view's z_7d reaches 50 for low-volume subtopics, whose
+# 28-day baseline SD is tiny (measured on the dev slice: regulation_policy, spa, 2026-09-17).
+# `z_7d_r` and `z_dow_r` floor the SD at SD_FLOOR_REL x the baseline mean (a 10% rise over the
+# baseline is at most z = 1; hand-set, estimate), and `z_7d_r` needs MIN_BASE_DAYS baseline days.
+# The scores and the window chip read the robust columns; `z_7d`/`z_dow` stay as the view has them.
+SD_FLOOR_REL = 0.1
+MIN_BASE_DAYS = 14
+
+
+def _floor(sd: pl.Expr, mean: pl.Expr) -> pl.Expr:
+    floor = SD_FLOOR_REL * mean.abs()
+    out = pl.max_horizontal(sd, floor)
+    return pl.when(out > 0).then(out)
+
 
 def _as_date(df: pl.DataFrame, col: str = "dt") -> pl.DataFrame:
     if df.schema[col] == pl.Date:
@@ -182,7 +196,12 @@ def rolling(
 
     f = f.with_columns(
         (pl.col("n") / pl.col("n_all")).alias("share"),
-        pl.col("n").is_not_null().cast(pl.Int32).rolling_sum(7).over(by).alias("valid7"),
+        pl.col("n")
+        .is_not_null()
+        .cast(pl.Int32)
+        .rolling_sum(7, min_samples=1)
+        .over(by)
+        .alias("valid7"),
         r7("n").alias("n7raw"),
         r7("n_all").alias("n_all7"),
         r7("n_tone").alias("n_tone7"),
@@ -219,17 +238,33 @@ def rolling(
         pl.when(dow_n >= 3)
         .then((pl.col("share") - dow_mean) / pl.when(dow_sd != 0).then(dow_sd))
         .alias("z_dow"),
+        pl.when(dow_n >= 3)
+        .then((pl.col("share") - dow_mean) / _floor(dow_sd, dow_mean))
+        .alias("z_dow_r"),
         (((pl.col("share_7d") + EPS) / (pl.col("share_7d").shift(7).over(by) + EPS)).log()).alias(
             "growth_7d_log"
         ),
         pl.col("share_7d").rolling_mean(28, min_samples=1).shift(7).over(by).alias("base_mean"),
         pl.col("share_7d").rolling_std(28, min_samples=2).shift(7).over(by).alias("base_sd"),
+        pl.col("share_7d")
+        .is_not_null()
+        .cast(pl.Int32)
+        .rolling_sum(28, min_samples=1)
+        .shift(7)
+        .over(by)
+        .alias("base_n"),
     )
     f = f.with_columns(
         (
             (pl.col("share_7d") - pl.col("base_mean"))
             / pl.when(pl.col("base_sd") != 0).then(pl.col("base_sd"))
         ).alias("z_7d"),
+        pl.when(pl.col("base_n") >= MIN_BASE_DAYS)
+        .then(
+            (pl.col("share_7d") - pl.col("base_mean"))
+            / _floor(pl.col("base_sd"), pl.col("base_mean"))
+        )
+        .alias("z_7d_r"),
         (pl.col("growth_7d_log") - pl.col("growth_7d_log").shift(7).over(by)).alias("accel_7d"),
         pl.col("mean_tone_7d").abs().alias("extremity_7d"),
         (
@@ -243,9 +278,9 @@ def rolling(
     f = f.sort([*by, "dt"])
     return f.select(
         key, "group", "dt", "is_missing", "n", "n_all", "share", "n_sources", "n_latam_7d",
-        "n_7d", "share_7d", "z_dow", "z_7d", "growth_7d_log", "accel_7d", "mean_tone_7d",
-        "extremity_7d", "mean_polarity_7d", "positive_share_7d", "negative_share_7d",
-        "controversy_7d", "tone_shift_7d",
+        "n_7d", "share_7d", "z_dow", "z_7d", "z_dow_r", "z_7d_r", "growth_7d_log", "accel_7d",
+        "mean_tone_7d", "extremity_7d", "mean_polarity_7d", "positive_share_7d",
+        "negative_share_7d", "controversy_7d", "tone_shift_7d",
     )  # fmt: skip
 
 

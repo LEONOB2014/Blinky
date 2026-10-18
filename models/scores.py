@@ -14,6 +14,9 @@ import polars as pl
 
 from models.features import self_z
 
+# The scores read the robust z (features.SD_FLOOR_REL); below, `z_7d` and `z_dow_7d` mean it.
+Z, ZDOW = "z_7d_r", "z_dow_r"
+
 # Ranked universe: >= 20 articles in the last 7 days (design, "What is ranked").
 MIN_ARTICLES_7D = 20
 NOT_RANKED = {"ai_all"}  # the whole AI stream is the baseline, never a topic
@@ -80,16 +83,16 @@ def with_unit_z(roll: pl.DataFrame, key: str = "unit_id") -> pl.DataFrame:
     """Adds the self-z of the tone terms, the 7-day mean of z_dow and the saturation inputs."""
     by = [key, "group"]
     r = roll.sort([*by, "dt"])
-    hot = (pl.col("z_7d") > HOT_Z).cast(pl.Float64)
-    hot = pl.when(pl.col("z_7d").is_not_null()).then(hot)
+    hot = (pl.col(Z) > HOT_Z).cast(pl.Float64)
+    hot = pl.when(pl.col(Z).is_not_null()).then(hot)
     return r.with_columns(
         self_z("extremity_7d", by).alias("z_extremity"),
         self_z("mean_polarity_7d", by).alias("z_polarity"),
         self_z("controversy_7d", by).alias("z_controversy"),
         self_z("tone_shift_7d", by).alias("z_tone_shift"),
-        pl.col("z_dow").rolling_mean(7, min_samples=1).over(by).alias("z_dow_7d"),
+        pl.col(ZDOW).rolling_mean(7, min_samples=1).over(by).alias("z_dow_7d"),
         hot.rolling_mean(28, min_samples=1).over(by).alias("hot_days_28"),
-        (pl.col("z_7d") > ESPT_HOT_Z)
+        (pl.col(Z) > ESPT_HOT_Z)
         .cast(pl.Float64)
         .rolling_mean(7, min_samples=1)
         .over(by)
@@ -116,9 +119,10 @@ def weekly_panel(roll: pl.DataFrame, key: str = "unit_id") -> pl.DataFrame:
     days = asof_days(r)
     at = r.join(days, left_on="dt", right_on="asof")
     allg = at.filter(pl.col("group") == "all").select(
-        key, "week", pl.col("dt").alias("asof"), "n_7d", "share_7d", "z_7d", "z_dow_7d",
-        "growth_7d_log", "accel_7d", "mean_tone_7d", "positive_share_7d", "negative_share_7d",
-        "n_latam_7d", "hot_days_28", "share_7d_max56", *CHARGE_TERMS, "z_tone_shift",
+        key, "week", pl.col("dt").alias("asof"), "n_7d", "share_7d", pl.col(Z).alias("z_7d"),
+        "z_dow_7d", "growth_7d_log", "accel_7d", "mean_tone_7d", "positive_share_7d",
+        "negative_share_7d", "n_latam_7d", "hot_days_28", "share_7d_max56", *CHARGE_TERMS,
+        "z_tone_shift",
     )  # fmt: skip
     espt = at.filter(pl.col("group") == "espt").select(
         key, "week", pl.col("n_7d").alias("n_7d_espt"), pl.col("onset_days_7").alias("espt_onset_7")

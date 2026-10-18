@@ -57,3 +57,32 @@ def test_language_groups_sum_their_streams():
     assert n["all"] == sum(by.values())
     assert n["eng"] == by["eng"]
     assert n["espt"] == by["spa"] + by["por"]
+
+
+def test_robust_z_on_the_low_volume_row():
+    """regulation_policy, spa, non-LatAm, 2026-09-17: the view's z_7d is 50 (real row).
+
+    The row is a real burst (the 7-day count is several times its 28-day baseline), not a tiny
+    SD: the floor does not bind there, so the robust z keeps the view's value. The floor binds
+    on the warm-up and low-volume rows, where it removes the extreme values.
+    """
+    key = (pl.col("topic") + "|" + pl.col("latam").cast(pl.String)).alias("k")
+    daily = pl.read_parquet(DEV / "daily_topic.parquet").with_columns(key)
+    port = features.rolling(
+        daily.rename({"n_articles": "n"}), features.load_totals(), groups={"spa": ("spa",)}, key="k"
+    )
+    rp = port.filter(pl.col("k") == "regulation_policy|false").sort("dt")
+    row = rp.filter(pl.col("dt") == dt.date(2026, 9, 17))
+    s8 = pl.read_parquet(DEV / "daily_topic_rolling.parquet").filter(
+        pl.col("topic") == "regulation_policy",
+        pl.col("lang_bucket") == "spa",
+        ~pl.col("latam"),
+        pl.col("dt") == dt.date(2026, 9, 17),
+    )
+    assert s8["z_7d"].item() > 46
+    assert row["z_7d_r"].item() == pytest.approx(row["z_7d"].item())
+    base = rp.filter(pl.col("dt").is_between(dt.date(2026, 8, 14), dt.date(2026, 9, 10)))
+    assert row["share_7d"].item() > 4 * base["share_7d"].mean()
+    roll = features.rolling(features.subtopic_daily(), features.load_totals())
+    assert roll["z_7d_r"].abs().max() < roll["z_7d"].abs().max() / 3
+    assert roll["z_dow_r"].abs().max() < roll["z_dow"].abs().max() / 3
