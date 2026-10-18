@@ -131,3 +131,17 @@ TSMC, Samsung, the Federal Reserve (measured). And the decisions do not follow t
    decision counts in `status/WS4.md`. Commit locally; the push waits for the maintainer.
 
 Deadline: **00:30**. The backtest (05:00) then measures the gate: report precision@10 with and without it.
+
+## Addendum 3b (orchestrator, 00:45 UTC-5): this is now the demo's top priority
+
+The radar is public (Cloud Run API + Netlify UI) and its W42 top 10 still shows `org:scam centre`,
+`org:capital markets department` and `org:big news network`: the judges will see them.
+
+1. First `git merge origin/develop`: it carries `big news network` / `big new network` in
+   `ranked_universe.org_deny` (PR #12) and the agents' fixes.
+2. Then Addendum 3 as written (eligibility gate, decision coherence, QID alias dedupe when
+   `topic_wikidata` has the QIDs), and rebuild `topic_scores_weekly` on the full profile.
+3. Report the new W42 top 10 in `status/WS4.md` and say "READY FOR REDEPLOY" at the top: the Cloud
+   Run image holds a copy of the lake, so the orchestrator has WS8 rebuild and redeploy it.
+
+Deadline: **01:30**.
