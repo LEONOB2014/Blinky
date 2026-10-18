@@ -143,3 +143,20 @@ What the two judges show (per question, 3 runs each):
   noise. The line stays as it was.
 - Still weak under v2: q03 (top 3), q05 (what is not hot), q13 (communities), q17 (tone in Spanish:
   the data has no Spanish tone field for the leader, so the answer leans on other numbers).
+
+### The Auditor gap (2026-10-18, addendum 2)
+
+The Auditor now keeps a decision phrase ("publicar ahora", "no es tema caliente", "preparar ya") only
+when the turn emits a decision card with that decision; otherwise it becomes "decisión pendiente" and
+a `veto` step is logged. `entity_resolved` now scores all 25 questions: 1 only when the entity the
+code route resolved (recorded on the Media Master's delegate step) equals the expected one, including
+none, so false positives count (earlier rows scored only the 6 entity questions, n = 18).
+
+| Experiment (sha) | Change | usefulness v1 | usefulness_v2 | grounding | decisions | routing | entities | latency | tokens/turn |
+|---|---|---|---|---|---|---|---|---|---|
+| entity-words-r3 (55fe2d9) | before | 0.497 [0.47-0.53] | 0.567 [0.55-0.59] | 1.000 | 0.987 [0.96-1.00] | 1.000 | 1.00 (n=18) | 15.0 s | 5,866 |
+| auditor-cards-r3 (7d99229) | decisions only with a card; false-positive entity check | 0.500 [0.47-0.55] | 0.550 [0.50-0.59] | 1.000 | **1.000** | 1.000 | **1.00 (n=75)** | 12.6 s | 5,812 |
+
+Decision faithfulness is back to 1.00 and no question resolves a topic it does not name (75 of 75);
+usefulness moves within the repetition spread (all *measured*). Latency was high on both runs tonight
+(Nebius returned 502s); token counts are flat, so it is the API, not the turn.
