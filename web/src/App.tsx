@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchFreshness,
   fetchRadar,
@@ -6,6 +6,12 @@ import {
   fetchTopicTimeline,
   sendChatTurn,
 } from "./api";
+import { BriefBlock, EvidenceBlock, StoryIndexCards } from "./components/BriefEvidence";
+import { StoryGraph } from "./components/StoryGraph";
+import { TemporalGraph } from "./components/TemporalGraph";
+import { TrustPanel } from "./components/TrustPanel";
+import { LENS_NAMES, type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
+import { placeNamedTopic, type StoryPlacement } from "./temporalNodes";
 import type {
   AgentTraceStep,
   DecisionCard,
@@ -17,6 +23,7 @@ import type {
   TopicScoreWeekly,
   TopicWindow,
   ViewCommand,
+  ViewMode,
 } from "./types/contracts";
 
 const SUBTOPICS: Array<{ id: string; label_es: string }> = [
@@ -47,6 +54,37 @@ const CONTEXT_ENTITIES = [
   "thm:TECH_AUTOMATION",
 ];
 
+/** Story lens on the GPU graph when the topic is one of the 1,000 nodes. */
+function namedTopicView(
+  topicId: string,
+  week: string | null | undefined,
+  label: string,
+  placement: StoryPlacement,
+): ViewCommand {
+  if (placement === "gpu") {
+    return {
+      view: "temporal",
+      week,
+      focus_topic: topicId,
+      highlight: [topicId],
+      color_by: "segment",
+      caption_es: `Historia en el grafo temporal: ${label} está entre los 1.000 nodos.`,
+    };
+  }
+  const captionEs =
+    placement === "sigma"
+      ? `${label} no está entre los 1.000 nodos del grafo temporal; anillo sigma de 1 salto.`
+      : `Anillo sigma de 1 salto: ${label}. No se pudo comprobar si está en el grafo temporal.`;
+  return {
+    view: "story",
+    week,
+    focus_topic: topicId,
+    highlight: [topicId],
+    color_by: "segment",
+    caption_es: captionEs,
+  };
+}
+
 /** Card title: the taxonomy label for subtopics, the name for org:/thm: topics. */
 function topicName(topicId: string, labelEs?: string | null): string {
   if (SUBTOPIC_LABELS[topicId]) return SUBTOPIC_LABELS[topicId];
@@ -61,10 +99,82 @@ function withSelected(ids: string[], selected: string): string[] {
 }
 
 const QUICK_QUESTIONS = [
+  "Muéstrame el grafo de la semana",
+  "¿Qué está pasando con Nvidia? Muéstramelo en el grafo",
   "¿Qué tema de IA sube esta semana y por qué? Muéstramelo en el grafo",
   "¿Cuál es el ángulo para ejecutivos de LatAm esta semana?",
   "¿Qué tan frescos están los datos y cuánto ha costado en BigQuery?",
 ];
+
+const KNOWN_CHAT_TOPICS: Array<{ pattern: RegExp; topic_id: string }> = [
+  { pattern: /\bnvidia\b/i, topic_id: "org:nvidia" },
+  { pattern: /\bmicrosoft\b/i, topic_id: "org:microsoft" },
+  { pattern: /\bgoogle\b/i, topic_id: "org:google" },
+  { pattern: /\bopenai\b/i, topic_id: "org:openai group" },
+  { pattern: /\bmarsh\s*mclennan\b/i, topic_id: "org:marsh mclennan" },
+  { pattern: /\bbroadcom\b/i, topic_id: "org:broadcom" },
+  { pattern: /\boracle\b/i, topic_id: "org:oracle" },
+  { pattern: /\btsmc\b|\btaiwan semiconductor\b/i, topic_id: "org:taiwan semiconductor manufacturing" },
+  { pattern: /\bautomatizaci[oó]n\b|\btech_automation\b/i, topic_id: "thm:TECH_AUTOMATION" },
+];
+
+function resolveChatViewCommand(
+  message: string,
+  commands: ViewCommand[],
+  defaultWeek?: string,
+): ViewCommand | null {
+  const matchedTopic = KNOWN_CHAT_TOPICS.find((k) => k.pattern.test(message))?.topic_id ?? null;
+  const asksWeeklyTemporal =
+    /\bgrafo\s+(?:de\s+la\s+semana|temporal|semanal)\b/i.test(message) && !matchedTopic;
+  const asksGraph = /\bgrafo\b|\bmapa\b|\bvisualiza/i.test(message);
+
+  if (commands.length > 0) {
+    const last = { ...commands[commands.length - 1] };
+    if (asksWeeklyTemporal) {
+      last.view = "temporal";
+    } else if (matchedTopic && last.view === "story" && !last.focus_topic) {
+      last.focus_topic = matchedTopic;
+    } else if (matchedTopic && asksGraph) {
+      last.view = "story";
+      last.focus_topic = last.focus_topic || matchedTopic;
+    }
+    last.color_by = lensFromCommand(last.color_by, message, last.focus_topic ?? matchedTopic);
+    return last;
+  }
+
+  const lens = lensForQuestion(message, matchedTopic);
+  if (asksWeeklyTemporal) {
+    return {
+      view: "temporal",
+      week: defaultWeek ?? null,
+      focus_topic: null,
+      highlight: [],
+      color_by: lens === "segment" ? "decision" : lens,
+      caption_es: "Grafo temporal de co-menciones de la semana",
+    };
+  }
+  if (asksGraph && matchedTopic) {
+    return {
+      view: "story",
+      week: defaultWeek ?? null,
+      focus_topic: matchedTopic,
+      highlight: [matchedTopic],
+      color_by: lens,
+      caption_es: `Historia de 1 salto para ${matchedTopic}`,
+    };
+  }
+  if (asksGraph) {
+    return {
+      view: "temporal",
+      week: defaultWeek ?? null,
+      focus_topic: null,
+      highlight: [],
+      color_by: lens === "segment" ? "decision" : lens,
+      caption_es: "Grafo temporal de la semana",
+    };
+  }
+  return null;
+}
 
 const LANG_COLORS: Record<LangBucket, string> = {
   eng: "#2563eb",
@@ -94,6 +204,44 @@ function formatWindow(w: TopicWindow): string {
   }
 }
 
+function getInitialViewFromUrl(): ViewCommand {
+  if (typeof window === "undefined") {
+    return {
+      view: "cards",
+      week: null,
+      focus_topic: null,
+      highlight: [],
+      color_by: "decision",
+      caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
+    };
+  }
+  const params = new URLSearchParams(window.location.search);
+  const v = params.get("view") as ViewMode | null;
+  const topic = params.get("topic");
+  const wk = params.get("week");
+  if (v === "temporal" || v === "story") {
+    return {
+      view: v,
+      week: wk,
+      focus_topic: topic,
+      highlight: topic ? [topic] : [],
+      color_by: v === "story" ? "segment" : "decision",
+      caption_es:
+        v === "temporal"
+          ? "Grafo temporal semanal (13 semanas)"
+          : `Anillo de historia de 1 salto (${topic ?? "Top #1"})`,
+    };
+  }
+  return {
+    view: "cards",
+    week: null,
+    focus_topic: null,
+    highlight: [],
+    color_by: "decision",
+    caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
+  };
+}
+
 export function App() {
   const [freshness, setFreshness] = useState<FreshnessResponse | null>(null);
   const [radarItems, setRadarItems] = useState<TopicScoreWeekly[]>([]);
@@ -113,16 +261,112 @@ export function App() {
   const [chatAnswer, setChatAnswer] = useState<string | null>(null);
   const [chatCards, setChatCards] = useState<DecisionCard[]>([]);
   const [traceSteps, setTraceSteps] = useState<AgentTraceStep[]>([]);
-  const [activeView, setActiveView] = useState<ViewCommand>({
-    view: "cards",
-    week: null,
-    focus_topic: null,
-    highlight: [],
-    color_by: "tone",
-    caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
-  });
+  const [activeView, setActiveView] = useState<ViewCommand>(getInitialViewFromUrl);
+
+  // A shared ?view=story link still lands on the GPU story lens when the topic
+  // is one of the 1,000 nodes. Later opens go through openNamedTopic.
+  useEffect(() => {
+    const topic = activeView.focus_topic;
+    if (activeView.view !== "story" || !topic) return;
+    let cancelled = false;
+    void placeNamedTopic(topic).then((placement) => {
+      if (cancelled || placement === "unknown") return;
+      setActiveView((prev) => {
+        if (prev.view !== "story" || prev.focus_topic !== topic) return prev;
+        return namedTopicView(topic, prev.week, topic, placement);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  // Split View & Fullscreen state (Addendum 2 Must #2)
+  const [splitPct, setSplitPct] = useState<number>(35);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [showTrust, setShowTrust] = useState(false);
+  const [isCardsDrawerOpen, setIsCardsDrawerOpen] = useState<boolean>(false);
+  const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(true);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const activeLens = lensFromCommand(
+    activeView.color_by,
+    "",
+    activeView.focus_topic ?? null,
+  );
+
+  const selectLens = useCallback((lens: GraphLens) => {
+    setActiveView((prev) => ({ ...prev, color_by: lens }));
+  }, []);
+
+  // Keyboard shortcut listener: F/f for fullscreen toggle, Esc for exit
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (e.key === "Escape") {
+        setIsFullscreen(false);
+        setIsCardsDrawerOpen(false);
+      } else if (
+        (e.key === "f" || e.key === "F") &&
+        !isInput &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        setIsFullscreen((prev) => !prev);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Dragging handlers for divider
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDividerTouchStart = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    function handleMove(clientX: number) {
+      if (!splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const rawPct = ((clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.min(60, Math.max(20, rawPct));
+      setSplitPct(clamped);
+    }
+    function onMouseMove(e: MouseEvent) {
+      handleMove(e.clientX);
+    }
+    function onTouchMove(e: TouchEvent) {
+      if (e.touches.length > 0) handleMove(e.touches[0].clientX);
+    }
+    function onEnd() {
+      setIsDragging(false);
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onEnd);
+    window.addEventListener("touchmove", onTouchMove);
+    window.addEventListener("touchend", onEnd);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onEnd);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onEnd);
+    };
+  }, [isDragging]);
 
   useEffect(() => {
     void fetchFreshness()
@@ -157,6 +401,31 @@ export function App() {
     setSelectedTopic(topicId);
     // Subtopics have no 1-hop ring; org:/thm: topics do.
     if (topicId.includes(":")) setSelectedEntity(topicId);
+  }
+
+  async function openNamedTopic(
+    topicId: string,
+    week: string | null | undefined,
+    label: string,
+    fullscreen: boolean,
+  ) {
+    const placement = await placeNamedTopic(topicId);
+    const cmd = namedTopicView(topicId, week, label, placement);
+    setActiveView(cmd);
+    if (fullscreen && (cmd.view === "temporal" || cmd.view === "story")) {
+      setIsFullscreen(true);
+    }
+    selectTopic(topicId);
+  }
+
+  async function applyViewCommand(cmd: ViewCommand) {
+    if (cmd.view === "story" && cmd.focus_topic) {
+      await openNamedTopic(cmd.focus_topic, cmd.week, cmd.focus_topic, true);
+      return;
+    }
+    setActiveView(cmd);
+    if (cmd.view === "temporal" || cmd.view === "story") setIsFullscreen(true);
+    if (cmd.focus_topic) selectTopic(cmd.focus_topic);
   }
 
   const contextWeek = radarWeek && radarWeek !== "latest" ? radarWeek : undefined;
@@ -242,6 +511,10 @@ export function App() {
     if (!trimmed || chatLoading) return;
     setChatLoading(true);
     setChatError(null);
+    const immediateCmd = resolveChatViewCommand(trimmed, [], contextWeek);
+    if (immediateCmd) {
+      void applyViewCommand(immediateCmd);
+    }
     try {
       const res = await sendChatTurn({
         message: trimmed,
@@ -252,8 +525,13 @@ export function App() {
       setChatAnswer(res.answer_es);
       setChatCards(res.decision_cards);
       setTraceSteps(res.trace);
-      if (res.view_commands.length > 0) {
-        setActiveView(res.view_commands[res.view_commands.length - 1]);
+      const resolvedCmd = resolveChatViewCommand(
+        trimmed,
+        res.view_commands,
+        contextWeek,
+      );
+      if (resolvedCmd) {
+        void applyViewCommand(resolvedCmd);
       }
     } catch (err: unknown) {
       setChatError(err instanceof Error ? err.message : String(err));
@@ -280,6 +558,15 @@ export function App() {
             qué ángulo contarlos a ejecutivos de LatAm (solo fuentes públicas).
           </p>
         </div>
+        <div className="header-actions">
+          <button
+            type="button"
+            className={showTrust ? "pill pill-active" : "pill"}
+            data-testid="trust-toggle"
+            onClick={() => setShowTrust((open) => !open)}
+          >
+            {showTrust ? "Ocultar confianza" : "Confianza"}
+          </button>
         <div className="freshness-box">
           <div className="freshness-title">
             Frescura de datos (`GET /api/freshness`) · perfil:{" "}
@@ -294,11 +581,14 @@ export function App() {
               ))}
           </div>
         </div>
+        </div>
       </header>
 
-      <main className="main-grid">
-        {/* Left column: Top 10 cards + Timeline + 1-hop context */}
-        <div className="left-col">
+      {showTrust && <TrustPanel />}
+
+      <main className="split-view-container" ref={splitContainerRef}>
+        {/* Left column: Top 10 cards + Chat + Timeline + Context + Trace */}
+        <div className="split-left-pane" style={{ width: `${splitPct}%` }}>
           <section className="panel" aria-labelledby="top10-heading">
             <div className="panel-header">
               <h2 id="top10-heading">Top 10 semanal (`GET /api/radar`)</h2>
@@ -315,6 +605,7 @@ export function App() {
             </div>
 
             {radarItems.length === 0 ? (
+              <>
               <div className="empty-state" data-testid="radar-empty-notice">
                 <p>
                   <strong>Tabla `topic_scores_weekly` pendiente:</strong>{" "}
@@ -339,6 +630,8 @@ export function App() {
                   ))}
                 </div>
               </div>
+              <StoryIndexCards />
+              </>
             ) : (
               <div className="cards-grid">
                 {radarItems.map((card) => (
@@ -349,7 +642,15 @@ export function App() {
                         ? "topic-card topic-card-selected"
                         : "topic-card"
                     }
-                    onClick={() => selectTopic(card.topic_id)}
+                    data-testid={`radar-card-${card.rank ?? card.topic_id}`}
+                    onClick={() => {
+                      void openNamedTopic(
+                        card.topic_id,
+                        card.week,
+                        topicName(card.topic_id, card.label_es),
+                        false,
+                      );
+                    }}
                   >
                     <div className="card-top">
                       <span className="rank-badge">#{card.rank ?? "-"}</span>
@@ -398,7 +699,86 @@ export function App() {
                         ))}
                       </ul>
                     )}
+                    <BriefBlock topicId={card.topic_id} week={card.week} />
+                    <EvidenceBlock topicId={card.topic_id} week={card.week} />
                   </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="panel" aria-labelledby="chat-heading">
+            <div className="panel-header">
+              <h2 id="chat-heading">Maestro de Medios (`POST /api/chat`)</h2>
+              {conversationId && (
+                <span className="badge">Sesión: {conversationId}</span>
+              )}
+            </div>
+
+            <div className="quick-prompts">
+              {QUICK_QUESTIONS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="pill"
+                  onClick={() => setChatInput(q)}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+
+            <form className="chat-form" onSubmit={handleChatSubmit}>
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Pregunta al Maestro de Medios en español..."
+                maxLength={2000}
+              />
+              <button type="submit" disabled={chatLoading}>
+                {chatLoading ? "Consultando..." : "Preguntar"}
+              </button>
+            </form>
+
+            {chatError && (
+              <div className="error-box" role="alert">
+                <strong>Estado del runtime:</strong> {chatError}
+              </div>
+            )}
+
+            {chatAnswer && (
+              <div className="chat-answer" data-testid="chat-answer">
+                <pre className="answer-text">{chatAnswer}</pre>
+              </div>
+            )}
+
+            {chatCards.length > 0 && (
+              <div className="decision-cards-list">
+                <h3>Tarjetas de decisión (`decision_card`)</h3>
+                {chatCards.map((dc) => (
+                  <div key={`${dc.topic_id}-${dc.week}`} className="decision-card">
+                    <div className="card-top">
+                      <strong>{dc.topic_id}</strong>
+                      <span className={`decision-badge decision-${dc.decision}`}>
+                        {DECISION_LABELS[dc.decision]}
+                      </span>
+                      <span className="badge">
+                        Auditor: {dc.auditor_ok ? "verificado" : "alerta"}
+                      </span>
+                    </div>
+                    <p>{dc.justification_es}</p>
+                    <div className="chips-row">
+                      {dc.kpis.map((kpi, i) => (
+                        <span key={i} className="chip">
+                          {kpi.name}: <strong>{String(kpi.value)}</strong>{" "}
+                          {kpi.unit ?? ""} (
+                          {kpi.kind === "measured" ? "medido" : "estimado"} ·{" "}
+                          <code>{kpi.source}</code>)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -527,114 +907,6 @@ export function App() {
               </table>
             </div>
           </section>
-        </div>
-
-        {/* Right column: View Command placeholder + Chat panel + Agent Trace panel */}
-        <div className="right-col">
-          <section
-            className="panel view-placeholder"
-            aria-labelledby="view-heading"
-            data-testid="view-command-area"
-          >
-            <div className="panel-header">
-              <h2 id="view-heading">Vista controlada por agentes (`view_command`)</h2>
-              <span className="badge">Vista activa: {activeView.view}</span>
-            </div>
-            <p className="view-caption">{activeView.caption_es}</p>
-            <div className="chips-row">
-              <span className="chip">
-                Modo: <code>{activeView.view}</code>
-              </span>
-              <span className="chip">
-                Color por: <code>{activeView.color_by}</code>
-              </span>
-              <span className="chip">
-                Semana: <code>{activeView.week ?? "última con datos"}</code>
-              </span>
-              {activeView.focus_topic && (
-                <span className="chip">
-                  Foco: <code>{activeView.focus_topic}</code>
-                </span>
-              )}
-            </div>
-          </section>
-
-          <section className="panel" aria-labelledby="chat-heading">
-            <div className="panel-header">
-              <h2 id="chat-heading">Maestro de Medios (`POST /api/chat`)</h2>
-              {conversationId && (
-                <span className="badge">Sesión: {conversationId}</span>
-              )}
-            </div>
-
-            <div className="quick-prompts">
-              {QUICK_QUESTIONS.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  className="pill"
-                  onClick={() => setChatInput(q)}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-
-            <form className="chat-form" onSubmit={handleChatSubmit}>
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Pregunta al Maestro de Medios en español..."
-                maxLength={2000}
-              />
-              <button type="submit" disabled={chatLoading}>
-                {chatLoading ? "Consultando..." : "Preguntar"}
-              </button>
-            </form>
-
-            {chatError && (
-              <div className="error-box" role="alert">
-                <strong>Estado del runtime:</strong> {chatError}
-              </div>
-            )}
-
-            {chatAnswer && (
-              <div className="chat-answer" data-testid="chat-answer">
-                <pre className="answer-text">{chatAnswer}</pre>
-              </div>
-            )}
-
-            {chatCards.length > 0 && (
-              <div className="decision-cards-list">
-                <h3>Tarjetas de decisión (`decision_card`)</h3>
-                {chatCards.map((dc) => (
-                  <div key={`${dc.topic_id}-${dc.week}`} className="decision-card">
-                    <div className="card-top">
-                      <strong>{dc.topic_id}</strong>
-                      <span className={`decision-badge decision-${dc.decision}`}>
-                        {DECISION_LABELS[dc.decision]}
-                      </span>
-                      <span className="badge">
-                        Auditor: {dc.auditor_ok ? "verificado" : "alerta"}
-                      </span>
-                    </div>
-                    <p>{dc.justification_es}</p>
-                    <div className="chips-row">
-                      {dc.kpis.map((kpi, i) => (
-                        <span key={i} className="chip">
-                          {kpi.name}: <strong>{String(kpi.value)}</strong>{" "}
-                          {kpi.unit ?? ""} (
-                          {kpi.kind === "measured" ? "medido" : "estimado"} ·{" "}
-                          <code>{kpi.source}</code>)
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
 
           <section className="panel" aria-labelledby="trace-heading">
             <div className="panel-header">
@@ -683,6 +955,298 @@ export function App() {
                   </tbody>
                 </table>
               </div>
+            )}
+          </section>
+        </div>
+
+        {/* Draggable Divider (Addendum 2 Must #2) */}
+        <div
+          className={`split-divider ${isDragging ? "is-dragging" : ""}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuenow={splitPct}
+          aria-label="Ajustar ancho de paneles"
+          tabIndex={0}
+          onMouseDown={handleDividerMouseDown}
+          onTouchStart={handleDividerTouchStart}
+          title="Arrastra para cambiar la proporción de paneles"
+        >
+          <div className="divider-grip" />
+        </div>
+
+        {/* Right column: Graph panel with Fullscreen & Drawer & Floating Chat */}
+        <div
+          className="split-right-pane"
+          style={{ width: `calc(${100 - splitPct}% - 12px)` }}
+        >
+          <section
+            className={
+              isFullscreen
+                ? "panel view-placeholder view-panel-fullscreen"
+                : "panel view-placeholder"
+            }
+            aria-labelledby="view-heading"
+            data-testid="view-command-area"
+          >
+            <div className="panel-header">
+              <h2 id="view-heading">
+                {isFullscreen ? "⛶ Pantalla completa · " : ""}
+                Vista controlada por agentes (`view_command`)
+              </h2>
+              <div className="view-mode-switcher">
+                <button
+                  type="button"
+                  className={
+                    activeView.view === "cards" ? "pill pill-active" : "pill"
+                  }
+                  data-testid="view-btn-cards"
+                  onClick={() =>
+                    setActiveView((prev) => ({
+                      ...prev,
+                      view: "cards",
+                      caption_es:
+                        "Vista de tarjetas activa (haz clic en una tarjeta o pide el grafo al Cartógrafo)",
+                    }))
+                  }
+                >
+                  Tarjetas
+                </button>
+                <button
+                  type="button"
+                  className={
+                    activeView.view === "temporal" ? "pill pill-active" : "pill"
+                  }
+                  data-testid="view-btn-temporal"
+                  onClick={() =>
+                    setActiveView((prev) => ({
+                      ...prev,
+                      view: "temporal",
+                      caption_es:
+                        "Grafo temporal semanal de co-menciones (13 semanas · cosmos.gl GPU)",
+                    }))
+                  }
+                >
+                  Grafo temporal (GPU)
+                </button>
+                <button
+                  type="button"
+                  className={
+                    activeView.view === "story" ? "pill pill-active" : "pill"
+                  }
+                  data-testid="view-btn-story"
+                  onClick={() => {
+                    const topic =
+                      activeView.focus_topic ??
+                      (selectedTopic.includes(":") ? selectedTopic : null);
+                    if (!topic) {
+                      setActiveView((prev) => ({
+                        ...prev,
+                        view: "story",
+                        caption_es: `Historia de 1 salto (${prev.focus_topic ?? selectedTopic})`,
+                      }));
+                      return;
+                    }
+                    void openNamedTopic(topic, activeView.week, topic, false);
+                  }}
+                >
+                  Historia 1-salto
+                </button>
+                {isFullscreen ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-drawer-toggle"
+                      onClick={() => setIsCardsDrawerOpen((prev) => !prev)}
+                      aria-expanded={isCardsDrawerOpen}
+                    >
+                      {isCardsDrawerOpen ? "✕ Ocultar tarjetas" : "☰ Tarjetas Top 10"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-fullscreen-exit"
+                      onClick={() => {
+                        setIsFullscreen(false);
+                        setIsCardsDrawerOpen(false);
+                      }}
+                      title="Presiona Esc para salir"
+                    >
+                      ✕ Salir (Esc)
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-fullscreen-toggle"
+                    onClick={() => setIsFullscreen(true)}
+                    title="Presiona F para pantalla completa"
+                  >
+                    ⛶ Pantalla completa (F)
+                  </button>
+                )}
+                <span className="badge">Vista activa: {activeView.view}</span>
+              </div>
+            </div>
+            <p className="view-caption">{activeView.caption_es}</p>
+            <div className="chips-row">
+              <span className="chip">
+                Modo: <code>{activeView.view}</code>
+              </span>
+              <span className="chip" data-testid="active-lens-chip">
+                Color por: <strong>{LENS_NAMES[activeLens]}</strong>
+              </span>
+              <span className="chip">
+                Semana: <code>{activeView.week ?? "última con datos"}</code>
+              </span>
+              {activeView.focus_topic && (
+                <span className="chip">
+                  Foco: <code>{activeView.focus_topic}</code>
+                </span>
+              )}
+            </div>
+
+            {activeView.view === "temporal" && (
+              <TemporalGraph
+                week={activeView.week ?? contextWeek}
+                focusTopic={activeView.focus_topic}
+                highlight={activeView.highlight}
+                colorBy={activeLens}
+                captionEs={activeView.caption_es}
+                isFullscreen={isFullscreen}
+                onLensChange={selectLens}
+                onSelectTopic={(topicId) => selectTopic(topicId)}
+                onOpenStory={(topicId) => {
+                  void openNamedTopic(
+                    topicId,
+                    activeView.week ?? contextWeek ?? null,
+                    topicId,
+                    false,
+                  );
+                }}
+              />
+            )}
+
+            {activeView.view === "story" && (
+              <StoryGraph
+                focusTopic={activeView.focus_topic}
+                highlight={activeView.highlight}
+                colorBy={activeLens}
+                captionEs={activeView.caption_es}
+                isFullscreen={isFullscreen}
+                onLensChange={selectLens}
+                onSelectTopic={(topicId) => selectTopic(topicId)}
+              />
+            )}
+
+            {activeView.view === "cards" && (
+              <p className="muted view-cards-hint">
+                Haz clic en cualquier tarjeta del Top 10 a la izquierda para abrir su
+                historia (en el grafo temporal si el tema está entre los 1.000 nodos), o pulsa{" "}
+                <strong>Grafo temporal (GPU)</strong> / pregunta al Maestro de Medios{" "}
+                <em>«Muéstrame el grafo de la semana»</em>.
+              </p>
+            )}
+
+            {/* Collapsible drawer in fullscreen */}
+            {isFullscreen && isCardsDrawerOpen && (
+              <aside className="fullscreen-cards-drawer" aria-label="Cajón de tarjetas Top 10">
+                <div className="drawer-header">
+                  <h3>Tarjetas Top 10 semanal</h3>
+                  <button
+                    type="button"
+                    className="btn-fullscreen-exit"
+                    onClick={() => setIsCardsDrawerOpen(false)}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="drawer-cards-list">
+                  {radarItems.map((card) => (
+                    <div
+                      key={card.topic_id}
+                      className="drawer-card-item"
+                      onClick={() => {
+                        void openNamedTopic(
+                          card.topic_id,
+                          card.week,
+                          topicName(card.topic_id, card.label_es),
+                          false,
+                        );
+                        setIsCardsDrawerOpen(false);
+                      }}
+                    >
+                      <div className="drawer-card-top">
+                        <span className="rank-badge">#{card.rank ?? "-"}</span>
+                        <span className={`decision-badge decision-${card.decision}`}>
+                          {DECISION_LABELS[card.decision]}
+                        </span>
+                      </div>
+                      <div className="drawer-card-name">
+                        {topicName(card.topic_id, card.label_es)}
+                      </div>
+                      <div className="chips-row">
+                        <span className="chip">{formatWindow(card.window)}</span>
+                        {card.emergence_pct != null && (
+                          <span className="chip">
+                            Emergencia: {card.emergence_pct.toFixed(0)} pct
+                          </span>
+                        )}
+                      </div>
+                      <BriefBlock topicId={card.topic_id} week={card.week} />
+                      <EvidenceBlock topicId={card.topic_id} week={card.week} />
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            )}
+
+            {/* Fullscreen Floating Chat */}
+            {isFullscreen && (
+              <aside
+                className="fullscreen-floating-chat"
+                aria-label="Chat flotante del Maestro de Medios"
+              >
+                <div className="floating-chat-header">
+                  <h4>💬 Maestro de Medios</h4>
+                  <button
+                    type="button"
+                    className="pill"
+                    onClick={() => setIsFloatingChatOpen((prev) => !prev)}
+                  >
+                    {isFloatingChatOpen ? "▼ Minimizar" : "▲ Expandir"}
+                  </button>
+                </div>
+                {isFloatingChatOpen && (
+                  <div className="floating-chat-body">
+                    <div className="quick-prompts">
+                      {QUICK_QUESTIONS.slice(0, 3).map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          className="pill"
+                          onClick={() => setChatInput(q)}
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                    <form className="chat-form" onSubmit={handleChatSubmit}>
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="Pregunta en pantalla completa..."
+                        maxLength={2000}
+                      />
+                      <button type="submit" disabled={chatLoading}>
+                        {chatLoading ? "..." : "Enviar"}
+                      </button>
+                    </form>
+                    {chatAnswer && (
+                      <pre className="answer-text">{chatAnswer}</pre>
+                    )}
+                  </div>
+                )}
+              </aside>
             )}
           </section>
         </div>
