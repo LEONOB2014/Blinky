@@ -79,3 +79,23 @@ Generic GKG themes (`TAX_*`, `WB_*`, ...) are no longer ranked, so do not spend 
 3. Report: ranked topics attempted, exact / alias / none, pageview rows, failed requests (measured).
 
 Deadline: first write by **00:30**.
+
+## Addendum 2 (orchestrator, 01:45 UTC-5): fetch what the backtest needs, now
+
+At 01:40 `topic_wikidata` (22:42) had 2,675 rows and no `wiki_pageviews_daily` existed; the run is
+still resolving `topic_daily` extras, and pageviews at the safe 6.5 s pace would not reach the
+backtest (WS4, 05:00). The backtest only needs the topics in each method's weekly top 10:
+`lake/labels/backtest_priority_topics.parquet` (679 topics: the radar's top 10 over 46 weeks, 253,
+and the raw-count-growth baseline's, 467; measured). 189 exact + 30 alias are resolved, 152 with an
+es or pt article; 425 are not resolved yet.
+
+1. **Stop the extras.** Finish the current batch, write `topic_wikidata`, then resolve the 425
+   unresolved priority topics (same rules: no persons, no countries).
+2. **Pageviews for the priority topics only, es and pt only** (the label is es+pt growth; skip en
+   tonight), one request per article covering 2025-10-01..2026-10-18, at the pace that worked
+   (6.5 s). Write `wiki_pageviews_daily` (and `topic_wikidata`) every 50 articles so WS4 can start.
+3. Then, if time remains, the extras as before.
+4. Report in `status/WS6.md`: priority topics resolved (exact / alias / none), articles fetched,
+   rows, 429s, and the time of each write.
+
+Deadlines: priority resolution by **02:30**; pageviews for the priority topics by **04:00**.
