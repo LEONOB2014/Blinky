@@ -124,6 +124,12 @@ def entries() -> pl.DataFrame:
     return pl.DataFrame(rows, schema=schema)
 
 
+def unranked_ids() -> frozenset[str]:
+    """Topic ids (`ai:<id>`) of the lexicon entries marked `ranked: false`: context only, never
+    given a rank, a decision or a backtest row (contracts/ai_lexicon.yaml)."""
+    return frozenset(f"ai:{e['id']}" for e in lexicon()["entries"] if e.get("ranked") is False)
+
+
 # Families whose topics fit 30X's business audience, as WS1's business, funding and education
 # subtopics do for GDELT topics (scores.FIT_SUBTOPICS). Hand-set, estimate.
 FIT_FAMILIES = {"biz", "business"}
@@ -153,7 +159,7 @@ def ai_new_nbr_rate(edges: pl.DataFrame) -> pl.DataFrame:
     """`new_nbr_rate` per node and ISO week, WS3's rule on `edges_ai_weekly`: the share of this
     week's neighbours that were not neighbours in any of the NEW_NBR_WEEKS weeks before (NULL
     unless all of them are in the table). The "all" language bucket is used when present, else
-    the buckets are summed; edges need n >= 3."""
+    the buckets are summed; edges need n >= 3. Edges touching a context-only entry are left out."""
     if "lang_bucket" in edges.columns:
         if (edges["lang_bucket"] == "all").any():  # S16 writes an "all" row: summing would double
             edges = edges.filter(pl.col("lang_bucket") == "all")
@@ -167,6 +173,11 @@ def ai_new_nbr_rate(edges: pl.DataFrame) -> pl.DataFrame:
         )
     if edges.schema["wk"] == pl.String:
         edges = edges.with_columns(pl.col("wk").str.to_date())
+    # context-only entries (ranked: false) are drawn in the graph but are not part of the ranked
+    # universe: a link to one must not make a ranked topic look novel (measured: with them, 16 of
+    # 46 weeks got a different top 10 than without the entries)
+    unranked = list(unranked_ids())
+    edges = edges.filter(~pl.col("x").is_in(unranked) & ~pl.col("y").is_in(unranked))
     both = pl.concat(
         [
             edges.select("wk", pl.col("x").alias("a"), pl.col("y").alias("b")),

@@ -421,6 +421,7 @@ function LeadersList({
                 {changeText && <span>{changeText}</span>}
                 {espt && <span>{espt}</span>}
                 {row.emergence_rank ? <span>Despegando: #{row.emergence_rank}</span> : null}
+                {row.ranked === false ? <span>Contexto</span> : null}
               </span>
             </button>
           </article>

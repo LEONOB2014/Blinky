@@ -360,6 +360,7 @@ def ai_lexicon_entries() -> dict[str, dict[str, Any]]:
             "family": e["family"],
             "family_es": families.get(e["family"], e["family"]),
             "stance": e.get("stance"),
+            "ranked": e.get("ranked", True),
         }
         for e in lex["entries"]
     }
@@ -533,6 +534,7 @@ def get_leaders(week: str | None = None, limit: int = LEADERS_LIMIT) -> dict[str
                 "espt_share": round(r["n_espt"] / r["n"], 4) if r["n"] else None,
                 "emergence_rank": score.get("rank"),
                 "decision": score.get("decision"),
+                "ranked": meta.get("ranked", True),  # false: a context-only lexicon entry
             }
         )
     return {

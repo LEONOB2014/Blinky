@@ -146,9 +146,26 @@ def test_ai_export_keeps_computed_properties_and_separates_critics(tmp_path: Pat
     assert nodes[ACT]["stance"] == "critic"
     assert nodes[ACT]["show_label"] is True
     assert nodes[RISK]["show_label"] is True
-    critic_x = max(nodes[ACT]["x"], nodes[RISK]["x"])
-    other_x = min(nodes[OPENAI]["x"], nodes[GPT]["x"])
-    assert critic_x < other_x
+    # ForceAtlas2 (063df6f) no longer pins the critics to the left: the contract is that they form
+    # their own Leiden community every week and their own region of the layout (their centroid is
+    # farther from the promoters' than either camp is wide)
+    critics, promoters = (ACT, RISK), (OPENAI, GPT)
+    for k in range(len(nodes[OPENAI]["community_week"])):
+        camp = {nodes[t]["community_week"][k] for t in critics}
+        rest = {nodes[t]["community_week"][k] for t in promoters}
+        assert len(camp) == 1 and camp.isdisjoint(rest)
+
+    def centroid(ids):
+        return tuple(sum(nodes[t][c] for t in ids) / len(ids) for c in ("x", "y"))
+
+    def dist(a, b):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+    def xy(t):
+        return (nodes[t]["x"], nodes[t]["y"])
+
+    spread = max(dist(xy(ACT), xy(RISK)), dist(xy(OPENAI), xy(GPT)))
+    assert dist(centroid(critics), centroid(promoters)) > spread
     assert out["_meta"]["default_color_by"] == "family"
     assert out["_meta"]["params"]["ai_only"] is True
     assert any(item["label_es"] == "Críticos" for item in out["_meta"]["stance_legend"])
@@ -211,7 +228,7 @@ def test_language_buckets_do_not_double_count():
 
 def test_shipped_lexicon_families_have_colours():
     lex = load_lexicon()
-    assert len(lex) == 110
+    assert len(lex) == 117
     assert set(lex) >= {"ai:lab:openai", "ai:policy:eu_ai_act", "ai:critic:pause_ai"}
     families = {entry["family"] for entry in lex.values()}
     assert families <= set(FAMILY_PALETTE)

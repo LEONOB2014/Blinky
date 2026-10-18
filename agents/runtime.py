@@ -996,6 +996,8 @@ def leaders_block(turn: Turn) -> str:
             if r.get("emergence_rank") is not None
             else ""
         )
+        if r.get("ranked") is False:  # a context-only lexicon entry: counted, never ranked
+            rank = "; tema de contexto, fuera del ranking"
         lines.append(
             f"{r['leader_rank']}. {r['label_es']} ({r['family_es']}): {r['articles']} artículos"
             f"{change}{rank}"

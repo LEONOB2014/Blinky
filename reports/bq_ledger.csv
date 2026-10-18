@@ -73,3 +73,7 @@ ts_utc,job_id,script,workstream,dry_run_bytes,billed_bytes,cap_gib,note
 2026-10-18T14:01:10Z,radar_s13_topic_sources_weekly_20261018T135912_83bf05,s13_topic_sources_weekly.sql,WS1,1448155348,1449132032,5,WP1: topic_sources_weekly also for ai: lexicon topics (measured)
 2026-10-18T14:01:36Z,radar_s14_topic_evidence_weekly_20261018T140113_03361b,s14_topic_evidence_weekly.sql,WS1,7680,1220542464,5,WP1: topic_evidence_weekly also for the top 30 ai: topics of 8 weeks (measured)
 2026-10-18T14:37:30Z,radar_s14_topic_evidence_weekly_20261018T143715_b2c876,s14_topic_evidence_weekly.sql,WS1,7680,1220542464,5,WP1: topic_evidence_weekly for the WS4-scored ai: top 30 of 8 weeks (measured)
+2026-10-18T19:47:33Z,radar_s15_topic_ai_daily_20261018T194615_ea5ddd,s15_topic_ai_daily.sql,WS1,722946263,825229312,5,lexicon v0.4 (117 entries): article_topic_ai + topic_ai_daily (measured) (measured)
+2026-10-18T19:48:56Z,radar_s16_edges_ai_weekly_20261018T194741_8aabae,s16_edges_ai_weekly.sql,WS1,659008487,659554304,5,lexicon v0.4 (117 entries): edges_ai_weekly (measured) (measured)
+2026-10-18T19:51:31Z,radar_s13_topic_sources_weekly_20261018T195017_8bff5e,s13_topic_sources_weekly.sql,WS1,1450270022,1451229184,5,lexicon v0.4: topic_sources_weekly with the 117 ai: topics (measured) (measured)
+2026-10-18T20:02:20Z,radar_s14_topic_evidence_weekly_20261018T200205_b5b46b,s14_topic_evidence_weekly.sql,WS1,7680,1221591040,5,lexicon v0.4: topic_evidence_weekly for the re-scored ai: top 30 of 8 weeks (measured) (measured)
