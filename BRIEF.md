@@ -223,3 +223,24 @@ field in `graph/README.md` with its formula.
 Keep every measure per week, persons never included, and report their distributions (median, p90) in
 `status/WS5.md`. Deadline: edge properties and betweenness / cross-ring / momentum by **04:00**,
 together with Addendum 2's must list by **05:00**.
+
+## Addendum 4 (orchestrator, 02:40 UTC-5): the Brief, Evidence and Trust cards (after Addendum 2-3's must list)
+
+The demo's steps 3 and 4 need three cards the UI does not show yet. Start them only after Addendum 2's
+must list and Addendum 3's properties are committed and measured (05:00); drop them if time runs out,
+and say so.
+
+1. **Brief card** on each top-10 card (expandable): `headline_es`, `what_happened_es`, `why_latam_es`,
+   `angle_es`, `hook_es`, `format_es` from `topic_briefs_weekly` (contract merged, PR #28; lake file from
+   claude-cacho by 04:30). A small "verificado por el Auditor" badge when `auditor_ok`, otherwise "revisar".
+   Read it from the static export (`web/public/data/briefs/<week>.json`; add that file to
+   `deploy/export_static.py` if WS1d/WS9 did not) or an API path if one exists; never invent text.
+2. **Evidence card**: up to 5 articles per topic (title linked to the URL, outlet, date, language) from
+   `web/public/data/evidence/topics/<slug>.json` (claude-work, by 04:30). Titles open in a new tab.
+3. **Trust panel** (one view, reachable from the header): the backtest summary, label quality (filter
+   precision/recall with intervals), BigQuery and Jev ledger totals, from `web/public/data/evidence/*.json`
+   (claude-work's `deploy/evidence.py`, merged later tonight). Every number shows its denominator and
+   "medido"/"estimado"; nothing is retyped by hand.
+
+Acceptance: `bun run build` passes; screenshots of the three cards; if a data file is missing, the card
+says "pendiente" instead of failing.
