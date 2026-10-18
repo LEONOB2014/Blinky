@@ -54,7 +54,7 @@ def container_starts_since(since: dt.datetime) -> int:
         "logging", "read",
         f'resource.type="cloud_run_revision" AND resource.labels.service_name="{SERVICE}" '
         f'AND timestamp>="{since.strftime("%Y-%m-%dT%H:%M:%SZ")}" '
-        'AND (textPayload:"Started server process" OR textPayload:"Application startup complete")',
+        'AND textPayload:"Started server process"',  # one line per container start
         "--limit=20", "--format=value(timestamp)",
     )  # fmt: skip
     return len([line for line in out.splitlines() if line.strip()])
