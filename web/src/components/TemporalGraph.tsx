@@ -53,6 +53,17 @@ const REHEAT_TICK_MS = 100;
 const REHEAT_STABLE_TICKS = 3;
 const LAYOUT_SAMPLE_INDEXES = [0, 100, 250, 500, 750, 999];
 
+/** deg_growth is a natural log. Show exp(log) − 1, as a percent or a ratio. */
+function formatDegreeGrowth(logGrowth: number): string {
+  const ratio = Math.exp(logGrowth);
+  if (!Number.isFinite(ratio)) return "n/d";
+  const pct = (ratio - 1) * 100;
+  if (Math.abs(pct) >= 1000) {
+    return `×${ratio.toFixed(ratio >= 100 ? 0 : 1)}`;
+  }
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
+}
+
 const COMMUNITY_COLORS: Array<[number, number, number]> = [
   [56, 189, 248], // sky blue
   [251, 146, 60], // orange
@@ -1453,13 +1464,12 @@ export function TemporalGraph({
                   </div>
                   <div className="mover-meta">
                     <code>{m.id}</code>
-                    {m.deg_growth != null && (
+                    {m.deg_growth != null && Number.isFinite(m.deg_growth) && (
                       <>
                         {" "}
                         · grado{" "}
-                        <strong>
-                          {m.deg_growth >= 0 ? "+" : ""}
-                          {(m.deg_growth * 100).toFixed(0)}%
+                        <strong title="exp(log del grado) − 1, medido">
+                          {formatDegreeGrowth(m.deg_growth)}
                         </strong>
                       </>
                     )}
