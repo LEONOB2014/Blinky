@@ -100,3 +100,27 @@ the template, and mark it ready only after the local gate passes (CI minutes are
 ## If blocked
 
 Write `BLOCKED: <reason>` at the top of `status/WS1.md` and stop.
+
+## Addendum 2 (orchestrator, 22:30 UTC-5): the topic -> subtopic table and the dev cut
+
+Your decisions 1-3 are settled in PR #8 (`docs/ws0-ranked-universe`): ring ids `it_all` and
+`domain:<id>` as you built them; the ring-2 text now matches your rule; the ranked universe is every
+org except `ranked_universe.org_deny`, plus `TECH_` themes (`contracts/taxonomy.yaml`). Decision 5
+(energy_climate is broad) goes to the Curator's label pass later; no change now.
+
+Merge `origin/develop` once PR #8 is merged, then:
+
+1. `bq_sql/s12_topic_subtopic_weekly.sql`: `radar.topic_subtopic_weekly` exactly as
+   `contracts/topic_subtopic_weekly.schema.json` (ring-1 articles only; topics = the org/thm ids of
+   `topic_daily`; weeks on Monday as `edges_weekly`; `subtopic` NULL for articles with none).
+   Through `run_bq.py` and the ledger; estimate the bill with a dry run first.
+2. Export it to `lake/gold/` in `export_gold.py`, contract-checked like the others.
+3. Dev cut for `fixtures/dev/` (you may touch `scripts/export_dev_slice.py`, `src/radar/fixtures.py`
+   `ALLOWED_COLUMNS` and `fixtures/dev/` for this): `topic_daily` and `topic_subtopic_weekly` for
+   2026-08-24..2026-10-18, ranked universe only (no deny-listed orgs), keeping each file under 1 MB
+   (cut to the top topics by articles if needed, and say how many). Update the `x-mock` of both
+   contracts to `dev-slice` only if `make test-ws` passes.
+4. Same gate; commit; report the bill and row counts in `status/WS1.md`. The push waits for the
+   maintainer.
+
+Deadline: table in the lake by **00:00**, dev cut by **00:30**.
