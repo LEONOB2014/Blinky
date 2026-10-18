@@ -5,7 +5,7 @@
   "description": "agents/ update_view tool -> API -> web (sigma.js story view; Graphistry via URL parameters, unverified)",
   "type": "object",
   "x-owner": "orchestrator (agents/)",
-  "x-mock": "pending-first-agent-run",
+  "x-mock": "first-agent-run",
   "properties": {
     "view": {
       "type": "string",
