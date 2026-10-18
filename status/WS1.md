@@ -17,9 +17,51 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 15:35 UTC-5 · branch `feat/ws0-lexicon-v04` (lexicon v0.4 re-run) · committed locally, not pushed, not deployed.
+2026-10-18 16:20 UTC-5 · branch `feat/ws0-lexicon-v04` (v0.4b: lake restored, sector entries context-only) · committed locally, not pushed, not deployed.
+
+Previous: 2026-10-18 15:35 UTC-5 · branch `feat/ws0-lexicon-v04` (lexicon v0.4 re-run).
 
 Previous: 2026-10-18 09:38 UTC-5 · branch `feat/ws1-ai-topics` (evidence for the scored AI topics) · committed locally, not pushed.
+
+## Lexicon v0.4b: shared lake restored, the sector entries are context only (16:20 UTC-5)
+
+The orchestrator's decision after the re-run below: v0.4 does not ship as ranked topics. All numbers *measured*.
+
+- **Shared lake restored** from `lake/backup/pre_lexicon_v04_1445/`: the 7 gold files the re-run replaced
+  (`topic_ai_daily`, `edges_ai_weekly`, `topic_ai_scores_weekly`, `topic_ai_briefs_weekly`,
+  `topic_context_1hop`, `topic_sources_weekly`, `topic_evidence_weekly`) and 11 view files; the 2 story files
+  it created are removed. Every backed-up file is byte-identical again (`cmp`). `check_ai_views` PASS, 105
+  nodes; `topic_ai_scores_weekly` 2026-W42 #1 is `ai:biz:mergers_deals`. This worktree's git-ignored
+  `web/public/data` was rebuilt from the restored lake.
+- **Still v0.4 outside the lake:** the BigQuery tables `radar.topic_ai_daily`, `edges_ai_weekly`,
+  `article_topic_ai`, `topic_sources_weekly`, `topic_evidence_weekly` and `evidence_topics` hold the
+  117-entry run. A deploy ships the lake, not BigQuery; an `export_gold` from BigQuery would bring v0.4 back.
+- **`ranked: false`** (contracts/ai_lexicon.yaml) on the 7 sector entries. `universe.in_universe` leaves them
+  out of scoring, so they get no rank, decision or backtest row. They stay in `topic_ai_daily`, the edges,
+  the ring, the graph views, the community and the agents' tools. `/api/leaders` rows carry `ranked`
+  (contracts/api.yaml, optional): the UI shows "Contexto" and the chat says "tema de contexto, fuera del
+  ranking".
+- **One more change was needed:** with only the universe filter, 16 of 46 weeks still got a different top 10
+  (W41: `biz:latam_ai` in at #8, `product:chatgpt` out). The cause is the new-neighbour rate, which counted
+  links to the sector topics. Scored with v0.3.1's edges the result was identical. `source.ai_new_nbr_rate`
+  now drops edges that touch a context-only entry.
+- **Result** (scratch lake `lake/scratch/lexicon_v04b/`: v0.4 tables exported from BigQuery, 0 bytes billed;
+  nothing written over live gold): `topic_ai_scores_weekly` equals v0.3.1's row for row (3,379 rows, 101
+  units, 0 rank and 0 decision differences, max priority difference 0.0). The W41 and W42 top 10 are v0.3.1's.
+  `reports/backtest_ai.md` is identical to v0.3.1's apart from its timestamp (kept as v0.3.1's file):
+  published radar 110/430 = 25.6% [22.3, 28.8] on the es+pt label, base rate 25.4%.
+- **Graph on the scratch lake:** ring 17,106 `ai:` rows (116 topics); `export_views --ai` 111 nodes (6 sector
+  topics drawn; `society:indigenous_languages`, 1 article in W42, is not); `check_ai_views` PASS.
+  `/api/leaders` W42: `ai:biz:ai_finance_banking` is #12 by volume (496 articles), `ranked` false, no
+  emergence rank.
+- **E2E matrix** (branch build on the scratch lake): 130 / 130 cells pass, 0 errors; play Familia and Postura
+  end at W42 with 0 errors (0 fps measured this run: the headed window was likely occluded; 120 fps earlier).
+  The 8 selections focus and label correctly, each with the 2 console errors of the local preview's
+  fallback files described below.
+- **Test fixed:** `test_ai_export_keeps_computed_properties_and_separates_critics` now checks the
+  ForceAtlas2 layout's contract: the critics form their own Leiden community every week and their own
+  region (critic-promoter centroid distance about 2,200 vs within-camp spread about 1,560 in the fixture).
+- **Gate:** `make check` passes; `make test` 426 passed, 0 failed; `make test-ws` 36 passed; web `tsc` clean.
 
 ## Lexicon v0.4 pipeline re-run (15:35 UTC-5, branch `feat/ws0-lexicon-v04`, not deployed, not pushed)
 
