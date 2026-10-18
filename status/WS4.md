@@ -1,8 +1,70 @@
+HANDOFF (orchestrator, 02:25 UTC-5): claude-extend reached its weekly limit; the orchestrator
+continues this lane. State: syndication guard and secondary backtest merged (PR #25). Primary backtest
+(exact Wikidata matches) coverage at 02:23: published radar 282/440 (64.1%), gate without guard
+263/440, no gate 261/440, raw-count growth 191/440 (43.4%), persistence 427/440 (measured); precision
+withheld below 90%. WS6 is fetching the 336 missing topics (exact by 03:15, all by 03:45). Next: rerun
+`RADAR_PROFILE=full POLARS_MAX_THREADS=4 uv run --extra models python -m models.backtest` after each WS6
+write (peak 1.32 GB, 9 s, measured), final run at >= 90%.
+
 # WS4 status
 
 READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.parquet` was rebuilt
 with the syndication guard in the eligibility gate (16,904 rows, 46 weeks, 4,911 topics, 0 contract
 violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060 rows, 1,916 exact).
+
+## Primary backtest, reported with bounds (orchestrator decision, 03:40 UTC-5)
+
+`models/backtest.py` now reports a label below the 90% coverage rule instead of withholding it:
+precision@10 on the labelled slots of each ranker's own top 10, plus a worst case (its unlabelled
+slots all misses) and a best case (all hits). The 90% rule's caveat stays in the report, and no
+unbounded precision is printed. Slots of weeks with too few labelled topics (2026-W40) count as
+unknown. Exact Wikidata matches, 440 slots per ranker (43 evaluable weeks + W40), all measured:
+
+| Ranker | Coverage | Precision on labelled slots [95% interval] | Worst | Best |
+|---|---|---|---|---|
+| Radar, published (gate + guard) | 92.7% | 119/408 = 29.2% [24.4..34.0] | 27.0% | 34.3% |
+| Radar, gate, no guard | 91.6% | 135/403 = 33.5% [29.2..38.0] | 30.7% | 39.1% |
+| Radar, no gate | 91.6% | 134/403 = 33.3% [28.8..37.5] | 30.5% | 38.9% |
+| Raw-count growth | 85.9% | 120/378 = 31.7% [26.8..37.0] | 27.3% | 41.4% |
+| Persistence | 96.8% | 77/426 = 18.1% [14.8..21.3] | 17.5% | 20.7% |
+| Base rate | | 1036/4085 = 25.4% | | |
+
+- **Hook: may not use the primary result.** The published radar's worst case minus raw-count
+  growth's best case is -14.3 points (95% interval -20.2..-8.6). Even on labelled slots alone the
+  published radar (29.2%) is not above raw-count growth (31.7%); the intervals overlap.
+- Every radar beats persistence under the worst case (published: +6.4 points, interval 0.7..12.0).
+- On labelled slots the syndication guard lowers the radar's precision (29.2% with it, 33.5% without;
+  the intervals overlap, measured).
+- The alias-included run (separate section) gives the same reading: the published radar's worst
+  case 25.7% vs raw-count growth's best case 51.8%.
+- The secondary-label backtest (es+pt GDELT growth) is unchanged in the report.
+
+## Primary backtest after WS6's last write (03:20 UTC-5, Claude #4 / claude-cacho, after the handover)
+
+WS6 reports **Done** (03:14 write: 368,394 pageview rows; all 292 missing exact topics fetched, 512 of
+512 articles HTTP 200). Final run on that data (`RADAR_PROFILE=full POLARS_MAX_THREADS=4 uv run
+--extra models python -m models.backtest`, exit 0), label coverage of each ranker's top 10 over 440
+top-10 slots (43 evaluable weeks plus 2026-W40, which has no labels; measured):
+
+| Ranker | Exact matches (primary) | Alias included (separate row) |
+|---|---|---|
+| Radar, gate + syndication guard (published) | 408/440, 92.7% | 402/440, 91.4% |
+| Radar, gate, no guard | 403/440, 91.6% | 400/440, 90.9% |
+| Radar, no gate | 403/440, 91.6% | 356/440, 80.9% |
+| Baseline: raw-count growth | **378/440, 85.9%** | 318/440, 72.3% |
+| Baseline: persistence | 426/440, 96.8% | 427/440, 97.0% |
+
+**Precision@10 on the primary label is not reported:** raw-count growth stays below the 90% rule
+(`MIN_COVERAGE`), so its precision could still move by up to 14 points. Why the gap does not close
+(measured, read-only check of the same top 10s): the 62 unlabelled raw-count slots (and the 14-37 of
+the other rankers) belong to 83 topics that WS6 **did** fetch; their pageview series have fewer than
+12 days of data in a 14-day window (new or rarely viewed es/pt articles), so the label is missing by
+the protocol and never zero-filled. No further fetch can fill them. The list is in
+`lake/labels/backtest_missing_topics.parquet` (topic, QID, articles, reason).
+
+Decision for the orchestrator (not taken here): keep the 90% rule and present the secondary-label
+backtest as the result, or accept 85.9% and print the precision with its 14-point bound. The
+secondary-label results (es+pt GDELT growth) above are unchanged.
 
 ## Addendum 5: the syndication guard (01:36 UTC-5)
 
@@ -48,9 +110,12 @@ violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060
   - Caveat in the report: the guard was designed after seeing W42; its thresholds come from
     WS1's distributions, not from the label.
 - **Backtest, primary label** (Addendum 4b: exact Wikidata matches only; the alias-included run is
-  a separate section). At the 01:39 write, coverage for the published radar is 96/440 (21.8%)
-  exact and 93/440 (21.1%) with aliases, so precision is withheld for both (measured). The
-  missing-topic list for WS6 still stands (below).
+  a separate section). At the 01:50 write, coverage for the published radar is 142/440 (32.3%)
+  exact and 139/440 (31.6%) with aliases, so precision is withheld for both (measured).
+- **Needed topics, recomputed for exact matches (01:51):** 540 topics are needed, 124 already have
+  pageviews, 416 do not. Of those 416, **292 are not on WS6's priority list** (measured), so WS6
+  will never fetch them as things stand. Updated lists: `lake/labels/ws4_backtest_needed_topics.parquet`
+  and `ws4_backtest_needed_missing.parquet` (the 292).
 - Addendum 5b: done as written (the pattern share as a gate on headlining only, and the top
   source share for one-outlet weeks). The guard also needs >= 5 sources, a stricter extra
   condition 5b does not ask for. In W42 it alone holds 6 topics, all below the top-10 cutoff
