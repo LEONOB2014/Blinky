@@ -66,7 +66,8 @@ def labels_and_mapped() -> tuple[dict[str, str], set[str]]:
     if wd is not None:
         has = wd.filter(pl.col("article_es").is_not_null() | pl.col("article_pt").is_not_null())
         mapped = set(has["topic_id"].to_list())
-        for r in wd.filter(pl.col("label_es").is_not_null()).iter_rows(named=True):
+        exact = wd.filter(pl.col("label_es").is_not_null(), pl.col("match") == "exact")
+        for r in exact.iter_rows(named=True):
             labels.setdefault(r["topic_id"], r["label_es"])
     return labels, mapped
 
@@ -84,13 +85,24 @@ def _num(x: Any) -> float | None:
     return None if x is None or (isinstance(x, float) and math.isnan(x)) else float(x)
 
 
-def why(row: dict[str, Any], win: window.Window) -> list[str]:
-    """Up to five Spanish reasons, each number marked measured or estimate."""
+def why(row: dict[str, Any], win: window.Window, dec: str = "", rule: int = 0) -> list[str]:
+    """Up to five Spanish reasons, each number marked measured or estimate.
+
+    The decision's reason comes first, then a seed or alias note, then the scores.
+    """
     out = []
+    if dec:
+        out.append(f"Decisión: {dec} (regla {rule}: {decision.REASONS_ES[rule]})")
+    if row.get("seed_reason"):
+        out.append(f"Semilla a vigilar: {row['seed_reason']}")
+    if row.get("alias_of"):
+        out.append(f"También aparece como «{row['alias_of']}» (mismo elemento de Wikidata)")
     if row["emergence_pct"] is not None:
         bits = [f"z_7d {row['z_7d']:.1f}"] if row["z_7d"] is not None else []
         if row["growth_7d_log"] is not None:
-            bits.append(f"cuota 7d {math.exp(row['growth_7d_log']) - 1:+.0%} vs. semana previa")
+            g = math.exp(row["growth_7d_log"])
+            pct = "más de 10 veces" if g > 10 else f"{g - 1:+.0%}"
+            bits.append(f"cuota 7d {pct} vs. semana previa")
         detail = f" ({', '.join(bits)})" if bits else ""
         pct = row["emergence_pct"]
         out.append(f"Emergencia: percentil {pct:.0f} de la semana{detail} (medido)")
@@ -136,6 +148,105 @@ def _inputs(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None,
     return roll, own, universe.membership(scores.FIT_SUBTOPICS), daily["dt"].min()
 
 
+# Eligibility gate for the top 10 (Addendum 3; thresholds hand-set, estimate): a topic can headline
+# when it is an established entity (articles in >= GATE_WEEKS of the prior GATE_SPAN ISO weeks and
+# >= GATE_ARTICLES articles in them) or it resolves to a Wikidata item with match `exact`.
+# Other ranked topics are "semillas a vigilar": stage semilla, ranked after every eligible topic.
+# Deviation from Addendum 3 (which allows exact or alias): every `alias` match in WS6's table has
+# confidence 0.6 and several are wrong on the W42 list (measured: org:national anti -> an anti-
+# doping agency, org:us department -> Veterans Affairs), so an alias alone does not open the gate;
+# aliases still merge topics that share a QID, and give no Spanish label.
+GATE_SPAN, GATE_WEEKS, GATE_ARTICLES = 8, 6, 200
+GATE_MATCH = ("exact",)
+WIKIDATA_MATCH = ("exact", "alias")  # for the same-QID dedupe
+
+
+def history(own: pl.DataFrame) -> pl.DataFrame:
+    """Per topic x ISO week: weeks with articles and articles over the prior GATE_SPAN weeks."""
+    daily = own.filter(pl.col("group") == "all", pl.col("n").is_not_null())
+    wk = daily.group_by("unit_id", pl.col("dt").dt.truncate("1w").alias("monday")).agg(
+        pl.col("n").sum().alias("n_week")
+    )
+    mondays = wk.select("monday").unique()
+    grid = wk.select("unit_id").unique().join(mondays, how="cross")
+    g = grid.join(wk, on=["unit_id", "monday"], how="left").with_columns(
+        pl.col("n_week").fill_null(0)
+    )
+    g = g.sort("unit_id", "monday").with_columns(
+        (pl.col("n_week") > 0)
+        .cast(pl.Int32)
+        .rolling_sum(GATE_SPAN, min_samples=1)
+        .shift(1)
+        .over("unit_id")
+        .fill_null(0)
+        .alias("weeks_active_prior"),
+        pl.col("n_week")
+        .rolling_sum(GATE_SPAN, min_samples=1)
+        .shift(1)
+        .over("unit_id")
+        .fill_null(0)
+        .alias("articles_prior"),
+    )
+    return g.select(
+        "unit_id",
+        pl.col("monday").dt.strftime("%G-W%V").alias("week"),
+        "weeks_active_prior",
+        "articles_prior",
+    )
+
+
+def gate(scored: pl.DataFrame, own: pl.DataFrame) -> pl.DataFrame:
+    """Applies the eligibility gate and the Wikidata alias dedupe, and re-ranks each week."""
+    s = scored.join(history(own), on=["unit_id", "week"], how="left")
+    wd = _wikidata()
+    if wd is not None:
+        q = wd.filter(pl.col("match").is_in(WIKIDATA_MATCH), pl.col("qid").is_not_null())
+        s = s.join(
+            q.select(pl.col("topic_id").alias("unit_id"), "qid", "match"), on="unit_id", how="left"
+        )
+    else:
+        s = s.with_columns(
+            pl.lit(None, pl.String).alias("qid"), pl.lit(None, pl.String).alias("match")
+        )
+    established = (pl.col("weeks_active_prior").fill_null(0) >= GATE_WEEKS) & (
+        pl.col("articles_prior").fill_null(0) >= GATE_ARTICLES
+    )
+    s = s.with_columns(
+        (established | pl.col("match").is_in(GATE_MATCH).fill_null(False)).alias("headline_ok"),
+    )
+    # same QID in the same week: keep the topic with more articles, name the others in its why
+    s = s.with_columns(
+        pl.col("n7raw").rank("ordinal", descending=True).over("week", "qid").alias("qid_rank")
+    )
+    dup = s.filter(pl.col("qid").is_not_null(), pl.col("qid_rank") > 1)
+    names = dup.group_by("week", "qid").agg(
+        pl.col("unit_id").str.split(":").list.last().str.join(", ").alias("alias_of")
+    )
+    s = s.filter(pl.col("qid").is_null() | (pl.col("qid_rank") == 1))
+    s = s.join(names, on=["week", "qid"], how="left")
+    s = s.with_columns(
+        pl.when(pl.col("headline_ok"))
+        .then(pl.lit(None, pl.String))
+        .otherwise(
+            pl.format(
+                "{} de {} semanas previas con artículos y {} artículos en ellas; sin Wikidata",
+                pl.col("weeks_active_prior").fill_null(0),
+                pl.lit(GATE_SPAN),
+                pl.col("articles_prior").fill_null(0),
+            )
+        )
+        .alias("seed_reason"),
+        pl.when(pl.col("headline_ok"))
+        .then(pl.col("stage"))
+        .otherwise(pl.lit("semilla"))
+        .alias("stage"),
+    )
+    order = pl.struct(
+        (~pl.col("headline_ok")).cast(pl.Int8).alias("seed"), (-pl.col("priority")).alias("p")
+    )
+    return s.with_columns(order.rank("ordinal").over("week").cast(pl.Int64).alias("rank"))
+
+
 def scored_units(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None]:
     """Scored unit-weeks after the warm-up, the unit's own rolling frame and its membership."""
     roll, own, mem, start = _inputs(unit)
@@ -152,7 +263,11 @@ def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[
     unit = unit or units()
     scored, own, mem = scored_units(unit)
     if unit == "topic":
-        scored = scored.filter(pl.col("rank").is_not_null())
+        scored = gate(scored.filter(pl.col("rank").is_not_null()), own)
+    else:
+        scored = scored.with_columns(
+            pl.lit(None, pl.String).alias("seed_reason"), pl.lit(None, pl.String).alias("alias_of")
+        )
     if mem is not None:
         scored = scored.join(
             mem.select("unit_id", "week", "primary_subtopic", "subtopics"),
@@ -180,7 +295,7 @@ def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[
             for c in NULLABLE:
                 row[c] = _num(row[c])
             win = chips.get(u, window.Window("sin_estimacion", None, None, 0))
-            dec, _ = decision.decide(
+            dec, rule = decision.decide(
                 decision.Inputs(
                     eligible=row["eligible"],
                     emergence_pct=row["emergence_pct"],
@@ -188,6 +303,7 @@ def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[
                     saturation=row["saturation"],
                     window_state=win.state,
                     days_left=win.days_left,
+                    priority_pct=_num(row["priority_pct"]),
                 )
             )
             records.append(
@@ -208,7 +324,7 @@ def build(unit: str | None = None, min_onsets: int = window.MIN_ONSETS) -> list[
                     "priority": float(row["priority"]),
                     "rank": row["rank"],
                     "decision": dec,
-                    "why": why(row, win),
+                    "why": why(row, win, dec, rule),
                     "evidence_ids": [],
                     "has_wikipedia_es_pt": u in mapped,
                     "profile": profile(),

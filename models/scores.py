@@ -225,7 +225,12 @@ def score(
         .alias("priority")
     )
     rank = pl.col("priority").rank("ordinal", descending=True).over("week")
-    ranked_rank = p.filter("eligible").select(key, "week", rank.cast(pl.Int64).alias("rank"))
+    ranked_rank = p.filter("eligible").select(
+        key,
+        "week",
+        rank.cast(pl.Int64).alias("rank"),
+        (100 * _pct("priority")).alias("priority_pct"),
+    )
     return p.join(ranked_rank, on=[key, "week"], how="left").sort("week", "rank", key)
 
 

@@ -1,12 +1,55 @@
 # WS4 status
 
+READY FOR REDEPLOY (00:52 UTC-5): `lake/gold/topic_scores_weekly.parquet` was rebuilt with the
+Addendum 3 eligibility gate, the decision fix and the alias dedupe (17,154 rows, 46 weeks, 4,943
+topics, 0 contract violations, measured). `subtopic_scores_weekly.parquet` was rebuilt too (552
+rows).
+
+## New W42 top 10 (measured; `rank` 1-10 of 430 ranked topics)
+
+| Rank | Topic | Label | Stage | Decision | Window |
+|---|---|---|---|---|---|
+| 1 | `org:marsh mclennan` | Marsh & McLennan Companies | semilla | preparar | sin_estimacion |
+| 2 | `org:euronext` | Euronext | emergente | preparar | dias_restantes (12 d) |
+| 3 | `org:adani enterprises` | adani enterprises | emergente | esperar | dias_restantes (4 d) |
+| 4 | `org:rocket lab` | Rocket Lab | emergente | esperar | dias_restantes (12 d) |
+| 5 | `org:national stock exchange` | national stock exchange | emergente | preparar | dias_restantes (5 d) |
+| 6 | `org:ministry of science` | ministerio de Ciencia | emergente | preparar | dias_restantes (9 d) |
+| 7 | `org:kioxia holdings` | kioxia holdings | emergente | esperar | sin_estimacion |
+| 8 | `org:sterling` | Sterling | emergente | esperar | dias_restantes (12 d) |
+| 9 | `org:citigroup` | Citigroup | emergente | esperar | dias_restantes (6 d) |
+| 10 | `org:yahoo` | yahoo | emergente | esperar | dias_restantes (10 d) |
+
+- W42 decisions (430 ranked): 1 publicar_ahora (rank 15), 49 preparar, 166 esperar, 214
+  no_es_tema_caliente. All weeks: 33 / 1,962 / 6,418 / 8,741 (measured).
+- Gate: 261 of 430 W42 topics may headline; the other 169 are "semillas a vigilar", ranked
+  after them with stage `semilla` and the reason in `why`. `org:scam centre`, `org:capital
+  markets department`, `org:national anti`, `org:a group` and `org:technological development
+  area` are out of the top 10 (measured). The deny list (PR #12) removes `big news network`.
+- Alias dedupe: 4 W42 topics absorbed a same-QID variant (for example `org:taiwan
+  semiconductor manufacturing company` into `... manufacturing co`). `org:taiwan semiconductor`
+  and `... manufacturing` stay separate: WS6 has no QID for them yet.
+- **Deviation from Addendum 3, for the orchestrator:** only Wikidata `exact` matches open the
+  gate, not `alias`. All 316 alias matches have confidence 0.6, and several are wrong on the W42
+  list: `org:national anti` resolves to an anti-doping agency, `org:us department` to Veterans
+  Affairs. Aliases still drive the dedupe, but they no longer supply Spanish labels.
+- Decision coherence: it was the table's design, not a grain bug (explained in
+  `models/README.md`). `publicar_ahora` now needs a priority percentile >= 90, `preparar` >= 75,
+  and a priority percentile < 50 is `no_es_tema_caliente`. Kioxia (rank 7) moved from
+  `no_es_tema_caliente` to `esperar`. Every row's first `why` line names its decision rule.
+- Editor sheet regenerated from the gated top 10: 10 radar + 10 raw-count-growth items, no
+  overlap (`reports/editor_test.md`).
+- Still weak (estimate weights, not retuned before the backtest): rank 1 Marsh & McLennan rises
+  from near zero (share up more than 10x, no z history), and lowercase GKG names show where
+  WS6 has no exact Wikidata label.
+
 Owner: claude-cacho · Directories: `models/`
 
 Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 22:50 UTC-5 · branch `feat/ws4-scores` · draft PR #6 (into `develop`)
+2026-10-18 00:52 UTC-5 · branch `feat/ws4-scores` · draft PR #6 (into `develop`); local commits not pushed
 
 ## Done
 

@@ -22,7 +22,7 @@ from pathlib import Path
 import polars as pl
 
 from models import backtest, build_scores
-from radar.paths import REPO_ROOT, lake, profile
+from radar.paths import REPO_ROOT, gold, lake, profile
 
 WEEK = "2026-W42"
 SEED = 20261018
@@ -42,6 +42,11 @@ def lists(week: str = WEEK) -> tuple[list[str], list[str]]:
     if w.is_empty():
         raise ValueError(f"no scored units for {week}")
     radar = w.sort("rank").head(TOP_K)["unit_id"].to_list()
+    published = gold("topic_scores_weekly")
+    if build_scores.units() == "topic" and published.exists():
+        # the radar list is the published, gated top 10 (what the API and the judges see)
+        pub = pl.read_parquet(published).filter(pl.col("week") == week, pl.col("rank") <= TOP_K)
+        radar = pub.sort("rank")["topic_id"].to_list()
     rg = w.select("unit_id").join(raw.filter(pl.col("week") == week), on="unit_id")
     base = (
         rg.filter(pl.col("raw_growth").is_not_null())
