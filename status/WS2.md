@@ -70,3 +70,31 @@ themes; and `energy_climate` is broad (9–11% of ring 1, measured). No LLM labe
   - Primary Teacher 1 vs Teacher 2 agreement across `3,980` shared valid rows: `is_ai` agreement = `96.78%` (`3,852/3,980`, measured), `brand_safe` agreement = `94.35%` (`3,755/3,980`, measured).
   - Consensus panel positive `is_ai` rate: `1,258/4,000` (`31.45%`, measured); `brand_safe` rate: `3,930/4,000` (`98.25%`, measured).
   - Total Round 1 panel Nebius spend: `$1.4655` (estimate from token counts).
+
+### Step 3: Student Model, Active Learning Round 2 & Jev Cascade (`pipelines/taxonomy/student.py`, `pipelines/taxonomy/cascade.py`) — Done (23:46 UTC-5)
+
+- **Embeddings (`Qwen/Qwen3-Embedding-8B`)**:
+  - Cached under `lake/labels/embeddings/qwen3_emb_8b.npy` (`12,000 x 4,096` float32, measured).
+  - Round 1 (`4,000` rows): `823,051` tokens (measured), `$0.0082` (estimate); Pool (`8,000` rows): `1,654,190` tokens (measured), `$0.0165` (estimate).
+- **Split design**: `60/20/20` stratified split of the initial `4,000` sample into `train = 2,400`, `val = 800`, and frozen `test = 800` (measured). Active learning adds `2,000` uncertain pool rows to `train` (`train_r2 = 4,400`, measured); `val` (`n=800`) and `test` (`n=800`) remain fixed across Round 1 and Round 2.
+- **Active Learning Round 2**:
+  - Scored `8,000` pool rows with Round 1 student; selected `2,000` rows with smallest `|p - 0.5|` (`mean |p - 0.5| = 0.4203`, measured), stratified by ring (`750` ring 1, `500` ring 2, `250` ring 3, `500` rejected) and language (`36.0%` `es/pt`, measured).
+  - Teacher panel labeled the `2,000` active-learning rows (`T1` `1,996/2,000` valid, `T2` `2,000/2,000` valid, `T3` tie-breaker on `216` disagreement rows `215/216` valid, total cost `$0.7489` estimate).
+  - **Round 1 -> Round 2 gain on `is_ai`**:
+    - Validation split (`n=800`): F1 `0.9630` -> `0.9632` (`+0.02 pp`, measured).
+    - Frozen Test split (`n=800`): F1 `0.9600` (`[0.9416, 0.9760]`) -> `0.9641` (`[0.9474, 0.9794]`, **`+0.41 pp` test F1 gain**, Brier `0.0215` -> `0.0203`, measured).
+- **Model family comparison (`LogisticRegression` vs. `LightGBM`, Round 2)**:
+  - `is_ai`: `LightGBM` + isotonic calibration wins on validation (`F1 = 0.9632` `[0.9488, 0.9798]` vs. `LogisticRegression` `F1 = 0.9587` `[0.9375, 0.9761]`, measured); on frozen test (`n=800`), `LightGBM` achieves `Precision = 96.41%` (`[93.33%, 98.10%]`), `Recall = 96.41%` (`[93.33%, 98.10%]`), `F1 = 0.9641` (`[0.9474, 0.9794]`), `ROC-AUC = 0.9942`, `Brier = 0.0203` (measured; `LogisticRegression` test `F1 = 0.9622` `[0.9444, 0.9779]`, measured).
+  - `brand_safe`: `LightGBM` + isotonic calibration wins on validation (`F1 = 0.9931` `[0.9892, 0.9969]`, `ROC-AUC = 0.9367`, `Brier = 0.0124` vs. `LogisticRegression` `F1 = 0.9918`, `ROC-AUC = 0.8773`, measured); frozen test `F1 = 0.9899` (`[0.9848, 0.9943]`, `ROC-AUC = 0.8780`, `Brier = 0.0152`, measured).
+  - `12 subtopics` (one-vs-rest binary classifiers): macro-F1 across the 12 subtopics = `0.6483` on validation (`n=800`, measured) and `0.6350` on frozen test (`n=800`, measured).
+- **Jev (`typesafe/jev-1.14`) validation confidence-bin comparison & cascade threshold curve (`lake/models/curator/cascade_config.json`, `reports/jev_ledger.csv`)**:
+  - Queried `typesafe/jev-1.14` via `POST https://openrouter.ai/api/alpha/decisions` on all `800` validation rows plus `42` uncertain test rows (`842` total calls logged in `reports/jev_ledger.csv`, cumulative spend `$0.03794105` measured vs. `$3.00` dev cap; mean cost `$0.000045` per article, measured).
+  - Validation confidence-bin comparison (`n=800`):
+    - `|p - 0.5| in [0.00, 0.10)` (`n=3`): student acc `100.0%`, Jev acc `100.0%` (`delta = 0.00`, not routed).
+    - `|p - 0.5| in [0.10, 0.20)` (`n=12`): student acc `75.00%`, Jev acc `75.00%` (`delta = 0.00`, not routed).
+    - `|p - 0.5| in [0.20, 0.30)` (`n=10`): student acc `70.00%` (`F1 = 0.7273`), **Jev acc `90.00%` (`F1 = 0.8889`, `delta = +20.00 pp`, `95% CI [0.00, +50.00 pp]`, routed to Jev, measured)**.
+    - `|p - 0.5| in [0.30, 0.40)` (`n=15`): student acc `86.67%` (`F1 = 0.9000`), Jev acc `86.67%` (`F1 = 0.9091`, `delta = 0.00`, not routed).
+    - `|p - 0.5| in [0.40, 0.50]` (`n=760`, `95.0%` of validation set): **student acc `98.55%` (`F1 = 0.9763`) beats Jev acc `97.76%` (`F1 = 0.9630`, `delta = -0.79 pp`, not routed, measured)**.
+  - **Chosen cascade thresholds**: `(t_low, t_high) = (0.20, 0.80)`, routing `3.12%` of validation articles (`2.38%` of test articles) to Jev at `$0.0014` per `1,000` articles (measured):
+    - Validation `is_ai` (`n=800`): Student-only `F1 = 0.9632` (`Precision = 94.32%`, `Recall = 98.42%`, `Brier = 0.0216`) -> **Cascade `F1 = 0.9667` (`[0.9497, 0.9823]`, `Precision = 95.74%`, `Recall = 97.63%`, `Brier = 0.0191`, measured)** vs. Jev-only `F1 = 0.9546` (`Brier = 0.0288`, measured).
+    - Frozen Test `is_ai` (`n=800`): `F1 = 0.9641` (`[0.9474, 0.9798]`, `Precision = 96.41%`, `Recall = 96.41%`), with Brier score improving from `0.0203` (student-only) to **`0.0186`** (cascade, measured) and ROC-AUC improving from `0.9942` to **`0.9944`** (measured).
