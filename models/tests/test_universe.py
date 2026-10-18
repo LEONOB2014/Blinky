@@ -88,3 +88,25 @@ def test_topic_build_validates_and_ranks_the_universe(full):
     per_week = df.group_by("week").len()["len"]
     assert per_week.min() > 10
     assert os.environ["RADAR_PROFILE"] == "full"
+
+
+@pytest.mark.data
+@pytest.mark.skipif(
+    not (lake() / "gold" / "topic_sources_weekly.parquet").exists(), reason="needs the full lake"
+)
+def test_syndication_guard_holds_single_pattern_weeks(full):
+    """Addendum 5: org:euronext in 2026-W42 (145 of 149 articles share one pattern) is held."""
+    from models import build_scores
+
+    s = pl.read_parquet(lake() / "gold" / "topic_scores_weekly.parquet")
+    w = s.filter(pl.col("week") == "2026-W42")
+    src = build_scores.sources().filter(pl.col("week") == "2026-W42")
+    top = w.filter(pl.col("rank") <= 10).join(
+        src.rename({"unit_id": "topic_id"}), on=["topic_id", "week"], how="left"
+    )
+    assert (top["n_sources"].fill_null(5) >= build_scores.MIN_SOURCES).all()
+    assert (top["top_source_share"].fill_null(0) <= build_scores.MAX_TOP_SOURCE_SHARE).all()
+    assert (top["top_theme_pattern_share"].fill_null(0) < build_scores.MAX_PATTERN_SHARE).all()
+    eur = w.filter(pl.col("topic_id") == "org:euronext")
+    assert eur["rank"].item() > 10
+    assert any("patrón" in b for b in eur["why"].item())

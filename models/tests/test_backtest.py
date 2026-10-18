@@ -51,8 +51,19 @@ def test_weeks_without_a_complete_label_window_are_excluded(res):
 
 def test_positives_are_the_top_quartile(res):
     for r in res.per_week.iter_rows(named=True):
-        assert r["n_pos"] == math.ceil(r["n_mapped"] / 4)
+        assert r["n_pos"] <= math.ceil(r["n_mapped"] / 4)
         assert len(r["positives"]) == r["n_pos"]
+
+
+def test_positives_do_not_depend_on_row_order(inputs, res):
+    """Ties in label growth must not be broken by row order (which favoured the radar's rows)."""
+    s, raw, daily = inputs
+    shuffled = s.sample(fraction=1.0, shuffle=True, seed=7)
+    r2 = bt.evaluate(shuffled, raw, daily, set(s["unit_id"].to_list()), "gdelt_espt")
+    rows = zip(res.per_week.iter_rows(named=True), r2.per_week.iter_rows(named=True), strict=True)
+    for a, b in rows:
+        assert set(a["positives"]) == set(b["positives"])
+        assert a["hits_radar"] == b["hits_radar"]
 
 
 def test_hits_recount_by_hand(res, inputs):
@@ -63,7 +74,8 @@ def test_hits_recount_by_hand(res, inputs):
     cur = bt.window_sum(daily, t - dt.timedelta(days=13), t)
     g = nxt.join(cur, on="unit_id", suffix="_cur").filter(pl.col("unit_id") != "ai_all")
     g = g.with_columns(((pl.col("s") + 1) / (pl.col("s_cur") + 1)).log().alias("growth"))
-    positives = set(g.sort("growth", descending=True).head(r["n_pos"])["unit_id"])
+    g = g.with_columns(pl.col("growth").rank("average", descending=True).alias("r"))
+    positives = set(g.filter(pl.col("r") <= math.ceil(g.height / 4))["unit_id"])
     assert positives == set(r["positives"])
     week = s.filter(pl.col("week") == r["week"], pl.col("rank").is_not_null())
     top = set(week.sort("priority", descending=True).head(10)["unit_id"])
@@ -71,7 +83,7 @@ def test_hits_recount_by_hand(res, inputs):
 
 
 def test_pooled_precision_is_positives_over_total(res):
-    for name in bt.RANKERS:
+    for name in res.coverage:
         e = res.pooled[name]
         assert e["total"] == 10 * len(res.weeks)
         assert e["precision"] == e["hits"] / e["total"]
@@ -111,3 +123,33 @@ def test_report_says_when_the_radar_does_not_beat_the_baselines(res):
     assert "does not beat both baselines" in text
     assert "(measured)" in text
     assert "Evaluable weeks: 4" in text
+
+
+def test_coverage_counts_each_rankers_top_10(res):
+    # weeks that pass the calendar checks count. W35's label window is too thin at the start of
+    # the slice, so the radar's W35 top 10 counts as needed but unlabelled; the baselines have
+    # no W35 top 10 (no raw growth or past growth yet)
+    thin = [w for w, why in res.excluded.items() if "mapped units with a label" in why]
+    assert thin == ["2026-W35"]
+    assert res.coverage["radar"] == (10 * len(res.weeks), 10 * (len(res.weeks) + 1))
+    for name in ("raw_count_growth", "persistence"):
+        have, need = res.coverage[name]
+        assert have == need <= 10 * len(res.weeks)
+
+
+def test_refuses_precision_below_the_coverage_threshold(inputs):
+    s, raw, daily = inputs
+    r = bt.evaluate(s, raw, daily, set(s["unit_id"].to_list()), "gdelt_espt", min_coverage=1.01)
+    assert r.refused
+    assert r.pooled == {}
+    assert "Not reported" in "\n".join(bt.render_section(r))
+
+
+def test_gated_ranker_reads_the_published_rank(inputs):
+    s, raw, daily = inputs
+    gated = s.filter(pl.col("rank").is_not_null()).select("unit_id", "week", "rank")
+    r = bt.evaluate(s, raw, daily, set(s["unit_id"].to_list()), "gdelt_espt", gated)
+    # with the published rank equal to Priority's order, the two radars pick the same top 10
+    assert r.pooled["radar_gated"]["hits"] == r.pooled["radar"]["hits"]
+    assert "radar_gated|radar" in r.diffs
+    assert r.diffs["radar_gated|radar"]["diff"] == 0

@@ -165,3 +165,42 @@ top 10), writing `wiki_pageviews_daily` every 50 articles, done by about 04:00.
 4. Memory is short until ~03:00 (Google Drive copy): stay under ~1.5 GB peak, one heavy job at a time.
 
 Deadlines: secondary-label backtest by **02:30**; primary backtest within 30 minutes of WS6's last write.
+
+## Addendum 5 (orchestrator, 01:25 UTC-5): a syndication guard in the gate
+
+WS9's diagnostic (measured, 2026-W42): 5 of the top 10 are single-pattern weeks, >= 90% of their
+articles share one co-mention pattern (Euronext 145 of 149 articles, one syndicated feed). WS1 (claude-work) is
+building `topic_sources_weekly` (n_sources, top_source_share, top3_source_share, pattern share; contract
+on `feat/ws1-topic-sources`), lake file by 02:30, with the W42 values and the distributions in
+`status/WS1.md`.
+
+When `status/WS1.md` says `READY FOR WS4`: add a source-diversity condition to the eligibility gate
+(thresholds chosen from WS1's distributions and stated as estimates, for example at least 5 sources
+and a top source share at most 0.5), rebuild the scores, re-run the backtest(s) with and without the
+new condition, then write `READY FOR REDEPLOY` again. The backtest work of Addendum 4 comes first if
+both are ready at once.
+
+## Addendum 4b (orchestrator, 01:35 UTC-5): exact matches only for the primary label
+
+WS6's priority topics resolve 373 exact / 105 alias / 201 none (measured). Aliases (confidence 0.6)
+were wrong on W42 rows (your own finding), and a wrong alias gives a topic another entity's pageviews.
+Run the primary backtest on `match = exact` topics only; report the alias-included run as a separate,
+clearly labelled row. Pageviews for the priority topics finish around 02:25 (estimate, one request per
+6.5 s, 0 HTTP 429 so far).
+
+## Addendum 5b (orchestrator, 01:40 UTC-5): use the pattern share, not the source count
+
+WS1c is READY (01:30): `lake/gold/topic_sources_weekly.parquet`, 270,888 topic-weeks (measured).
+Its finding overrides the example thresholds in Addendum 5: **source counts do not catch syndication**
+(Euronext: 86 sources, top source share 0.01, but `top_theme_pattern_share` 0.97). Use:
+
+- `top_theme_pattern_share` as the syndication signal: >= 0.9 removes exactly the 5 single-pattern W42
+  topics (Euronext 0.97, Adani 0.96, Kioxia 0.94, Sterling 0.92, Ministry of Science 0.91). It also
+  flags 24.7% of all ranked topic-weeks (16.3% of past top 10s), so apply it as a **penalty or a gate on
+  headlining only** (like the semillas), not as a removal from the ranking, and state the threshold as an
+  estimate.
+- `top_source_share` for the other failure, one outlet dominating (`org:yahoo` 0.60).
+- Distributions (p10 / median / p90): pattern share 0.21 / 0.45 / 1.00; top source share 0.024 / 0.10 /
+  0.34 (see `status/WS1.md` on `feat/ws1-topic-sources`).
+
+Then rebuild, re-run the backtests with and without the guard, and write `READY FOR REDEPLOY`.

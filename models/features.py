@@ -146,6 +146,7 @@ def rolling(
     groups: dict[str, tuple[str, ...]] | None = None,
     key: str = "unit_id",
     stream: str = "lang_bucket",
+    span: tuple | None = None,
 ) -> pl.DataFrame:
     """The S8 features per (`key`, language group, day).
 
@@ -156,7 +157,7 @@ def rolling(
     groups = groups or LANG_GROUPS
     # the calendar is the input's own span: days before its first row are not zero, they are
     # outside the table (topic_daily starts a year after daily_totals)
-    lo, hi = daily["dt"].min(), daily["dt"].max()
+    lo, hi = span or (daily["dt"].min(), daily["dt"].max())
     gt = group_totals(totals.filter(pl.col("dt").is_between(lo, hi)), groups)
     extra = [c for c in ("n_latam",) if c in daily.columns]
     parts = []
