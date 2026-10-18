@@ -63,6 +63,21 @@ export interface RadarResult {
   emptyReason: string | null;
 }
 
+/** `contracts/community_topic_weekly.schema.json`. Not a field of the radar score. */
+export interface CommunityTopicWeek {
+  topic_id: string;
+  week: string;
+  category: string;
+  n_items: number;
+  n_sources: number;
+  score: number;
+}
+
+export interface CommunityResult {
+  items: CommunityTopicWeek[];
+  emptyReason: string | null;
+}
+
 export async function fetchFreshness(): Promise<FreshnessResponse> {
   const resp = await liveOrStatic(`${API_BASE}/api/freshness`);
   if (resp === null) {
@@ -98,6 +113,29 @@ export async function fetchRadar(week?: string, limit = 10): Promise<RadarResult
   }
   const emptyReason = resp.headers.get("X-Radar-Empty-Reason");
   const items = (await resp.json()) as TopicScoreWeekly[];
+  return { items, emptyReason };
+}
+
+/** Live `/api/community`, then `data/community/<week>.json`. A missing file is an empty list. */
+export async function fetchCommunity(week?: string): Promise<CommunityResult> {
+  const params = new URLSearchParams();
+  if (week) {
+    params.set("week", week);
+  }
+  const query = params.toString();
+  const resp = await liveOrStatic(`${API_BASE}/api/community${query ? `?${query}` : ""}`);
+  if (resp === null) {
+    const items = await fetchStatic<CommunityTopicWeek[]>(
+      `community/${week ?? "latest"}.json`,
+      [],
+    );
+    return { items, emptyReason: null };
+  }
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status} al consultar /api/community`);
+  }
+  const emptyReason = resp.headers.get("X-Radar-Empty-Reason");
+  const items = (await resp.json()) as CommunityTopicWeek[];
   return { items, emptyReason };
 }
 

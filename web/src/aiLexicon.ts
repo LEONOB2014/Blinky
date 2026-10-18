@@ -72,24 +72,84 @@ export function familyForTopic(
   return familyEntry(PREFIX_FAMILY[prefix] ?? null);
 }
 
-export interface CommunitySignal {
-  n_papers?: number | null;
-  n_talks?: number | null;
-  n_items?: number | null;
-  hf_upvotes?: number | null;
-  label_es?: string | null;
+/** One category's measured item count for a topic-week. */
+export interface CommunityCategoryCount {
+  category: string;
+  n_items: number;
 }
 
-/** Placeholder until WP4 writes `community` onto the card. No invented counts. */
+/** Fields the client needs from `community_topic_weekly` to join a card. */
+export interface CommunityTopicRow {
+  topic_id: string;
+  week: string;
+  category: string;
+  n_items: number;
+}
+
+/** Category counts for one `ai:` topic-week. Null means that card has no community line data. */
+export interface CommunitySignal {
+  categories: CommunityCategoryCount[];
+}
+
+/** Rows for one topic-week. Non-`ai:` topics and weeks with no row return null. */
+export function communityFromRows(
+  topicId: string,
+  week: string,
+  rows: readonly CommunityTopicRow[] | null | undefined,
+): CommunitySignal | null {
+  if (!topicId.startsWith("ai:")) return null;
+  const categories = (rows ?? [])
+    .filter((row) => row.topic_id === topicId && row.week === week)
+    .map((row) => ({ category: row.category, n_items: row.n_items }));
+  if (categories.length === 0) return null;
+  return { categories };
+}
+
+const COMMUNITY_CATEGORY_ORDER = [
+  "research",
+  "practitioners",
+  "builders",
+  "vision",
+  "media",
+  "critics",
+] as const;
+
+const COMMUNITY_CATEGORY_ES: Record<(typeof COMMUNITY_CATEGORY_ORDER)[number], string> = {
+  research: "investigación",
+  practitioners: "práctica",
+  builders: "construcción",
+  vision: "visión",
+  media: "medios",
+  critics: "crítica",
+};
+
+const NO_COMMUNITY = "Comunidad IA: sin señal de esta semana";
+
+/**
+ * Spanish line from measured category counts. No source type, so this never says papers
+ * or charlas, and it never invents a count.
+ */
 export function communityLine(community: CommunitySignal | null | undefined): string {
-  if (!community) return "Comunidad IA: sin señal de esta semana";
-  if (community.label_es) return `Comunidad IA: ${community.label_es}`;
-  const parts: string[] = [];
-  if (community.n_papers != null) parts.push(`${community.n_papers} papers`);
-  if (community.n_talks != null) parts.push(`${community.n_talks} charlas`);
-  if (parts.length === 0 && community.n_items != null) {
-    parts.push(`${community.n_items} piezas`);
+  const totals = new Map<string, number>();
+  for (const row of community?.categories ?? []) {
+    if (!(row.category in COMMUNITY_CATEGORY_ES)) continue;
+    if (!Number.isInteger(row.n_items) || row.n_items < 1) continue;
+    totals.set(row.category, (totals.get(row.category) ?? 0) + row.n_items);
   }
-  if (parts.length === 0) return "Comunidad IA: sin señal de esta semana";
+  const present = COMMUNITY_CATEGORY_ORDER.filter((category) => totals.has(category)).sort(
+    (a, b) =>
+      (totals.get(b) ?? 0) - (totals.get(a) ?? 0) ||
+      COMMUNITY_CATEGORY_ORDER.indexOf(a) - COMMUNITY_CATEGORY_ORDER.indexOf(b),
+  );
+  if (present.length === 0) return NO_COMMUNITY;
+  if (present.length === 1) {
+    const category = present[0];
+    const count = totals.get(category);
+    const piezas = count === 1 ? "pieza" : "piezas";
+    return `La comunidad IA lo discute: ${count} ${piezas} de ${COMMUNITY_CATEGORY_ES[category]}`;
+  }
+  const parts = present.map(
+    (category) => `${totals.get(category)} de ${COMMUNITY_CATEGORY_ES[category]}`,
+  );
   return `La comunidad IA lo discute: ${parts.join(", ")}`;
 }

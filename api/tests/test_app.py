@@ -205,6 +205,90 @@ def test_radar_never_returns_a_deny_listed_org(client: TestClient, tmp_path, mon
     assert [r["week"] for r in client.get("/api/radar?week=2026-W41").json()] == ["2026-W41"]
 
 
+def _community_row(topic_id, week, category, n_items, n_sources, score):
+    return {
+        "topic_id": topic_id,
+        "week": week,
+        "category": category,
+        "n_items": n_items,
+        "n_sources": n_sources,
+        "score": score,
+    }
+
+
+@pytest.mark.unit
+def test_community_missing_returns_empty_list_and_reason(client: TestClient):
+    resp = client.get("/api/community?week=2026-W42")
+    assert resp.status_code == 200
+    assert resp.json() == []
+    assert "community_topic_weekly" in resp.headers.get("X-Radar-Empty-Reason", "")
+    assert resp.headers.get("X-Radar-Status") == "pending-community"
+
+
+@pytest.mark.unit
+def test_community_week_stays_off_the_radar_payload(client: TestClient, tmp_path, monkeypatch):
+    scores = pl.DataFrame(
+        [
+            _score_row("2026-W42", "ai:tech:fine_tuning", 1, "Ajuste fino y entrenamiento"),
+            _score_row("2026-W42", "org:nvidia", 2, "Nvidia"),
+        ]
+    )
+    community = pl.DataFrame(
+        [
+            _community_row("ai:tech:fine_tuning", "2026-W42", "research", 61, 2, 3987.0),
+            _community_row("ai:tech:fine_tuning", "2026-W42", "builders", 2, 1, 0.0),
+            _community_row("ai:tech:robotics", "2026-W41", "research", 7, 1, 360.0),
+        ]
+    )
+    _gold_at(
+        monkeypatch,
+        tmp_path,
+        {"topic_scores_weekly": scores, "community_topic_weekly": community},
+    )
+
+    radar = client.get("/api/radar?week=2026-W42&limit=10")
+    assert radar.status_code == 200
+    rows = radar.json()
+    assert validate_records("topic_scores_weekly", rows) == []
+    for row in rows:
+        assert "community" not in row
+        assert "category" not in row
+        assert "n_items" not in row
+
+    resp = client.get("/api/community?week=2026-W42")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert validate_records("community_topic_weekly", body) == []
+    assert [row["category"] for row in body] == ["builders", "research"]
+    assert {row["week"] for row in body} == {"2026-W42"}
+    fields = {"topic_id", "week", "category", "n_items", "n_sources", "score"}
+    assert all(set(row) == fields for row in body)
+    assert body[1]["n_items"] == 61
+
+    other = client.get("/api/community?week=2026-W40")
+    assert other.status_code == 200
+    assert other.json() == []
+    assert "2026-W40" in other.headers.get("X-Radar-Empty-Reason", "")
+
+
+@pytest.mark.unit
+def test_radar_serves_lexicon_scores_when_that_table_exists(
+    client: TestClient, tmp_path, monkeypatch
+):
+    ai_scores = pl.DataFrame(
+        [_score_row("2026-W42", "ai:biz:mergers_deals", 1, "Alianzas y adquisiciones en IA")]
+    )
+    org_scores = pl.DataFrame([_score_row("2026-W42", "org:nvidia", 1, "Nvidia")])
+    _gold_at(
+        monkeypatch,
+        tmp_path,
+        {"topic_ai_scores_weekly": ai_scores, "topic_scores_weekly": org_scores},
+    )
+    body = client.get("/api/radar?week=2026-W42").json()
+    assert [row["topic_id"] for row in body] == ["ai:biz:mergers_deals"]
+    assert validate_records("topic_scores_weekly", body) == []
+
+
 @pytest.mark.unit
 def test_context_never_returns_a_person_neighbour(client: TestClient, tmp_path, monkeypatch):
     ring = pl.DataFrame(

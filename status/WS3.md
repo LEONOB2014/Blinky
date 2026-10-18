@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 09:12 UTC-5 · `feat/ws3-ai-graph` (real AI lexicon export) · committed locally; the orchestrator pushes
+2026-10-18 09:56 UTC-5 · `feat/ws3-ai-graph` (community counts on the AI cards) · committed locally; the orchestrator pushes
 
 ## Done
 
@@ -271,3 +271,33 @@ risk. Latest week rank 1 is Alianzas y adquisiciones en IA (`esperar`). The
 has no co-mention with n ≥ 20 inside these 13 weeks (its two such edges are both
 2026-01-26, n = 59 and 61), so it is not in this graph. JSON is in `lake/views/`
 and `web/public/data/views/` (git-ignored). The UI was not opened in a browser.
+
+### Community counts on the AI cards (measured, 2026-10-18 09:56 UTC-5)
+
+`lake/gold/community_topic_weekly.parquet`: 1,041 rows over 15 weeks (2026-W28 .. 2026-W42).
+2026-W42 is 79 rows and 54 topics. Category totals that week: research 35 rows / 452 items,
+builders 25 / 63, vision 12 / 12, critics 3 / 3, media 2 / 2, practitioners 2 / 7.
+
+`GET /api/community?week=2026-W42` returns those rows and only the six schema fields.
+`GET /api/radar` for the same week returns the lexicon top 10 from `topic_ai_scores_weekly`
+(the dev slice has no that table, so the default profile still reads `topic_scores_weekly`).
+The radar body has no community fields. Both payloads validate against their contracts.
+
+Top 10 lines rendered in headless Chrome at `http://127.0.0.1:5184/` (API on 8014; 8010 and
+5180 were left running):
+
+| rank | topic | line |
+|---|---|---|
+| 1 | Alianzas y adquisiciones en IA | Comunidad IA: sin señal de esta semana |
+| 2 | Google DeepMind | Comunidad IA: sin señal de esta semana |
+| 3 | Bolsa y acciones de IA | Comunidad IA: sin señal de esta semana |
+| 4 | Fichajes, salidas y spin-offs | Comunidad IA: sin señal de esta semana |
+| 5 | Protestas y rechazo social a la IA | Comunidad IA: sin señal de esta semana |
+| 6 | Artistas y creadores contra la IA | La comunidad IA lo discute: 1 pieza de construcción |
+| 7 | Rondas y valuaciones de IA | Comunidad IA: sin señal de esta semana |
+| 8 | Ajuste fino y entrenamiento | La comunidad IA lo discute: 61 de investigación, 2 de construcción |
+| 9 | Pesos abiertos y open source | La comunidad IA lo discute: 4 piezas de investigación |
+| 10 | Robótica e IA física | La comunidad IA lo discute: 7 piezas de investigación |
+
+The rail was ten `ai:` cards. No non-`ai:` card was on that screen. `communityFromRows`
+returns null for an `org:` id, and the line is rendered only when `topic_id` starts with `ai:`.

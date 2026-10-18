@@ -1,6 +1,13 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { communityLine, familyForTopic } from "./aiLexicon";
 import {
+  type CommunitySignal,
+  type CommunityTopicRow,
+  communityFromRows,
+  communityLine,
+  familyForTopic,
+} from "./aiLexicon";
+import {
+  fetchCommunity,
   fetchFreshness,
   fetchRadar,
   fetchTopicContext,
@@ -252,9 +259,15 @@ function FamilyChip({
   );
 }
 
-function CommunityNote({ card }: { card: TopicScoreWeekly }) {
-  if (!card.topic_id.startsWith("ai:") && card.community == null) return null;
-  return <p className="community-line">{communityLine(card.community)}</p>;
+function CommunityNote({
+  topicId,
+  signal,
+}: {
+  topicId: string;
+  signal: CommunitySignal | null;
+}) {
+  if (!topicId.startsWith("ai:")) return null;
+  return <p className="community-line">{communityLine(signal)}</p>;
 }
 
 function RowSignals({ card }: { card: TopicScoreWeekly }) {
@@ -366,6 +379,8 @@ export function App() {
   const [radarEmptyReason, setRadarEmptyReason] = useState<string | null>(null);
   // ISO week ("2026-W42") of the radar; empty until freshness gives the latest scored week.
   const [radarWeek, setRadarWeek] = useState<string>("");
+  const [communityWeek, setCommunityWeek] = useState<string | null>(null);
+  const [communityRows, setCommunityRows] = useState<CommunityTopicRow[]>([]);
   const [scoredWeeks, setScoredWeeks] = useState<string[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>("regulation_policy");
   const [timeline, setTimeline] = useState<TopicDaily[]>([]);
@@ -520,6 +535,27 @@ export function App() {
         setRadarItems([]);
       });
   }, [radarWeek]);
+
+  useEffect(() => {
+    if (!radarWeek) return;
+    const week = radarWeek === "latest" ? undefined : radarWeek;
+    void fetchCommunity(week)
+      .then((res) => {
+        const rows = week ? res.items.filter((row) => row.week === week) : res.items;
+        setCommunityRows(rows);
+        setCommunityWeek(rows[0]?.week ?? week ?? null);
+      })
+      .catch((err: unknown) => {
+        console.error(err);
+        setCommunityRows([]);
+        setCommunityWeek(week ?? null);
+      });
+  }, [radarWeek]);
+
+  function communitySignalFor(card: TopicScoreWeekly): CommunitySignal | null {
+    if (communityWeek !== card.week) return null;
+    return communityFromRows(card.topic_id, card.week, communityRows);
+  }
 
   function selectTopic(topicId: string) {
     setSelectedTopic(topicId);
@@ -828,8 +864,10 @@ export function App() {
                           family={card.family}
                           familyEs={card.family_es}
                         />
-                        {(card.topic_id.startsWith("ai:") || card.community != null) && (
-                          <span className="community-line">{communityLine(card.community)}</span>
+                        {card.topic_id.startsWith("ai:") && (
+                          <span className="community-line">
+                            {communityLine(communitySignalFor(card))}
+                          </span>
                         )}
                       </span>
                       <span className={`decision-badge decision-${card.decision}`}>
@@ -846,6 +884,7 @@ export function App() {
                         contextRing={contextRing}
                         selectedTopic={selectedTopic}
                         onSelectTopic={selectTopic}
+                        communitySignal={communitySignalFor(card)}
                       />
                     )}
                   </article>
@@ -984,6 +1023,11 @@ export function App() {
                     </div>
                     <div className="drawer-card-name">
                       {topicName(card.topic_id, card.label_es)}
+                      {card.topic_id.startsWith("ai:") && (
+                        <span className="community-line">
+                          {communityLine(communitySignalFor(card))}
+                        </span>
+                      )}
                     </div>
                     <RowSignals card={card} />
                   </div>
@@ -1145,6 +1189,7 @@ function TopicDetail({
   contextRing,
   selectedTopic,
   onSelectTopic,
+  communitySignal,
 }: {
   card: TopicScoreWeekly;
   timelineLoading: boolean;
@@ -1156,6 +1201,7 @@ function TopicDetail({
   contextRing: TopicContext1Hop[];
   selectedTopic: string;
   onSelectTopic: (topicId: string) => void;
+  communitySignal: CommunitySignal | null;
 }) {
   return (
     <div className="rail-detail">
@@ -1179,7 +1225,7 @@ function TopicDetail({
         {card.framing_angle && <span className="chip">Ángulo: {card.framing_angle}</span>}
         <FamilyChip topicId={card.topic_id} family={card.family} familyEs={card.family_es} />
       </div>
-      <CommunityNote card={card} />
+      <CommunityNote topicId={card.topic_id} signal={communitySignal} />
       {card.why.length > 0 && (
         <ul className="why-list">
           {card.why.map((reason, idx) => (
