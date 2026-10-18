@@ -501,7 +501,8 @@ export function TemporalGraph({
         const dec = node.decision?.[w] ?? "no_es_tema_caliente";
         const ring = node.ring ?? "ai_domain";
 
-        let sz = 3.5 + imp * 8.5;
+        // The AI graph has ~100 nodes, so size spans a wider range (sqrt keeps mid-sized visible).
+        let sz = d._meta.params.ai_only ? 6 + 26 * Math.sqrt(imp) : 3.5 + imp * 8.5;
         let r = 100 / 255;
         let gCol = 116 / 255;
         let b = 139 / 255;
@@ -752,8 +753,15 @@ export function TemporalGraph({
         const state = wMap.edgeState[e];
         const isCross = wMap.crossRing[e];
 
-        let width = Math.max(0.45, Math.min(2.8, Math.log(nVal + 1) * 0.45));
-        let alpha = Math.max(0.12, Math.min(0.85, npmiVal));
+        const aiGraph = Boolean(d._meta.params.ai_only);
+        // AI graph: few edges (~150 a week), so strength must read at a glance: width log-scaled
+        // on co-mentions (3..504 -> ~2.8..9 px), alpha by NPMI (0.1..0.7 -> 0.25..0.95).
+        let width = aiGraph
+          ? Math.min(9, 0.6 + 1.6 * Math.log1p(nVal))
+          : Math.max(0.45, Math.min(2.8, Math.log(nVal + 1) * 0.45));
+        let alpha = aiGraph
+          ? 0.25 + 0.7 * Math.min(1, Math.max(0, (npmiVal - 0.1) / 0.6))
+          : Math.max(0.12, Math.min(0.85, npmiVal));
         // Resting links stay weak. Each lens raises a different class, so two
         // lenses pull the same nodes toward different neighbours.
         let strength = 0.15;
@@ -1733,7 +1741,7 @@ export function TemporalGraph({
                 type="button"
                 className={`graph-node-label graph-label-${lbl.decision}${
                   lbl.isFocused ? " graph-label-focused" : ""
-                }`}
+                }${data?._meta.params.ai_only ? " graph-label-ai" : ""}`}
                 style={{
                   left: `${lbl.x}px`,
                   top: `${lbl.y}px`,

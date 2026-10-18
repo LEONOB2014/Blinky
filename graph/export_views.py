@@ -937,6 +937,171 @@ def _compute_subgraph_metrics(
     return bet_out, cross_out, comm_out
 
 
+def _ai_week_metrics(
+    node_ids: list[str], edge_rows: list[tuple[str, str, int, float]]
+) -> tuple[dict[str, float | None], dict[str, float | None], dict[str, int | None]]:
+    """PageRank (weights n·npmi), weighted degree (sum of n) and k-core of one week's AI graph.
+
+    The AI lexicon topics have no rows in node_metrics_weekly (that table covers the v0.2 GDELT
+    entities), so the AI export computes them here, on the same pruned edges the view draws.
+    """
+    import igraph as ig
+
+    pr: dict[str, float | None] = dict.fromkeys(node_ids)
+    wdeg: dict[str, float | None] = dict.fromkeys(node_ids)
+    core: dict[str, int | None] = dict.fromkeys(node_ids)
+    if not edge_rows:
+        return pr, wdeg, core
+    active = sorted({u for u, _, _, _ in edge_rows} | {v for _, v, _, _ in edge_rows})
+    pos = {u: i for i, u in enumerate(active)}
+    g = ig.Graph(n=len(active), edges=[(pos[u], pos[v]) for u, v, _, _ in edge_rows])
+    weights = [float(n) * float(npmi) for _, _, n, npmi in edge_rows]
+    ranks = g.pagerank(weights=weights, directed=False)
+    strength = g.strength(weights=[float(n) for _, _, n, _ in edge_rows])
+    cores = g.coreness()
+    for u, i in pos.items():
+        pr[u] = float(ranks[i])
+        wdeg[u] = float(strength[i])
+        core[u] = int(cores[i])
+    return pr, wdeg, core
+
+
+def _forceatlas2_layout(
+    n_nodes: int,
+    pair_weights: dict[tuple[int, int], float],
+    radii: list[float],
+    seed: list[tuple[float, float]],
+    *,
+    iterations: int = 1500,
+    scaling: float = 6.0,
+    gravity: float = 1.2,
+    dissuade_hubs: bool = True,
+) -> list[tuple[float, float]]:
+    """Deterministic ForceAtlas2 (LinLog attraction, hub dissuasion, overlap prevention).
+
+    LinLog attraction (log(1 + d)) pulls densely linked groups into separate clusters, which
+    Fruchterman-Reingold spreads into an even cloud at this size (about 100 nodes). Hub
+    dissuasion divides attraction by the node's mass, so hubs sit between the groups they
+    connect. Repulsion grows when two nodes' radii overlap. The temperature cools linearly, so
+    the same seed gives the same coordinates.
+    """
+    import numpy as np
+
+    pos = np.array(seed, dtype=float)
+    if n_nodes <= 1:
+        return [(float(x), float(y)) for x, y in pos]
+    rad = np.asarray(radii, dtype=float)
+    deg = np.zeros(n_nodes)
+    ii = np.array([a for a, _ in pair_weights], dtype=int)
+    jj = np.array([b for _, b in pair_weights], dtype=int)
+    ww = np.array(list(pair_weights.values()), dtype=float)
+    np.add.at(deg, ii, 1.0)
+    np.add.at(deg, jj, 1.0)
+    mass = deg + 1.0
+    span = float(np.ptp(pos, axis=0).max()) or 1.0
+    temp0 = span / 10.0
+    for it in range(iterations):
+        delta = pos[:, None, :] - pos[None, :, :]
+        dist = np.sqrt((delta**2).sum(-1)) + 1e-9
+        gap = dist - (rad[:, None] + rad[None, :])
+        rep = scaling * mass[:, None] * mass[None, :] / np.where(gap > 0, gap, 0.01)
+        np.fill_diagonal(rep, 0.0)
+        disp = (delta / dist[..., None] * rep[..., None]).sum(1)
+        if len(ww):
+            d_e = pos[ii] - pos[jj]
+            l_e = np.sqrt((d_e**2).sum(-1)) + 1e-9
+            att = ww * np.log1p(l_e)
+            f = d_e / l_e[:, None] * att[:, None]
+            div_i = mass[ii, None] if dissuade_hubs else 1.0
+            div_j = mass[jj, None] if dissuade_hubs else 1.0
+            np.add.at(disp, ii, -f / div_i)
+            np.add.at(disp, jj, f / div_j)
+        disp -= gravity * mass[:, None] * pos / (np.sqrt((pos**2).sum(-1))[:, None] + 1e-9)
+        temp = temp0 * (1.0 - it / iterations) + 1e-3
+        length = np.sqrt((disp**2).sum(-1)) + 1e-9
+        pos += disp / length[:, None] * np.minimum(length, temp)[:, None]
+    return [(float(x), float(y)) for x, y in pos]
+
+
+def _ai_layout(
+    ids: list[str],
+    edges_by_week: dict[int, list[tuple[str, str, int, float]]],
+    importance: dict[str, list[float | None]],
+) -> tuple[list[tuple[float, float]], dict[str, Any]]:
+    """Frozen layout of the AI graph: ForceAtlas2 on the 13-week union, seeded by Leiden.
+
+    Edge weight: the sum over weeks of npmi² (specific associations, not raw frequency, so the
+    giants do not pull every cluster together), normalised to 10. The 13-week sum keeps the
+    layout stable across the player. No hub dissuasion, so the giants sit between the clusters
+    they bridge. Tuned on the AI graph: Leiden silhouette 0.23, top-8 nodes at 0.87 of the mean
+    radius (measured).
+    Each Leiden community starts in its own sector of a circle, so clusters form in the same
+    place on every run. Node radii follow the span's mean importance (overlap prevention).
+    Coordinates fill 70% of SPACE_SIZE around its centre.
+    """
+    import igraph as ig
+    import leidenalg
+
+    idx = {v: i for i, v in enumerate(ids)}
+    pair_w: dict[tuple[int, int], float] = {}
+    for rows in edges_by_week.values():
+        for u, v, _n_val, npmi_val in rows:
+            a, b = sorted((idx[u], idx[v]))
+            pair_w[(a, b)] = pair_w.get((a, b), 0.0) + max(npmi_val, 0.01) ** 2
+    g = ig.Graph(n=len(ids), edges=list(pair_w))
+    part = leidenalg.find_partition(
+        g, leidenalg.ModularityVertexPartition, weights=list(pair_w.values()), seed=LEIDEN_SEED
+    )
+    comm = list(part.membership)
+    n_comm = max(comm) + 1 if comm else 1
+    golden = math.pi * (3.0 - math.sqrt(5.0))
+    seed: list[tuple[float, float]] = []
+    seen: dict[int, int] = {}
+    for i in range(len(ids)):
+        c = comm[i]
+        k = seen.get(c, 0)
+        seen[c] = k + 1
+        ang = 2 * math.pi * c / n_comm
+        cx, cy = 100.0 * math.cos(ang), 100.0 * math.sin(ang)
+        r = 12.0 * math.sqrt(k + 0.5)
+        seed.append((cx + r * math.cos(k * golden), cy + r * math.sin(k * golden)))
+    mean_imp = [
+        sum(x for x in importance[v] if x is not None)
+        / max(1, sum(1 for x in importance[v] if x is not None))
+        for v in ids
+    ]
+    radii = [2.0 + 8.0 * math.sqrt(m) for m in mean_imp]
+    top = max(pair_w.values(), default=1.0)
+    attraction = {k: 10.0 * w / top for k, w in pair_w.items()}
+    raw = _forceatlas2_layout(
+        len(ids), attraction, radii, seed, scaling=6.0, gravity=0.3, dissuade_hubs=False
+    )
+    xs = [p[0] for p in raw]
+    ys = [p[1] for p in raw]
+    cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+    half = max(max(xs) - min(xs), max(ys) - min(ys)) / 2 or 1.0
+    scale = 0.35 * SPACE_SIZE / half
+    coords = [
+        (
+            round(SPACE_SIZE / 2 + (x - cx) * scale, 2),
+            round(SPACE_SIZE / 2 + (y - cy) * scale, 2),
+        )
+        for x, y in raw
+    ]
+    q = g.modularity(comm, weights=list(pair_w.values())) if pair_w else None
+    meta = {
+        "layout": "forceatlas2_linlog",
+        "fa2_iterations": 1500,
+        "fa2_scaling": 6.0,
+        "fa2_gravity": 0.3,
+        "fa2_dissuade_hubs": False,
+        "edge_weight": "sum over weeks of npmi^2, normalised to 10",
+        "communities": n_comm,
+        "modularity": round(q, 3) if q is not None else None,
+    }
+    return coords, meta
+
+
 def export_temporal(
     edges: pl.LazyFrame | pl.DataFrame,
     node_metrics: pl.LazyFrame | pl.DataFrame,
@@ -1011,6 +1176,7 @@ def export_temporal(
                 "label_es",
                 "priority",
                 "primary_subtopic",
+                "emergence_pct",
                 "emotional_charge_pct",
                 "window",
             )
@@ -1195,9 +1361,58 @@ def export_temporal(
             pair = (u_id, v_id) if u_id < v_id else (v_id, u_id)
             week0_prev_map[pair] = int(n_val)
 
+    # The AI lexicon topics have no node_metrics_weekly rows: compute them on the view's edges.
+    volume: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    emergence: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    if ai_only:
+        prev_wdeg: dict[str, float | None] = dict.fromkeys(ids)
+        prev_rank: dict[str, int] = {}
+        for wi in range(len(weeks)):
+            pr_w, wdeg_w, core_w = _ai_week_metrics(ids, edges_by_week[wi])
+            order = sorted((v for v in ids if pr_w[v] is not None), key=lambda v: -pr_w[v])
+            rank_now = {v: i + 1 for i, v in enumerate(order)}
+            for v in ids:
+                pagerank[v][wi] = pr_w[v]
+                kcore[v][wi] = core_w[v]
+                cur, prev = wdeg_w[v], prev_wdeg[v]
+                if cur is not None and prev:
+                    deg_growth[v][wi] = (cur - prev) / prev
+                if v in rank_now and v in prev_rank:
+                    pr_rank_delta[v][wi] = prev_rank[v] - rank_now[v]
+            prev_wdeg, prev_rank = wdeg_w, rank_now
+        if topic_daily is not None and weeks:
+            vol_df = (
+                topic_daily.lazy()
+                .filter(
+                    (pl.col("dt") >= weeks[0])
+                    & (pl.col("dt") <= weeks[-1] + timedelta(days=6))
+                    & pl.col("topic_id").is_in(ids)
+                )
+                .with_columns(wk=pl.col("dt").dt.truncate("1w"))
+                .group_by("wk", "topic_id")
+                .agg(pl.col("n_articles").sum().alias("n"))
+                .collect()
+            )
+            for row in vol_df.to_dicts():
+                if row["wk"] in widx:
+                    volume[row["topic_id"]][widx[row["wk"]]] = float(row["n"])
+        if sc_df is not None and "emergence_pct" in sc_df.columns:
+            for row in sc_df.filter(pl.col("topic_id").is_in(ids)).to_dicts():
+                if row.get("emergence_pct") is not None:
+                    emergence[row["topic_id"]][wk_names[row["week"]]] = row["emergence_pct"]
+
     for wi in range(len(weeks)):
         bet_w, cross_w, comm_w = _compute_subgraph_metrics(ids, edges_by_week[wi], ring_of)
         imp_w = _within_week_percentiles({v: pagerank[v][wi] for v in ids})
+        if ai_only:
+            # importance = 0.5 volume + 0.3 PageRank + 0.2 emergence, each a within-week
+            # percentile: the week's giants are big, and this week's risers stay visible.
+            vol_w = _within_week_percentiles({v: volume[v][wi] for v in ids})
+            emg_w = _within_week_percentiles({v: emergence[v][wi] for v in ids})
+            for v in ids:
+                parts = [(0.5, vol_w[v]), (0.3, imp_w[v]), (0.2, emg_w[v])]
+                got = [(wt, x) for wt, x in parts if x is not None]
+                imp_w[v] = sum(wt * x for wt, x in got) / sum(wt for wt, _ in got) if got else None
         pct_prd = _within_week_percentiles({v: pr_rank_delta[v][wi] for v in ids})
         pct_dgr = _within_week_percentiles({v: deg_growth[v][wi] for v in ids})
         for v in ids:
@@ -1241,15 +1456,26 @@ def export_temporal(
     if not ranked_top10_ids:
         ranked_top10_ids = {v for v in ids if any(r is not None and r <= 10 for r in rank[v])}
     label_ids = top_pr_ids | ranked_top10_ids
+    if ai_only:
+        # About 14 labels: the radar's top 10 and the week's 6 largest topics by volume.
+        by_volume = sorted(
+            (v for v in ids if last_w >= 0 and volume[v][last_w] is not None),
+            key=lambda v: -(volume[v][last_w] or 0.0),
+        )
+        label_ids = ranked_top10_ids | set(by_volume[:6])
 
     sources = [idx[x] for x in kept["x"]]
     targets = [idx[y] for y in kept["y"]]
     npmis = kept["npmi"].to_list()
-    coords = _precompute_layout(len(ids), sources, targets, npmis)
     lex = lexicon or {}
-    stances = [lex.get(v, {}).get("stance") for v in ids]
-    if any(stance == "critic" for stance in stances):
-        coords = _seat_critics(coords, stances)
+    layout_meta: dict[str, Any] = {"layout": "frozen_fruchterman_reingold_space_4096"}
+    if ai_only:
+        coords, layout_meta = _ai_layout(ids, edges_by_week, importance)
+    else:
+        coords = _precompute_layout(len(ids), sources, targets, npmis)
+        stances = [lex.get(v, {}).get("stance") for v in ids]
+        if any(stance == "critic" for stance in stances):
+            coords = _seat_critics(coords, stances)
 
     nodes = [
         {
@@ -1375,7 +1601,8 @@ def export_temporal(
             "_meta": {
                 "profile": paths.profile(),
                 "view": "temporal",
-                "layout": "frozen_fruchterman_reingold_space_4096",
+                "layout": layout_meta["layout"],
+                "layout_params": {k: v for k, v in layout_meta.items() if k != "layout"},
                 "weeks": [w.isoformat() for w in weeks],
                 "iso_weeks": [iso_week(w) for w in weeks],
                 "params": {

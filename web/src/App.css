@@ -1816,3 +1816,21 @@ body {
 .workspace-rail .topic-card {
   overflow: hidden;
 }
+
+/* AI graph: frameless labels with a dark halo, so the nodes and edges stay visible */
+.graph-node-label.graph-label-ai {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  transform: translate(10px, -50%);
+  color: #f1f5f9;
+  font-size: 12.5px;
+  text-shadow:
+    0 0 3px #0f172a,
+    0 0 3px #0f172a,
+    0 0 6px #0f172a;
+}
+.graph-node-label.graph-label-ai.graph-label-focused {
+  color: #fde68a;
+}
