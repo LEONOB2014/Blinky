@@ -9,21 +9,24 @@ about to land on LinkedIn, why, and from which emotional angle to tell them to L
 
 ## Project map
 
-| Path | Workstream | Owner | What it is |
-|---|---|---|---|
-| `contracts/`, `mocks/` | WS0 | lead | Data and API contracts (JSON Schema, `api.yaml`, `taxonomy.yaml`) and their mocks |
-| `bq_sql/` | WS0 / WS1 | lead | BigQuery scripts Q1–Q4 and S1–S10 |
-| `pipelines/ingest/` | WS1 | claude-work | `run_bq.py` (dry run, cap, ledger), exports to Parquet, raw-file poller, DQ |
-| `pipelines/taxonomy/` | WS2 | claude-extend | Labeling functions, LLM labels, embeddings routing, gold set |
-| `graph/` | WS3 | claude-home | Weekly co-occurrence graphs, metrics, GPU tier-1 layout, story-view JSON |
-| `models/` | WS4 | claude-cacho | Six scores, sentiment, LightGBM + SHAP backtest |
-| `models/tgnn/` | WS7 | claude-extend | TGNN stretch (gated, never blocks WS4) |
-| `api/`, `web/` | WS5 | Gemini CLI | FastAPI over DuckDB (Modal), Lovable UI (Netlify) |
-| `entity/`, `crosssource/` | WS6 | Grok CLI | Wikidata resolution, HN / Wikipedia / X / YouTube lead-lag |
-| `src/radar/` | all | lead | Shared helpers: lake paths, contract validation |
-| `status/` | all | each WS | `WS<N>.md`, updated before every sync |
-| `reports/` | all | each WS | Evidence: `bq_ledger.csv`, backtest, label quality, TGNN go/no-go |
-| `lake/` | all | — | Parquet outputs, **never in git** |
+| Path | Workstream | Account | Agent it implements | What it is |
+|---|---|---|---|---|
+| `contracts/`, `mocks/`, `fixtures/dev/` | WS0 | orchestrator (this repo's lead Claude) | — | Contracts, mocks copied from real output, the real dev slice |
+| `agents/` | WS0 | orchestrator | Media Master + runtime tools | Multi-agent runtime (Qwen3-30B on Nebius), decision cards, view commands, traces |
+| `bq_sql/`, `pipelines/ingest/` | WS1 | Claude #2 | Scout | BigQuery jobs (dry run, cap, ledger), backfill, exports, DQ |
+| `pipelines/taxonomy/` | WS2 | Claude #2 | Curator | Segments, subtopics, labels, filter P/R |
+| `models/` | WS4 | Claude #3 | Signal analyst, Audience strategist | Six scores, window, decision, backtest, editor-test sheet |
+| `graph/` | WS3 | Claude #4 | Cartographer | Graph metrics, 1-hop ring; the graph views last (after the gate) |
+| `models/tgnn/` | WS7 | Claude #4 | — | Baseline table only (EdgeBank, persistence) |
+| `entity/`, `crosssource/` | WS6 | Grok CLI | Scout (cross-source) | Wikidata, Wikipedia pageviews (the backtest label), HN, YouTube |
+| `api/`, `web/` | WS5 | Gemini (Antigravity) | — | FastAPI over DuckDB, a plain contract-driven UI with chat and trace panels; Lovable restyles it later |
+| `reports/` | all | each WS | Auditor | Evidence: `bq_ledger.csv`, backtest, label quality |
+| `src/radar/` | all | orchestrator | — | Shared helpers: lake paths, profiles, contract validation |
+| `status/` | all | each WS | — | `WS<N>.md`, updated before every sync |
+| `lake/` | all | — | — | Parquet outputs, **never in git** |
+
+The agents are defined in [`contracts/agents.yaml`](contracts/agents.yaml): each owns part of the
+system, its tools and a decision log. Code computes every decision; the LLM explains it.
 
 Work only in your workstream's directory. Anything outside it (the shared core, CI, contracts)
 goes through a PR the lead reviews.
@@ -60,18 +63,32 @@ fix the cause, never bypass it (`--no-verify` is forbidden).
 
 ## Branching model
 
-- `main`: **demo / production**. Changes only through merged release or hotfix pull requests.
+- `main`: **demo / production**. Changes only through the `develop` → `main` pull request,
+  which is the release.
 - `develop`: **integration**. Every workstream lands here first and is tested here.
 - Work branches are short-lived (a few hours), named `<type>/ws<N>-<short-description>` with a
   Conventional Commits type and a kebab-case description: `feat/ws1-run-bq`,
   `feat/ws3-story-view`, `fix/ws5-freshness-badge`, `docs/ws0-contracts`.
 - Work branches start from the **latest `develop`** and merge back into `develop` by PR.
-- `release/vX.Y.Z` starts from `develop` and merges into `main`; `hotfix/<desc>` starts from
-  `main` and merges into `main`, then back into `develop`. See [releasing](docs/development/releasing.md).
+- There are no `release/*` or `hotfix/*` branches. A fix for `main` lands on `develop` first and
+  reaches `main` with the next release PR. See [releasing](docs/development/releasing.md).
 - **Never commit on `main` or `develop`, locally or remotely.** The `no-commit-to-branch` hook
   refuses it locally. The repository stays **private until the submission** (Sun Oct 18, 12:00
   UTC-5); on a free plan GitHub cannot enforce branch protection on a private repo, so the hook
   is the guard. Making the repo public is a maintainer action at submission time.
+
+## Orchestrator and executors
+
+- **One Claude account is the orchestrator.** It creates every worktree and writes its `BRIEF.md`
+  (committed as the branch's first commit), owns `contracts/` and this file, reviews each PR against
+  its brief, merges into `develop` and cuts releases. It may also execute tasks in its own worktrees.
+- **Every other account is an executor.** It reads only `AGENTS.md` and its `BRIEF.md`, touches only
+  the files the brief lists, runs the brief's acceptance commands, updates `status/WS<N>.md` and opens
+  the PR. When something outside the brief is needed, it writes `BLOCKED: <reason>` in its status file
+  and stops; it never improvises.
+- `BRIEF.md` sections: Goal · Plan reference · Inputs · Outputs · Files you may touch · Out of scope ·
+  Steps · Acceptance · Paid or outward actions needing approval · Report · If blocked.
+- The design behind this: [docs/designs/radar-build-plan.md](docs/designs/radar-build-plan.md).
 
 ## Worktrees: one per branch
 
@@ -125,17 +142,31 @@ BREAKING CHANGE: consumers of daily_topic_rolling must read the new column.
 
 - Title: a Conventional Commit header (checked by CI). Body: the
   [template](.github/pull_request_template.md).
-- Base `develop` for work branches; `main` only for `release/*` and `hotfix/*`.
-- CI must be green before merging. The merge captain merges; **squash** for small or
+- Base `develop` for work branches; `main` only for the `develop` → `main` release PR.
+- CI must be green before merging. The orchestrator merges; **squash** for small or
   fix-up-heavy PRs, **merge commit** for a series worth keeping. Never rebase shared branches.
 - **Never delete branches** after merging.
+
+## CI and the Actions-minutes budget
+
+GitHub Actions minutes are scarce for this repository (private repos bill every job rounded up to a
+whole minute). So:
+
+- CI is **one job**, on **pull requests into `develop` or `main` only**. Pushes, including merges
+  into `develop`, do not run CI. Draft PRs and PRs that touch only `*.md`, `docs/`, `status/` or
+  `reports/` do not run CI.
+- **The gate runs locally first:** `make check && make test` must pass before a PR is opened or
+  updated. CI is the last check, not the place to find failures.
+- **Open a PR as a draft** while work continues; mark it ready once, when the local gate passes.
+  Every push to a ready PR costs a run, so push fixes in one batch.
+- Ask the maintainer before opening a PR, marking one ready or re-running a workflow.
 
 ## Versioning and releases
 
 [SemVer 2.0.0](https://semver.org/), **0.x until the submission**: each release bumps MINOR,
-fixes bump PATCH. Releases are cut with commitizen at sync points (the 09:00 demo freeze is a
-release), which updates the version and [`CHANGELOG.md`](CHANGELOG.md), then tagged `vX.Y.Z` on
-`main`. Procedure: [releasing](docs/development/releasing.md).
+fixes bump PATCH. Releases are cut with commitizen at sync points (the 10:00 demo freeze is a
+release): the bump lands on `develop` through a `chore/release-vX.Y.Z` branch, then one PR
+`develop` → `main` (merge commit), tagged `vX.Y.Z` on `main`. Procedure: [releasing](docs/development/releasing.md).
 
 ## Data
 
@@ -143,8 +174,10 @@ release), which updates the version and [`CHANGELOG.md`](CHANGELOG.md), then tag
 - One shared `lake/` lives in the main checkout; worktrees symlink to it.
 - Code finds it through `RADAR_LAKE` (default `<repo>/lake`), via `radar.paths`, never through
   hardcoded machine paths.
-- Small, reviewed outputs are the exception: `reports/*.md`, `reports/bq_ledger.csv`, mocks,
-  and `web/public/data/*.json` for the static fallback. Details: [data and secrets](docs/development/data-and-secrets.md).
+- Small, reviewed outputs are the exception: `reports/*.md`, `reports/bq_ledger.csv`, and the
+  real dev slice in `fixtures/dev/` with mocks copied from it (column allow-list: no URLs, titles,
+  person names or free text). Headlines and URLs of news never enter git: `web/public/data/` is
+  git-ignored and deployed straight to Netlify. Details: [data and secrets](docs/development/data-and-secrets.md).
 
 ## Secrets
 

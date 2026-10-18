@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "radar"
-version = "0.1.0"
+version = "0.2.0"
 description = "Radar de Señal Temprana: the early-signal radar of AI topics for 30X (Reto 30X \"Radar de contenido\")"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,6 +21,8 @@ dependencies = [
     "jsonschema>=4.23.0",
     "pyyaml>=6.0.2",
     "python-dotenv>=1.0.0",
+    "httpx>=0.27.0", # agents/: OpenAI-compatible chat (Nebius)
+    "langsmith>=0.14",
 ]
 
 # One extra per workstream, so an agent installs only what its directory needs:
@@ -28,11 +30,14 @@ dependencies = [
 #   uv sync --extra models    (WS4)   uv sync --extra api     (WS5)
 [project.optional-dependencies]
 bq = ["google-cloud-bigquery>=3.27.0", "google-cloud-bigquery-storage>=2.27.0"]
-labels = ["httpx>=0.27.0", "tenacity>=9.0.0"]
+labels = ["httpx>=0.27.0", "tenacity>=9.0.0", "scikit-learn>=1.5.0", "lightgbm>=4.5.0"]
 graph = ["igraph>=0.11.8", "leidenalg>=0.10.2", "graphistry>=0.34.0"]
 models = ["scikit-learn>=1.5.0", "lightgbm>=4.5.0", "shap>=0.46.0"]
 api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.32.0"]
 crosssource = ["httpx>=0.27.0", "tenacity>=9.0.0"]
+deploy = [
+    "modal>=1.0",
+]
 
 [dependency-groups]
 dev = [
@@ -44,12 +49,12 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/radar"]
+packages = ["src/radar", "agents"]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["src", "tests", "pipelines", "graph", "models", "entity", "crosssource", "api"]
+src = ["src", "tests", "agents", "pipelines", "graph", "models", "entity", "crosssource", "api"]
 
 [tool.ruff.lint]
 select = [
@@ -80,12 +85,20 @@ ignore = [
 # Pipeline and model jobs build SQL from fixed table and column names in code, never from input.
 "pipelines/**" = ["S608"]
 "models/**" = ["N803", "N806"]  # math-style names (X, y_hat) are normal in model code
+# Orchestrator scripts call the bq CLI with fixed arguments, build SQL from constants in code (never
+# from input) and print what they wrote.
+"scripts/**" = ["S603", "S607", "S608", "T201"]
+# Agents: Spanish prompts and SQL run long; tools build SQL from table paths resolved in code and bind
+# every user value as a parameter; the CLI prints the answer and its trace.
+"agents/**" = ["E501"]
+"agents/tools.py" = ["E501", "S608"]
+"agents/__main__.py" = ["E501", "T201"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["radar"]
+known-first-party = ["radar", "agents"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "pipelines", "graph", "models", "entity", "crosssource", "api"]
+testpaths = ["tests", "agents", "pipelines", "graph", "models", "entity", "crosssource", "api", "deploy"]
 addopts = "-q --tb=short"
 markers = [
     "unit: fast tests with no network or data",
@@ -95,7 +108,7 @@ markers = [
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.0"
+version = "0.2.0"
 version_files = ["pyproject.toml:^version"]
 tag_format = "v$version"
 update_changelog_on_bump = true

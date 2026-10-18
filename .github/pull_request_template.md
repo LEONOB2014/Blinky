@@ -1,5 +1,5 @@
 <!-- Title: a Conventional Commit header, e.g. feat(ingest): add the 15-minute raw-file poller
-     Base: develop (work branches) · main (release/* and hotfix/* only) -->
+     Base: develop (work branches) · main (the develop → main release PR only) -->
 
 ## What and why
 
@@ -7,7 +7,7 @@
 
 ## How it was tested
 
-- [ ] `uv run pre-commit run --all-files`
+- [ ] `make check && make test` passed locally before the PR was marked ready (CI minutes are scarce)
 - [ ] Tests for the touched area (list the commands and results)
 - [ ] Outputs validated against `contracts/` (`make test-ws`)
 - [ ] CI green

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/topic_context_1hop.schema.json",
+  "title": "The 1-hop context ring of a ranked topic in one week (P6)",
+  "description": "WS3 Cartographer from edges_weekly: n >= 3, NPMI > 0.1, hubs (top 1% weighted degree) dropped, top 20 by NPMI -> lake/gold/topic_context_1hop.parquet",
+  "type": "object",
+  "x-owner": "WS3",
+  "x-mock": "pending-dev-slice",
+  "properties": {
+    "wk": {
+      "type": "string",
+      "format": "date"
+    },
+    "topic_id": {
+      "type": "string"
+    },
+    "neighbor": {
+      "type": "string"
+    },
+    "rank": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "n": {
+      "type": "integer",
+      "minimum": 3
+    },
+    "npmi": {
+      "type": "number",
+      "exclusiveMinimum": 0.1
+    },
+    "neighbor_segment": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "ai",
+        "it",
+        "ai_domain",
+        null
+      ]
+    },
+    "neighbor_domain": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "wk",
+    "topic_id",
+    "neighbor",
+    "rank",
+    "n",
+    "npmi"
+  ],
+  "additionalProperties": false
+}

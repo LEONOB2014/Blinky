@@ -1,0 +1,46 @@
+{
+  "name": "radar-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "copy-views": "mkdir -p public/data/views && if [ -d ../lake/views ]; then cp -f ../lake/views/*.json public/data/views/ 2>/dev/null || true; cp -f ../lake/views/temporal.png public/data/views/temporal.png 2>/dev/null || true; fi; uv run --project .. python scripts/write_coverage.py || true; uv run --project .. python scripts/write_weeks.py || true",
+    "dev": "bun run copy-views && vite --host 127.0.0.1 --port 5173",
+    "build": "bun run copy-views && tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173"
+  },
+  "dependencies": {
+    "@cosmos.gl/graph": "3.5.1",
+    "@luma.gl/constants": "9.3.6",
+    "@luma.gl/core": "9.3.6",
+    "@luma.gl/engine": "9.3.6",
+    "@luma.gl/shadertools": "9.3.6",
+    "@luma.gl/webgl": "9.3.6",
+    "graphology": "0.26.0",
+    "graphology-types": "0.24.8",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sigma": "3.0.3"
+  },
+  "overrides": {
+    "@luma.gl/constants": "9.3.6",
+    "@luma.gl/core": "9.3.6",
+    "@luma.gl/engine": "9.3.6",
+    "@luma.gl/shadertools": "9.3.6",
+    "@luma.gl/webgl": "9.3.6"
+  },
+  "resolutions": {
+    "@luma.gl/constants": "9.3.6",
+    "@luma.gl/core": "9.3.6",
+    "@luma.gl/engine": "9.3.6",
+    "@luma.gl/shadertools": "9.3.6",
+    "@luma.gl/webgl": "9.3.6"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/daily_totals.schema.json",
+  "title": "One day of one language stream: the normalization denominator",
+  "description": "BigQuery radar.daily_totals (bq_sql/s3_daily_totals.sql) -> lake/gold/daily_totals.parquet",
+  "type": "object",
+  "x-owner": "WS1",
+  "x-mock": "dev-slice",
+  "properties": {
+    "dt": {
+      "type": "string",
+      "format": "date"
+    },
+    "lang_bucket": {
+      "type": "string",
+      "enum": [
+        "eng",
+        "spa",
+        "por",
+        "other"
+      ]
+    },
+    "n_all": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "all GKG rows that day in this stream"
+    },
+    "n_all_med28": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "trailing 28-day mean of n_all"
+    },
+    "is_missing": {
+      "type": "boolean",
+      "description": "known outage or < 50% of normal volume; downstream values are NULL, never 0"
+    }
+  },
+  "required": [
+    "dt",
+    "lang_bucket",
+    "n_all",
+    "is_missing"
+  ],
+  "additionalProperties": false
+}

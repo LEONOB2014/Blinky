@@ -1,19 +1,22 @@
 -- S8: rolling 7-day view with weekday-adjusted baselines, growth and acceleration.
--- A complete calendar spine is built per (topic, lang_bucket, latam): days with real source data but no articles get n = 0;
+-- A complete calendar spine is built per (topic, segment, lang_bucket, latam): days with real source data but no articles get n = 0;
 -- days flagged is_missing in daily_totals (2025-06-14..2025-07-02 outage, partial days) get NULL, never 0.
 -- Querying this view bills only the bytes of our small tables.
 CREATE OR REPLACE VIEW `radar.daily_topic_rolling` AS
 WITH keys AS (
-  SELECT DISTINCT topic, lang_bucket, latam FROM `radar.daily_topic`
+  -- one ring per topic: ring-3 topics are 'domain:<id>', so (topic, segment) never splits a domain
+  SELECT DISTINCT topic, segment, lang_bucket, latam FROM `radar.daily_topic`
 ),
 spine AS (
-  SELECT k.topic, k.lang_bucket, k.latam, t.dt, t.n_all, t.is_missing
+  SELECT k.topic, k.segment, k.lang_bucket, k.latam, t.dt, t.n_all, t.is_missing
   FROM keys AS k
   JOIN `radar.daily_totals` AS t ON t.lang_bucket = k.lang_bucket
+  -- only days the extract covers (daily_totals spans 2 years, the backfill 12 months): no zeros before it
+  WHERE t.dt BETWEEN (SELECT MIN(dt) FROM `radar.daily_topic`) AND (SELECT MAX(dt) FROM `radar.daily_topic`)
 ),
 filled AS (
   SELECT
-    s.topic, s.lang_bucket, s.latam, s.dt,
+    s.topic, s.segment, s.lang_bucket, s.latam, s.dt,
     EXTRACT(DAYOFWEEK FROM s.dt) AS dow,
     s.is_missing,
     IF(s.is_missing, NULL, s.n_all) AS n_all,
@@ -26,7 +29,7 @@ filled AS (
     IF(s.is_missing, NULL, IFNULL(d.n_neg_x, 0)) AS n_neg_x
   FROM spine AS s
   LEFT JOIN `radar.daily_topic` AS d
-    ON d.topic = s.topic AND d.lang_bucket = s.lang_bucket AND d.latam = s.latam AND d.dt = s.dt
+    ON d.topic = s.topic AND d.segment = s.segment AND d.lang_bucket = s.lang_bucket AND d.latam = s.latam AND d.dt = s.dt
 ),
 roll AS (
   SELECT
@@ -44,8 +47,8 @@ roll AS (
     SAFE_DIVIDE(SUM(sum_tone) OVER w28lag, SUM(n_tone) OVER w28lag) AS mean_tone_prev28
   FROM filled
   WINDOW
-    w7 AS (PARTITION BY topic, lang_bucket, latam ORDER BY UNIX_DATE(dt) RANGE BETWEEN 6 PRECEDING AND CURRENT ROW),
-    w28lag AS (PARTITION BY topic, lang_bucket, latam ORDER BY UNIX_DATE(dt) RANGE BETWEEN 34 PRECEDING AND 7 PRECEDING)
+    w7 AS (PARTITION BY topic, segment, lang_bucket, latam ORDER BY UNIX_DATE(dt) RANGE BETWEEN 6 PRECEDING AND CURRENT ROW),
+    w28lag AS (PARTITION BY topic, segment, lang_bucket, latam ORDER BY UNIX_DATE(dt) RANGE BETWEEN 34 PRECEDING AND 7 PRECEDING)
 ),
 metrics AS (
   SELECT
@@ -63,7 +66,7 @@ metrics AS (
     LAG(SAFE_DIVIDE(n, n_all), 21) OVER wd AS s_l21,
     LAG(SAFE_DIVIDE(n, n_all), 28) OVER wd AS s_l28
   FROM roll
-  WINDOW wd AS (PARTITION BY topic, lang_bucket, latam ORDER BY dt)
+  WINDOW wd AS (PARTITION BY topic, segment, lang_bucket, latam ORDER BY dt)
 ),
 z AS (
   SELECT
@@ -76,17 +79,17 @@ z AS (
     STDDEV_SAMP(share_7d) OVER w28z AS share_7d_base_sd
   FROM metrics
   WINDOW
-    wz AS (PARTITION BY topic, lang_bucket, latam ORDER BY dt),
-    w28z AS (PARTITION BY topic, lang_bucket, latam ORDER BY UNIX_DATE(dt) RANGE BETWEEN 34 PRECEDING AND 7 PRECEDING)
+    wz AS (PARTITION BY topic, segment, lang_bucket, latam ORDER BY dt),
+    w28z AS (PARTITION BY topic, segment, lang_bucket, latam ORDER BY UNIX_DATE(dt) RANGE BETWEEN 34 PRECEDING AND 7 PRECEDING)
 )
 SELECT
-  topic, lang_bucket, latam, dt, dow, is_missing,
+  topic, segment, lang_bucket, latam, dt, dow, is_missing,
   n, n_all, share, n_sources,
   n_7d, share_7d,
   IF(dow_base_n >= 3, SAFE_DIVIDE(share - dow_base_mean, NULLIF(dow_base_sd, 0)), NULL) AS z_dow,
   SAFE_DIVIDE(share_7d - share_7d_base_mean, NULLIF(share_7d_base_sd, 0)) AS z_7d,
   growth_7d_log,
-  growth_7d_log - LAG(growth_7d_log, 7) OVER (PARTITION BY topic, lang_bucket, latam ORDER BY dt) AS accel_7d,
+  growth_7d_log - LAG(growth_7d_log, 7) OVER (PARTITION BY topic, segment, lang_bucket, latam ORDER BY dt) AS accel_7d,
   mean_tone_7d,
   ABS(mean_tone_7d) AS extremity_7d,
   mean_polarity_7d,

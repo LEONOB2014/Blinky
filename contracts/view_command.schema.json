@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/view_command.schema.json",
+  "title": "A structured command from the Cartographer that the web view applies",
+  "description": "agents/ update_view tool -> API -> web (sigma.js story view; Graphistry via URL parameters, unverified)",
+  "type": "object",
+  "x-owner": "orchestrator (agents/)",
+  "x-mock": "first-agent-run",
+  "properties": {
+    "view": {
+      "type": "string",
+      "enum": [
+        "story",
+        "temporal",
+        "cards"
+      ]
+    },
+    "week": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]{4}-W[0-9]{2}$"
+    },
+    "focus_topic": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "highlight": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50
+    },
+    "color_by": {
+      "type": "string",
+      "enum": [
+        "tone",
+        "arousal",
+        "community",
+        "segment",
+        "decision",
+        "window",
+        "bridge",
+        "momentum",
+        "novelty"
+      ],
+      "description": "the lens: decision (the radar's decision per topic), segment (ring: ai / it / ai_domain), tone, arousal, community (within one week only), window (the window chip's state), bridge (topics that connect AI with other domains), momentum (rising this week), novelty (new connections this week)"
+    },
+    "filter": {
+      "type": "object",
+      "properties": {
+        "segment": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "it",
+              "ai_domain"
+            ]
+          }
+        },
+        "lang_bucket": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "eng",
+              "spa",
+              "por",
+              "other"
+            ]
+          }
+        },
+        "hops": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "caption_es": {
+      "type": "string",
+      "description": "one line the UI shows with the view"
+    }
+  },
+  "required": [
+    "view",
+    "color_by",
+    "caption_es"
+  ],
+  "additionalProperties": false
+}

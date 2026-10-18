@@ -1,5 +1,5 @@
 -- S2: one monthly slice. Bytes unchanged vs. the previous version: V2Tone (~97 B/row) was already selected; it is now fully parsed.
--- One monthly slice (example: September 2026). Edit the 4 literals per month. Dry-run first.
+-- One monthly slice. pipelines/ingest/run_bq.py --month YYYY-MM fills the ${...} tokens and dry-runs first.
 -- Partition window = month +/- 1 day (ingestion-time partitions); DATE filter = exact publication month.
 INSERT INTO `radar.gkg_ai` (
   gkg_id, ts, dt, source, url, title, lang, tone, pos_score, neg_score, polarity, activity_density, self_group_ref_density, word_count, orgs, persons, themes, locations, allnames,
@@ -27,8 +27,8 @@ WITH base AS (
     AllNames AS allnames,
     _PARTITIONDATE AS ingest_day
   FROM `gdelt-bq.gdeltv2.gkg_partitioned`
-  WHERE _PARTITIONTIME >= TIMESTAMP('2026-08-31') AND _PARTITIONTIME < TIMESTAMP('2026-10-02')
-    AND DATE >= 20260901000000 AND DATE < 20261001000000
+  WHERE _PARTITIONTIME >= TIMESTAMP('${PART_START}') AND _PARTITIONTIME < TIMESTAMP('${PART_END}')
+    AND DATE >= ${DATE_START} AND DATE < ${DATE_END}
 ),
 flagged AS (
   SELECT
@@ -50,7 +50,10 @@ SELECT
   f_url, f_url_short, f_title_strong, f_title_weak, f_org, f_latam_loc, f_latam_src, f_ict, f_control, ingest_day
 FROM flagged
 WHERE dt IS NOT NULL
+  -- Wide net (bytes depend on columns, not rows): ring 1 candidates, all ICT news (ring 2), articles naming a
+  -- large tech company (rings 2 and 3, contracts/taxonomy.yaml), and the random control sample.
   AND (f_url OR f_url_short OR f_title_strong OR f_title_weak OR f_org
-       OR (f_ict AND (f_latam_loc OR f_latam_src))
+       OR f_ict
+       OR REGEXP_CONTAINS(LOWER(IFNULL(orgs, '')), r'(^|;)(google|alphabet|microsoft|apple|amazon|meta platforms|facebook|ibm|intel|amd|advanced micro devices|qualcomm|tsmc|taiwan semiconductor|samsung|oracle|salesforce|tesla|baidu|alibaba|tencent|huawei|bytedance|tiktok|sap|cisco|dell|mercadolibre|globant|nubank)[,;]')
        OR f_control)
 QUALIFY ROW_NUMBER() OVER (PARTITION BY gkg_id ORDER BY ingest_day DESC) = 1;

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/node_metrics_weekly.schema.json",
+  "title": "Weekly metrics of one graph node (ring-1 articles)",
+  "description": "WS3 Cartographer from edges_weekly -> lake/gold/node_metrics_weekly.parquet; feeds Emergence (new-neighbour rate, degree growth)",
+  "type": "object",
+  "x-owner": "WS3",
+  "x-mock": "pending-dev-slice",
+  "properties": {
+    "wk": {
+      "type": "string",
+      "format": "date"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "'<etype>:<entity>', never 'per:' in committed files"
+    },
+    "deg_w": {
+      "type": "number",
+      "minimum": 0,
+      "description": "weighted degree (sum of n)"
+    },
+    "deg_growth": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "ln(deg_w / deg_w a week ago)"
+    },
+    "new_nbr_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "share of this week's neighbours unseen in the prior 4 weeks"
+    },
+    "pagerank": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "pr_rank_delta": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "kcore": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "community_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Leiden community, matched across weeks (Jaccard >= 0.3)"
+    },
+    "community_event": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "birth",
+        "merge",
+        "split",
+        "continue",
+        null
+      ]
+    },
+    "is_hub": {
+      "type": "boolean",
+      "description": "top 1% weighted degree that week (excluded from the 1-hop ring)"
+    }
+  },
+  "required": [
+    "wk",
+    "entity_id",
+    "deg_w",
+    "is_hub"
+  ],
+  "additionalProperties": false
+}

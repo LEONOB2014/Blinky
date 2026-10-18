@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/daily_topic.schema.json",
+  "title": "Day x subtopic x language x LatAm: volume, share and tone",
+  "description": "BigQuery radar.daily_topic (bq_sql/s4_aggregates.sql S4d) -> lake/gold/daily_topic.parquet. topic = 'ai_all' or one of the 12 subtopics in taxonomy.yaml",
+  "type": "object",
+  "x-owner": "WS1",
+  "x-mock": "pending-dev-slice",
+  "properties": {
+    "dt": {
+      "type": "string",
+      "format": "date"
+    },
+    "topic": {
+      "type": "string",
+      "description": "ring 1 (segment ai): ai_all or a subtopic id from taxonomy.yaml; ring 2 (segment it): it_all; ring 3 (segment ai_domain): domain:<domain id>, one row per matched domain"
+    },
+    "segment": {
+      "type": "string",
+      "enum": [
+        "ai",
+        "it",
+        "ai_domain"
+      ]
+    },
+    "domain": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ring-3 domain id from taxonomy.yaml; null outside ring 3"
+    },
+    "lang_bucket": {
+      "type": "string",
+      "enum": [
+        "eng",
+        "spa",
+        "por",
+        "other"
+      ]
+    },
+    "latam": {
+      "type": "boolean"
+    },
+    "n_articles": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "articles"
+    },
+    "n_sources": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "distinct sources"
+    },
+    "n_tone": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "articles with a tone"
+    },
+    "sum_tone": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "additive"
+    },
+    "sum_tone_sq": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "additive"
+    },
+    "sum_polarity": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "additive"
+    },
+    "n_pos_x": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "articles with tone > 3.0"
+    },
+    "n_neg_x": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "articles with tone < -3.0"
+    },
+    "mean_tone": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "V2Tone tone, mean"
+    },
+    "sd_tone": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "sample SD"
+    },
+    "p10_tone": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "approx. P10"
+    },
+    "p90_tone": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "approx. P90"
+    },
+    "mean_polarity": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "V2Tone polarity, mean"
+    },
+    "extremity": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "|mean_tone|"
+    },
+    "positive_share": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "n_pos_x / n_tone"
+    },
+    "negative_share": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "n_neg_x / n_tone"
+    },
+    "controversy_index": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "charge x neutrality x two-sidedness, 0..1 (s4_aggregates.sql S4d)"
+    },
+    "n_all_stream": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "daily_totals.n_all for the stream"
+    },
+    "share_of_day": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "n_articles / n_all_stream"
+    },
+    "is_missing": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "dt",
+    "topic",
+    "segment",
+    "lang_bucket",
+    "latam",
+    "n_articles",
+    "n_sources",
+    "share_of_day",
+    "is_missing"
+  ],
+  "additionalProperties": false
+}

@@ -28,8 +28,11 @@ GEMINI.local.md
 *.arrow
 *.jsonl
 *.csv
-# Committed exceptions: the BigQuery cost ledger and small reviewed tables
+# Committed exceptions: the BigQuery cost ledger, small reviewed tables and the real dev slice
 !reports/*.csv
+!fixtures/dev/*.parquet
+# header-only templates (a test fails if one ever holds a data row)
+!templates/*.csv
 
 # Models and caches
 *.pkl
@@ -42,6 +45,8 @@ mlruns/
 web/node_modules/
 web/dist/
 web/.netlify/
+# The static fallback carries news headlines and URLs: generated at the freeze, never committed
+web/public/data/
 
 # Tooling
 .pytest_cache/
