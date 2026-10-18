@@ -17,6 +17,8 @@ Changing a contract is a breaking change: open a PR with `feat(contracts)!:` and
 | `topic_evidence_weekly` | WS1 Scout | up to 5 representative articles per ranked topic-week (lake and deployed site only) |
 | `topic_briefs_weekly` | WS0 Editor agent | the Spanish adaptation brief per top-10 topic, Auditor-checked |
 | `edges_weekly` | WS1 Scout | one weekly co-occurrence edge with NPMI |
+| `topic_ai_daily` | WS1 Scout | day × AI-lexicon topic (`ai:<id>`) × language, the columns of `topic_daily` |
+| `edges_ai_weekly` | WS1 Scout | one weekly co-mention edge between two AI-lexicon topics, per language bucket, with NPMI |
 | `topic_context_1hop` | WS3 Cartographer | one neighbour in a topic's 1-hop ring |
 | `topic_scores_weekly` | WS4 Signal analyst | one ranked topic in one week, with its decision |
 | `topic_wikidata` | WS6 Scout (cross-source) | a ranked topic resolved to Wikidata and its es/pt/en articles |

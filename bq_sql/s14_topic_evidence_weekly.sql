@@ -15,6 +15,8 @@
 --   2b. then at most one article per source (the best one by the order below), so one outlet cannot fill the card;
 --   3. order: relevance desc, then es/pt first, then earliest, then gkg_id; keep 5. Articles without an http(s) URL
 --      are skipped.
+-- AI-lexicon topics ('ai:<id>') take their articles from radar.article_topic_ai (S15); relevance uses the same
+-- org/theme entities.
 -- The scan is limited to the topics' weeks (script variables prune the dt partitions of the wide url/title columns).
 DECLARE lo DATE DEFAULT (SELECT MIN(week) FROM `radar.evidence_topics`);
 DECLARE hi DATE DEFAULT (SELECT DATE_ADD(MAX(week), INTERVAL 7 DAY) FROM `radar.evidence_topics`);
@@ -35,6 +37,11 @@ mentions AS (
   SELECT a.gkg_id, a.week, a.ent AS topic_id
   FROM art_ents AS a
   JOIN `radar.evidence_topics` AS t ON t.topic_id = a.ent AND t.week = a.week
+  UNION DISTINCT
+  SELECT a.gkg_id, a.week, a.topic_id
+  FROM `radar.article_topic_ai` AS a
+  JOIN `radar.evidence_topics` AS t ON t.topic_id = a.topic_id AND t.week = a.week
+  WHERE a.dt >= lo AND a.dt < hi
 ),
 week_docs AS (
   SELECT week, COUNT(DISTINCT gkg_id) AS n_week FROM art_ents GROUP BY week
