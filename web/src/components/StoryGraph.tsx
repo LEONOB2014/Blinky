@@ -412,14 +412,14 @@ export function StoryGraph({
             className={`pill lens-pill${activeLens === "segment" ? " pill-active" : ""}`}
             onClick={() => onLensChange?.("segment")}
           >
-            Anillos (IA/IT)
+            Sector (nombre)
           </button>
           <button
             type="button"
             className={`pill lens-pill${activeLens === "bridge" ? " pill-active" : ""}`}
             onClick={() => onLensChange?.("bridge")}
           >
-            Puente (Cross-ring)
+            Puente (cruce de sector)
           </button>
           <button
             type="button"
@@ -574,13 +574,16 @@ export function StoryGraph({
               <span className="legend-dot legend-focus" /> ★ Tema central
             </span>
             <span className="legend-item">
-              <span className="legend-dot legend-ring-ai" /> Anillo 1 (IA núcleo)
+              Sector (regla por nombre): IA / TI / otros sectores
             </span>
             <span className="legend-item">
-              <span className="legend-dot legend-ring-it" /> Anillo 2 (TIC / Software)
+              <span className="legend-dot legend-ring-ai" /> IA
             </span>
             <span className="legend-item">
-              <span className="legend-dot legend-ring-dom" /> Anillo 3 (Dominio externo)
+              <span className="legend-dot legend-ring-it" /> TI
+            </span>
+            <span className="legend-item">
+              <span className="legend-dot legend-ring-dom" /> otros sectores
             </span>
           </div>
         </div>
@@ -611,7 +614,10 @@ export function StoryGraph({
                     >
                       {lbl}
                     </button>
-                    <span className={`badge ring-badge-${a.ring ?? "ai_domain"}`}>
+                    <span
+                      className={`badge ring-badge-${a.ring ?? "ai_domain"}`}
+                      title="Sector (regla por nombre): IA / TI / otros sectores"
+                    >
                       {(a.ring ?? "ai_domain").toUpperCase()}
                     </span>
                   </div>

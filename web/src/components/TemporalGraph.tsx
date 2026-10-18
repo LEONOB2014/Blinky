@@ -1342,26 +1342,29 @@ export function TemporalGraph({
             {activeLens === "segment" && (
               <>
                 <span className="legend-item">
-                  <span className="legend-dot legend-ring-ai" /> Anillo 1 (IA núcleo)
+                  Sector (regla por nombre): IA / TI / otros sectores
                 </span>
                 <span className="legend-item">
-                  <span className="legend-dot legend-ring-it" /> Anillo 2 (TIC / Software)
+                  <span className="legend-dot legend-ring-ai" /> IA
                 </span>
                 <span className="legend-item">
-                  <span className="legend-dot legend-ring-dom" /> Anillo 3 (Dominio externo)
+                  <span className="legend-dot legend-ring-it" /> TI
+                </span>
+                <span className="legend-item">
+                  <span className="legend-dot legend-ring-dom" /> otros sectores
                 </span>
               </>
             )}
             {activeLens === "bridge" && (
               <>
                 <span className="legend-item">
-                  <span className="legend-dot legend-bridge-high" /> Cross-ring 70%+ (Oro)
+                  <span className="legend-dot legend-bridge-high" /> cruce de sector (regla) 70%+ (Oro)
                 </span>
                 <span className="legend-item">
-                  <span className="legend-dot legend-bridge-mid" /> Cross-ring 35%+ (Naranja)
+                  <span className="legend-dot legend-bridge-mid" /> cruce de sector (regla) 35%+ (Naranja)
                 </span>
                 <span className="legend-item">
-                  <span className="legend-dot legend-bridge-low" /> Intra-ring (Azul marino)
+                  <span className="legend-dot legend-bridge-low" /> mismo sector (Azul marino)
                 </span>
                 <span className="legend-item">
                   Tamaño = Betweenness normalizada (igraph)
@@ -1517,7 +1520,10 @@ export function TemporalGraph({
         >
           <div className="tooltip-title">
             <strong>{hoveredTooltip.node.label_es}</strong>
-            <span className={`badge ring-badge-${hoveredTooltip.node.ring}`}>
+            <span
+              className={`badge ring-badge-${hoveredTooltip.node.ring}`}
+              title="Sector (regla por nombre): IA / TI / otros sectores"
+            >
               {hoveredTooltip.node.ring.toUpperCase()}
             </span>
           </div>
@@ -1545,7 +1551,7 @@ export function TemporalGraph({
               </strong>
             </div>
             <div>
-              Cross-ring:{" "}
+              cruce de sector (regla):{" "}
               <strong>
                 {hoveredTooltip.node.cross_ring_share?.[weekIdx] !== null &&
                 hoveredTooltip.node.cross_ring_share?.[weekIdx] !== undefined

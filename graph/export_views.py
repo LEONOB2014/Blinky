@@ -420,21 +420,20 @@ def node_ring_and_domain(
     entity_id: str,
     primary_subtopics: dict[str, str] | None = None,
 ) -> tuple[str, str | None]:
-    """Classify a graph node into one of the three taxonomy rings (``ai``, ``it``, ``ai_domain``).
+    """Name-list sector (``ai`` / ``it`` / ``ai_domain``), not ``topic_daily.segment``.
 
-    Because ``topic_daily`` in the lake is built from Ring-1 (``segment == 'ai'``) articles only
-    (``bq_sql/s4_aggregates.sql``), ``topic_daily.segment`` is ``'ai'`` for every entity in that
-    table. To distinguish core AI nodes, ICT/tech infrastructure nodes, and external domain nodes
-    where AI crosses into industry/policy/society, we apply the taxonomy rules from
-    ``contracts/taxonomy.yaml``, ``bq_sql/s2_monthly_insert.sql`` (``f_org``, ``f_ict``), and
-    ``bq_sql/s4a_article_segment.sql`` (``tech_org``, ``domains``):
-    - ``ai`` (Ring 1): ``thm:TECH_AUTOMATION``, core AI labs/models/chip orgs (``_RING_AI_ORGS``),
-      or ranked orgs whose primary subtopic is ``agents``, ``llms_models``, or ``chips_infra``.
-    - ``it`` (Ring 2): ICT/software GKG themes (``_RING_IT_THEME_PREFIXES``) and broader IT,
-      semiconductor, cloud, and platform orgs (``_RING_IT_ORGS``).
-    - ``ai_domain`` (Ring 3): domain themes matching ``taxonomy.yaml`` ``domains`` prefixes,
-      non-AI/non-IT sector organizations (finance, consulting, energy, healthcare, retail,
-      government, universities), and geographies (``loc:*``).
+    The lake's ``topic_daily`` rows come from Ring-1 articles (``segment == 'ai'``), so that
+    column is ``ai`` for every entity and is not read here. The UI calls the result
+    "Sector (regla por nombre): IA / TI / otros sectores". Lists live in ``_RING_AI_ORGS``,
+    ``_RING_AI_SUBTOPICS``, ``_RING_IT_ORGS``, and ``_RING_IT_THEME_PREFIXES`` (also
+    ``graph/README.md``). Domain still comes from ``taxonomy.yaml`` when a prefix matches.
+
+    - ``ai``: ``thm:TECH_AUTOMATION`` or an ``AI_`` theme; an org in ``_RING_AI_ORGS``; or an
+      org whose primary subtopic is ``agents``, ``llms_models``, or ``chips_infra`` (this
+      check runs before the TI name list).
+    - ``it``: a theme whose code starts with ``_RING_IT_THEME_PREFIXES``, or an org in
+      ``_RING_IT_ORGS`` that was not already classified ``ai``.
+    - ``ai_domain``: every other theme, every other org, and every ``loc:``.
     """
     etype, raw = entity_id.split(":", 1) if ":" in entity_id else ("", entity_id)
     domains_cfg = _taxonomy().get("domains") or {}
