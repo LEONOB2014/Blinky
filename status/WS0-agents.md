@@ -4,7 +4,64 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 06:10 UTC-5 · pre-deploy defects D1-D3 (fix/agents-trust-cost): D1, D2 and the Auditor's date false positive fixed; D3 not fully · committed locally; the orchestrator lands it.
+2026-10-18 06:25 UTC-5 · graph facts written by code (fix/agents-graph-facts): graph questions 15/15 grounded · committed locally; the orchestrator lands it.
+
+## Graph facts written by code (06:25 UTC-5, branch `fix/agents-graph-facts`, committed locally; the orchestrator lands it)
+
+The last grounding gap: on the graph route the model invented thresholds ("más de 50 co-menciones",
+"nPMI > 0.85"; q10 and q12 in predeploy-fixes).
+
+- **Fix:** code now writes a "Cómo se arma el grafo" line from real values, as it writes the
+  decision line.
+  - **Weekly graph** (no topic named): the new `get_graph_facts` reads the metadata
+    `graph/export_views.py` writes to `lake/views/temporal.json`. That gives the top-k per node (5),
+    the minimum co-mentions (20) and the NPMI cut (> 0.1). It also counts the nodes and edges the
+    view draws that week: 930 and 3,463 in W42 (*measured*). The node count is nodes with an edge
+    that week, not `importance` rows (979), so it matches what is on screen.
+  - **Named topic:** `get_context_1hop`'s own criteria: top 20, n >= 3, NPMI > 0.1, hubs and persons
+    dropped, how many are shown.
+  - The model is told the line is written and must not state other thresholds.
+  - Nothing is hard-coded in the prompt. `get_graph_facts` is in the Cartographer's plan and in
+    `contracts/agents.yaml`.
+- **Auditor:** every number in both lines is traced. A test checks this, and that an invented
+  "0.85" beside the line is still caught.
+- **Tests:** 4 new. `make test` 264 passed, `make check` clean, contract tests pass.
+- **Deploy note:** the Cloud Run image stages only `lake/gold/*.parquet`
+  (`deploy/cloudrun_stage.py`), not `lake/views/`. On the live service `get_graph_facts` returns
+  "no disponible" and the weekly question falls back to the leader's ring line. Staging
+  `views/temporal.json` is a deploy change, not made here.
+
+**Results** against PR #47's full eval (predeploy-fixes, fea4dd2), all *measured*. Brackets are the
+min-max of the three repetition means.
+
+| Experiment | Questions | grounding | usefulness_v2 | tokens/turn |
+|---|---|---|---|---|
+| predeploy-fixes (fea4dd2), graph questions only | q07, q10, q12, q13, q14 x 3 | 0.867 (13/15) | 0.467 | - |
+| graph-facts-graphq (d6fa0ff) | same x 3 | **1.000** [1.00-1.00] (15/15) | 0.633 [0.60-0.70] | 5,677 |
+| predeploy-fixes (fea4dd2) | 25 x 3 | 0.947 [0.88-1.00] | 0.547 [0.51-0.58] | 6,148 [6,141-6,154] |
+| graph-facts (d6fa0ff) | 25 x 3 | 0.933 [0.88-0.96] | 0.647 [0.61-0.67] | 6,205 [6,186-6,219] |
+
+- **Graph questions:** 28 of 30 runs grounded across both experiments (was 13 of 15).
+  - No answer states an NPMI value any more.
+  - Left: one q10 run (of 6) still writes "todos con más de 50 co-menciones" about the listed
+    neighbours, and one q13 run cites a "video de 35 segundos" (below).
+- **Full-run grounding** is within the old range (5 of 75 missed vs 4 of 75). The other misses are
+  not graph thresholds:
+  - q21 x2: "actualizados a menos de 24 horas", an inference from the date.
+  - q02 and q13: "video de 35 segundos", taken from the Editor's "30-45 s" role text, which is not
+    tool data.
+  - Both are prompt-sourced numbers. A fix would be to give the Editor's format lengths as data, or
+    to drop the number from its role.
+- **usefulness_v2** rose beyond the old range (0.547 -> 0.647). Only part of it is this change:
+  - q12 rose 0.33 -> 0.83, the line opens its answer;
+  - q21 rose 0.50 -> 0.83 from PR #47's date fix, which landed after predeploy-fixes was run;
+  - q11 (0.25 -> 1.00) and q23 (0.25 -> 0.67) use routes this change does not touch, so read them as
+    noise.
+- **Tokens:** +57 per turn.
+- **Nebius spend,** *estimate*:
+  - agent tokens 550,557 (*measured*: 85,153 subset + 465,404 full, Qwen3-30B);
+  - judge tokens not recorded, roughly 90 runs x 2 judges x ~4k on Qwen3-235B;
+  - about $0.25 at assumed list rates, under the $0.40 cap.
 
 ## Pre-deploy defects D1-D3 fixed (06:10 UTC-5, branch `fix/agents-trust-cost`, committed locally; the orchestrator lands it)
 
