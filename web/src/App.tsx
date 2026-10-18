@@ -436,6 +436,8 @@ export function App() {
   const [coverage, setCoverage] = useState<CoverageSpan | null>(null);
   const [radarItems, setRadarItems] = useState<TopicScoreWeekly[]>([]);
   const [radarEmptyReason, setRadarEmptyReason] = useState<string | null>(null);
+  // False until the first /api/radar answer, so the empty-week fallback never mounts early.
+  const [radarLoaded, setRadarLoaded] = useState(false);
   // ISO week ("2026-W42") of the radar; empty until freshness gives the latest scored week.
   const [radarWeek, setRadarWeek] = useState<string>("");
   const [communityWeek, setCommunityWeek] = useState<string | null>(null);
@@ -589,6 +591,7 @@ export function App() {
       .then((res) => {
         setRadarItems(res.items);
         setRadarEmptyReason(res.emptyReason);
+        setRadarLoaded(true);
         if (res.items.length > 0) {
           selectTopic(res.items[0].topic_id);
         }
@@ -596,6 +599,7 @@ export function App() {
       .catch((err: unknown) => {
         console.error(err);
         setRadarItems([]);
+        setRadarLoaded(true);
       });
   }, [radarWeek]);
 
@@ -926,6 +930,10 @@ export function App() {
                 void openNamedTopic(row.topic_id, radarItems[0]?.week ?? null, row.label_es, false);
               }}
             />
+          ) : !radarLoaded ? (
+            <p className="muted" data-testid="radar-loading" aria-live="polite">
+              Cargando el top 10…
+            </p>
           ) : radarItems.length === 0 ? (
             <div className="empty-state" data-testid="radar-empty-notice">
               <p>
