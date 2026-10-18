@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 01:50 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
+2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
 
@@ -65,6 +65,24 @@ The dry run at 01:44 passed every precondition and printed each deploy command w
   pattern share of 0.59, so WS4's guard passes it rightly.
 - The two rules measure different things. Aligning the stories script with the pattern share would
   make the demo text match the gate; it is a small change, left for the orchestrator to decide.
+
+**Interim redeploy (orchestrator's order, ~02:25 UTC-5), `make redeploy-all ARGS=--run`, measured:**
+- The `topic_scores_weekly` checksum was stable before the run, and the shipped copy equals the lake's
+  (md5 `8876536416ad47422b1ae3e2fc05483f`).
+- Cloud Run revision `radar-api-00004` (07:25 UTC), built with Cloud Build.
+- The static export and web build ran, then the Netlify production deploy (7 s, 334 files).
+- The whole run took 2 min 40 s.
+- The script's last step crashed: `make` passed the caller's `ARGS=--run` down into the nested
+  `make demo-check`, and `demo_check.py` does not accept `--run`.
+  - Every deploy before it had succeeded (the script stops on any earlier failure).
+  - Fixed in `scripts/redeploy_all.sh` (the nested call now clears `ARGS`).
+  - Re-run by hand: `make demo-check` **7/7 passed**.
+- The public 2026-W42 top 10, identical on the live API (`/api/radar?week=2026-W42`) and on Netlify's
+  static `/data/radar/2026-W42.json` (and `latest.json` equals the live list):
+  marsh mclennan, rocket lab, national stock exchange, university college london, citigroup, sandisk,
+  comcast, kroger, founders fund, sb energy.
+- **`org:euronext`, `org:adani enterprises`, `org:kioxia holdings`, `org:sterling` and `org:yahoo`
+  are absent from both (checked, measured).**
 
 **Rehearsal shots:** waiting for the Drive copy to end (~03:00). At 01:49, 54% of memory was free
 and Google Drive was still running.
