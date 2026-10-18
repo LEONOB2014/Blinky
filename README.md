@@ -51,9 +51,9 @@ The full plan is in [docs/plan/MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf), and 
 | Wikipedia resolution and pageviews (WS6) | Merged | 11,060 topics resolved (1,916 exact); 368,394 es+pt daily pageview rows; 0 failed requests and 0 rate-limit errors at one request per 6.5 s |
 | Article classifier cascade (WS2b) | Merged; human labels next (04:00) | Teacher panel (Qwen3-235B, DeepSeek-V4-Pro) agrees 96.8% on "is AI"; local student F1 0.964 on a frozen test split; on 300 sheet rows the GDELT rule's precision is 0.75 against the student's 0.94, subtopic agreement 0.11 (regex) against 0.54. Reference is the teacher panel until the human labels land. Jev spend $0.044 over 981 calls ([report](reports/label_quality.md)) |
 | API and UI (WS5, WS5b) | Merged, on the full lake | 5 of 5 endpoints; privacy guards for persons and deny-listed orgs; 10 API tests |
-| Agents | Merged, traced and evaluated | 8 agents on Qwen3-30B; LangSmith traces per turn; frozen 25-question set, 3 repetitions: grounding 1.00, routing 1.00, usefulness (judge that sees the data) 0.383 -> 0.567 after the quality work |
-| Graph views (GPU, temporal) | Merged; demo layout being redesigned | cosmos.gl temporal graph and sigma story view; split view and full screen; question-driven lenses (decision, ring, bridge, momentum, novelty, community, tone, window) with a real re-layout; per-week betweenness, sector crossing, momentum and edge state |
-| Deploy | Live and public, redeployed after the guard | UI on Netlify ([radar-senal-temprana.netlify.app](https://radar-senal-temprana.netlify.app)), API and agents on Cloud Run; public chat rate-limited; the static fallback carries the evidence and trust numbers; one command redeploys everything |
+| Agents | Merged, traced and evaluated | 8 agents on Qwen3-30B; LangSmith traces per turn and readers' thumbs up/down; frozen 25-question set, 3 repetitions: usefulness (judge that sees the data) 0.383 -> 0.567 after the quality work; after the pre-deploy fixes (outlet counts, code-written evidence and graph-construction lines, no invented stories): grounding 0.933 (0.88-0.96), routing 1.00, usefulness 0.647 (0.61-0.67); graph questions 15/15 grounded |
+| Graph views (GPU, temporal) | Merged, in a one-screen demo layout | cosmos.gl temporal graph and sigma story view; a top-10 rail with three plain signals per topic, the graph and a chat dock on one screen, and full screen; a graph image when the browser has no WebGL; question-driven lenses (decision, ring, bridge, momentum, novelty, community, tone, window) with a real re-layout; per-week betweenness, sector crossing, momentum and edge state |
+| Deploy | Live and public (Cloud Run revision 00006, 2026-10-18) | UI on Netlify ([radar-senal-temprana.netlify.app](https://radar-senal-temprana.netlify.app)), API and agents on Cloud Run; public chat rate-limited; the static fallback carries the evidence and trust numbers; one command redeploys everything (3 min 27 s); live check 8/8 with a real chat turn |
 | Evidence articles (WS1d) | Merged, deduplicated | up to 5 representative articles per top topic-week, one per outlet and one per normalized title (before: 463 of 1,200 slots were repeat copies; after: 0, 1,191 articles over 240 topic-weeks), Spanish and Portuguese first; titles and URLs only on the deployed site, never in git |
 | Spanish briefs | Merged | 20 briefs (top 10 of 2026-W41 and W42), 20/20 pass the Auditor (3 retried for overclaims), shown on each card with the evidence articles |
 
@@ -145,13 +145,13 @@ and computes; the LLM explains.**
 | Agent | Owns | Tools |
 |---|---|---|
 | Media Master | the conversation; integrates the team's notes into one recommendation | delegates only |
-| Signal analyst | what is rising, the top 10 and its decisions | `get_top10`, `get_topic_scores`, `list_subtopic_trends`, `get_topic_series` |
+| Signal analyst | what is rising, the top 10 and its decisions | `get_top10`, `get_topic_scores`, `list_subtopic_trends`, `get_topic_series`, `get_topic_sources`, `get_topic_evidence` |
 | Audience strategist | fit for LatAm executives, the framing angle | `get_topic_series` (Spanish, Portuguese) |
-| Cartographer | why a topic connects to others; drives the views | `get_context_1hop`, `update_view` |
+| Cartographer | why a topic connects to others; drives the views | `get_context_1hop`, `get_graph_facts`, `update_view` |
 | Editor | what content to prepare | `get_topic_series` |
 | Scout | data freshness and cost | `get_freshness`, `get_cost_ledger` |
 | Curator | what counts as AI news; filter quality | `get_segment_mix`, `get_filter_quality` |
-| Auditor | how far to trust the radar | `get_backtest`, `get_filter_quality`, `get_cost_ledger`; plus code checks on every answer |
+| Auditor | how far to trust the radar | `get_backtest`, `get_filter_quality`, `get_cost_ledger` (only when asked about cost); plus code checks on every answer |
 
 ### One question, end to end
 
