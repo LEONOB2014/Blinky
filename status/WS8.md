@@ -12,7 +12,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 00:55 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
+2026-10-18 01:35 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
 committed locally, the orchestrator pushes.
 
 ## Done
@@ -101,13 +101,28 @@ committed locally, the orchestrator pushes.
   - CORS: GET answers with `access-control-allow-origin: *`.
   - A true cold start after a scale-to-zero (about 15 min idle) has not been measured yet.
 
+- **Netlify, live and public:** site `radar-senal-temprana` (team `aleonardobecerra`, free plan),
+  https://radar-senal-temprana.netlify.app, with "Make public" clicked by the maintainer.
+  - Built with `make deploy-static` (5.09 MiB) and `VITE_API_BASE_URL=<Cloud Run URL>`, giving a
+    6.4 MB `web/dist`.
+  - Deploys (measured): draft 16 s, production 7 s. Both answered 401 until "Make public".
+  - The site id is in the git-ignored `.env` (`NETLIFY_SITE_ID`). The CLI's `.netlify/` folder was
+    removed; nothing was linked or committed.
+  - Checks (measured): `/`, `/data/radar/latest.json`, `/data/freshness.json` and
+    `/data/timeline/org_nvidia.json` all return 200 (0.32–0.71 s), and the bundle calls the Cloud
+    Run API.
+  - A headless-Chrome screenshot of the public URL shows the 2026-W42 cards. Its freshness strip
+    reads `edges_weekly: pendiente`, which only the live Cloud Run API returns (the static copy has
+    a date), so the page reads live data.
+  - Redeploy after a lake rebuild: `make deploy-cloudrun`, `make deploy-static`,
+    `make deploy-web API_URL=<Cloud Run URL>`, then
+    `npx netlify-cli deploy --dir web/dist --site $NETLIFY_SITE_ID --prod`.
+
 ## Waits for approval or for the maintainer
 
 1. Done (Cloud Run secret and deploy).
 2. (Alternative only) Fix Modal billing, create the Modal Secret `radar-nebius`, then `modal deploy`.
-4. Netlify login, site creation, deploy and "Make public". The static-only site works without
-   Modal: run `make deploy-static` and `make deploy-web API_URL=`, then
-   `npx netlify deploy --dir web/dist --site <id>`.
+3. Done (Netlify site, production deploy, "Make public").
 
 ## For other lanes
 
