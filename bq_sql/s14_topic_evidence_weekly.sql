@@ -4,7 +4,11 @@
 -- Selection rule (also written per row in why_selected):
 --   1. relevance = how many of the topic-week's 5 top *specific* co-mentioned entities the article carries (as WS1c:
 --      orgs and themes in at most 10% of that week's ring-1 articles, the topic itself excluded, ties by name);
---   2. at most one article per source (the best one by this same order), so one outlet cannot fill the card;
+--   2. at most one article per normalized title (the earliest copy), so one syndicated story repeated by several
+--      outlets fills one slot, not five (measured on 2026-W42: the #1 topic's 5 articles were one wire title);
+--      titles are normalized by lowercasing and collapsing everything that is not a letter or digit; an article
+--      without a title counts as its own title;
+--   2b. then at most one article per source (the best one by the order below), so one outlet cannot fill the card;
 --   3. order: relevance desc, then es/pt first, then earliest, then gkg_id; keep 5. Articles without an http(s) URL
 --      are skipped.
 -- The scan is limited to the topics' weeks (script variables prune the dt partitions of the wide url/title columns).
@@ -67,9 +71,18 @@ articles AS (
     AND REGEXP_CONTAINS(IFNULL(g.url, ''), r'^https?://')
     AND IFNULL(g.source, '') != ''
 ),
-one_per_source AS (
+one_per_title AS (
   SELECT *
   FROM articles
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY topic_id, week,
+      IFNULL(NULLIF(TRIM(REGEXP_REPLACE(LOWER(title), r'[^\p{L}\p{N}]+', ' ')), ''), gkg_id)
+    ORDER BY ts, gkg_id
+  ) = 1
+),
+one_per_source AS (
+  SELECT *
+  FROM one_per_title
   QUALIFY ROW_NUMBER() OVER (
     PARTITION BY topic_id, week, source
     ORDER BY n_top DESC, IF(lang_bucket IN ('spa', 'por'), 0, 1), ts, gkg_id
@@ -88,7 +101,7 @@ SELECT
   week, topic_id, evidence_rank, gkg_id, dt, source, lang_bucket, title, url, tone,
   CONCAT(
     'carries ', CAST(n_top AS STRING), ' of the 5 top specific co-mentions of the topic that week; ',
-    'one article per source; ties: es/pt first, then earliest'
+    'one article per title (earliest copy) and per source; ties: es/pt first, then earliest'
   ) AS why_selected
 FROM ranked
 WHERE evidence_rank <= 5;

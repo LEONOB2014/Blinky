@@ -157,3 +157,20 @@ def test_topic_evidence_weekly_is_consistent():
         lf.filter(~pl.col("url").str.contains(r"^https?://")).select(pl.len()).collect().item() == 0
     )
     assert lf.filter(pl.col("week").dt.weekday() != 1).select(pl.len()).collect().item() == 0
+
+
+def test_topic_evidence_has_one_article_per_title():
+    lf = _gold("topic_evidence_weekly").with_columns(
+        pl.col("title")
+        .str.to_lowercase()
+        .str.replace_all(r"[^\p{L}\p{N}]+", " ")
+        .str.strip_chars()
+        .alias("norm")
+    )
+    dup = (
+        lf.filter(pl.col("norm").is_not_null() & (pl.col("norm") != ""))
+        .group_by(["topic_id", "week", "norm"])
+        .len()
+        .filter(pl.col("len") > 1)
+    )
+    assert dup.select(pl.len()).collect().item() == 0
