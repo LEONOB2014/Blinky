@@ -1,7 +1,7 @@
 # Texto de la entrega (borrador)
 
-Borrador para la entrega de las 11:30. El backtest y los registros ya están llenos desde los
-reportes. La revisión humana del filtro no llegó: se cita el panel de modelos y se dice que sigue
+Borrador para la entrega de las 11:30. Cifras refrescadas desde sus fuentes el 2026-10-18 a las
+07:50 UTC-5. La revisión humana del filtro no llegó: se cita el panel de modelos y se dice que sigue
 pendiente. Cada cifra lleva su fuente en el repo; antes de enviar, verificar las que cambian con
 `make demo-check` y `scripts/showcase_stories.py`.
 
@@ -35,9 +35,16 @@ En la semana 2026-W42 puntuó 430 temas (medido, `topic_scores_weekly`). Cada ta
 - la **decisión** (publicar, preparar, esperar…) con sus "por qué", cada uno marcado como medido o
   estimación.
 
-Un chat con agentes (el Maestro de Medios y sus especialistas) responde preguntas sobre la semana. El
-código calcula cada decisión y el modelo solo la explica. El Auditor rechaza cualquier número que no
-venga de una herramienta, y la traza de cada respuesta es visible.
+Todo cabe en una pantalla: el top 10 a la izquierda y el grafo de la semana en el centro, con 8
+lentes (Radar, Historia, Puente, Momento, Novedad, Comunidades, Emoción y Ventana). El chat vive en una
+píldora abajo a la derecha, "Pregúntale al Maestro de Medios".
+
+El chat con agentes (el Maestro de Medios y sus especialistas) responde preguntas sobre la semana y
+mueve el grafo. El código calcula cada decisión y escribe por su cuenta las líneas que importan: la
+decisión del radar, la cobertura en español y portugués, la evidencia (cuántos artículos y de cuántos
+medios) y, si se pregunta por confianza, la precisión del backtest con su intervalo. El modelo solo
+explica. El Auditor rechaza cualquier número que no venga de una herramienta y marca las frases de
+confianza sin matiz. La traza de cada respuesta es visible.
 
 ### Cómo
 
@@ -68,10 +75,11 @@ venga de una herramienta, y la traza de cada respuesta es visible.
 | Filtro de IA revisado por humanos (precisión / recall) | Verificación humana pendiente. Las 300 filas de `lake/labels/gold_sheet.csv` aún no tienen la etiqueta de la persona. Referencia: panel de modelos | `reports/label_quality.md` |
 | Filtro de IA contra el panel de modelos (prueba congelada, n = 800) | lightgbm, calibración isotónica: precisión 0,9641 [0,9333; 0,9810], recall 0,9641 [0,9333; 0,9810], F1 0,9641 [0,9474; 0,9794] (medido; referencia = etiquetas del panel, no humanas) | `reports/label_quality.md` |
 | El mismo filtro en las 300 filas de oro, contra el panel y no contra personas | Alumno: precisión 0,9432 [0,8738; 0,9755], recall 0,9540 [0,8877; 0,9820], F1 0,9486 [0,9166; 0,9773] (n = 300, medido) | `reports/label_quality.md` |
-| Costo de BigQuery | 380,75 GB decimales (380.749.479.936 bytes facturados en 66 trabajos, medido) | `reports/bq_ledger.csv` |
+| Costo de BigQuery | 384,35 GB decimales (384.346.095.616 bytes facturados en 69 trabajos, medido) | `reports/bq_ledger.csv` |
 | Costo de Jev | 981 llamadas, 0,04428430 USD acumulados (medido) | `reports/jev_ledger.csv` |
-| Evaluación de los agentes (25 preguntas × 3 repeticiones = 75 corridas, lago completo) | Último experimento guardado, `auditor-cards-r3`: utilidad v1 0,500 [0,47; 0,55], utilidad v2 0,550 [0,50; 0,59], comprobación del Auditor 1,000, fidelidad de la decisión 1,000, enrutamiento 1,000, entidades 1,00 (n = 75), latencia 12,6 s, 5812 tokens por turno (medido). La latencia alta coincide con errores 502 del API, no con más tokens | `agents/README.md` |
-| Sitio y API en vivo | 8/8 PASS el 2026-10-18 01:05 UTC-5 (medido, segundos en el portátil, red incluida): página 0,58 s, top 10 estático 0,26 s, frescura 0,75 s, top 10 de la API 1,38 s, igualdad con el estático 0,00 s, serie del primero 0,68 s, anillo de 1 salto 1,00 s, un turno de chat 11,98 s | `status/WS9.md` (`make demo-check`) |
+| Evaluación de los agentes (25 preguntas × 3 repeticiones = 75 corridas, lago completo) | Último experimento completo, `trust-calibration`: anclaje a los datos (grounding) 0,960 [0,92; 1,00], utilidad v2 0,750 [0,74; 0,76], utilidad v1 0,707 [0,69; 0,73], enrutamiento 1,000, 6.358 tokens por turno (medido; entre corchetes, mínimo y máximo de las 3 repeticiones). "Puedes confiar" aparece en 0 de 75 respuestas, frente a 3 de 75 antes de la calibración (medido). Evaluación de la versión v0.2.0: anclaje 1,000 (75/75), utilidad v2 0,663 [0,63; 0,70] (medido) | `status/WS0-agents.md` |
+| Evidencia de los temas | 1.191 artículos, hasta 5 por tema y semana: 240 pares tema-semana, 212 temas, 8 semanas. 0 duplicados por título normalizado (medido el 2026-10-18) | `topic_evidence_weekly` en el lake; `pipelines/ingest/evidence_titles.py` |
+| Sitio y API en vivo | Redespliegue del 2026-10-18 a las 07:15 UTC-5 (revisión 00007): `make demo-check` 7/7, con chat 8/8 (un turno de chat 12,4 s), y 5 de 5 preguntas de chat cumplen lo esperado (medido). Desde las 07:35 UTC-5 la API tiene una instancia siempre encendida (min-instances = 1, revisión 00008), así que no hay arranque en frío. Comprobación de las 07:49 UTC-5, 7/7 (medido, segundos en el portátil, red incluida): página 0,75 s, top 10 estático 0,23 s, frescura 0,71 s (la primera petición; con min-instances = 0 el arranque en frío medido fue 5,37 s), top 10 de la API 0,79 s, igualdad con el estático 0,00 s, serie del primero 0,66 s, anillo de 1 salto 0,74 s | `status/WS9.md` (`make demo-check`) |
 
 Dónde no hay señal, se dice. En la semana 2026-W42, 1 de 10 temas del top se sostiene en un solo
 patrón de co-mención (copia sindicada de agencia) y 1 de 10 muestra ya un onset en
