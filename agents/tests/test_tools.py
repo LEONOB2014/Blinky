@@ -142,3 +142,19 @@ def test_cost_ledger_gives_free_tier_share_estimated_usd_and_jev(tmp_path, monke
     }
     (reports / "jev_ledger.csv").unlink()
     assert tools.get_cost_ledger()["jev"]["available"] is False
+
+
+@pytest.mark.unit
+def test_the_ai_source_switches_tables_and_falls_back_to_the_shared_one(tmp_path, monkeypatch):
+    monkeypatch.setenv("RADAR_PROFILE", "full")
+    monkeypatch.setenv("RADAR_LAKE", str(tmp_path))
+    (tmp_path / "gold").mkdir()
+    assert tools.gold("topic_scores_weekly").name == "topic_scores_weekly.parquet"
+    monkeypatch.setenv("RADAR_SOURCE", "ai")
+    # no AI variant yet: the shared table (S13/S14 rows for ai: topics may live there)
+    assert tools.gold("topic_sources_weekly").name == "topic_sources_weekly.parquet"
+    (tmp_path / "gold" / "topic_ai_scores_weekly.parquet").write_bytes(b"")
+    assert tools.gold("topic_scores_weekly").name == "topic_ai_scores_weekly.parquet"
+    # briefs are written under the AI name, so v0.2's briefs are never overwritten
+    assert tools.gold("topic_briefs_weekly", write=True).name == "topic_ai_briefs_weekly.parquet"
+    assert tools.gold("edges_weekly").name == "edges_weekly.parquet"  # not switched

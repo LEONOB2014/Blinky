@@ -6,6 +6,7 @@ profile) and returns plain JSON. When the table a tool needs does not exist yet,
 import datetime as dt
 import functools
 import json
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,7 +27,8 @@ from agents.trust import (  # noqa: F401 - re-exported for the agents and tests
     ledger_costs,
 )
 from radar.contracts import load_schema
-from radar.paths import REPO_ROOT, gold, lake, profile
+from radar.paths import REPO_ROOT, lake, profile
+from radar.paths import gold as _gold
 
 WEEK_RE = re.compile(r"^(\d{4})-W(\d{2})$")
 Z_DISPLAY_CAP = 10.0  # z-scores above this are shown as ">10": tiny 28-day baselines inflate them
@@ -34,6 +36,31 @@ Z_DISPLAY_CAP = 10.0  # z-scores above this are shown as ">10": tiny 28-day base
 
 def _con() -> duckdb.DuckDBPyConnection:
     return duckdb.connect()
+
+
+# The AI radar (WP2): with RADAR_SOURCE=ai the agents and the briefs read the AI lexicon run's
+# tables (models/source.py writes them); a table with no AI variant in the lake falls back to the
+# shared one, so S13/S14 rows for ai: topics may live in either. Briefs are always written to the
+# AI name, so v0.2's briefs are never overwritten.
+AI_TABLES = {
+    "topic_scores_weekly": "topic_ai_scores_weekly",
+    "topic_daily": "topic_ai_daily",
+    "topic_sources_weekly": "topic_ai_sources_weekly",
+    "topic_evidence_weekly": "topic_ai_evidence_weekly",
+    "topic_briefs_weekly": "topic_ai_briefs_weekly",
+}
+
+
+def ai_source() -> bool:
+    return os.environ.get("RADAR_SOURCE") == "ai"
+
+
+def gold(name: str, *, write: bool = False) -> Path:
+    """radar.paths.gold, switched to the AI run's table under RADAR_SOURCE=ai."""
+    alt = AI_TABLES.get(name) if ai_source() else None
+    if alt and (write or _gold(alt).exists()):
+        return _gold(alt)
+    return _gold(name)
 
 
 def _table(name: str) -> str | None:
@@ -215,7 +242,7 @@ def list_subtopic_trends(week: str | None = None, lang_bucket: str = "all") -> d
 def get_topic_series(topic: str, lang_bucket: str = "all", weeks: int = 8) -> dict[str, Any]:
     """Weekly articles, share and tone of one subtopic (or `ai_all`) or one org/theme topic."""
     topic = resolve_topic(topic)
-    if topic.startswith(("org:", "thm:")):
+    if topic.startswith(("org:", "thm:", "ai:")):
         return _entity_series(topic, lang_bucket, weeks)
     table = _table("daily_topic")
     if not table:
