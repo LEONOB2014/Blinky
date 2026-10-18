@@ -59,7 +59,7 @@ from typing import Any
 
 import polars as pl
 
-from models import build_scores
+from models import build_scores, source
 from radar.paths import REPO_ROOT, gold, profile
 
 TOP_K = 10
@@ -100,6 +100,13 @@ LABELS = {
     "confidence 0.6 and several are wrong)",
     "gdelt_espt": "Secondary label: es+pt GDELT article growth",
 }
+
+
+def label_title(label: str) -> str:
+    """The section heading; AI lexicon topics take their pages from the lexicon, not Wikidata."""
+    if label == "pageviews" and source.current().prefix is not None:
+        return "Primary label: es+pt Wikipedia pageview growth (the AI lexicon's page titles)"
+    return LABELS[label]
 
 
 def window_sum(daily: pl.DataFrame, start: dt.date, end: dt.date) -> pl.DataFrame:
@@ -494,6 +501,31 @@ def gdelt_espt_label(roll: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def ai_pageview_label() -> tuple[pl.DataFrame, set[str]]:
+    """The primary label for AI lexicon topics: es+pt pageviews of the lexicon's `wikipedia` titles
+    (crosssource/lexicon_pageviews.py -> wiki_pageviews_ai_daily, keyed by topic id)."""
+    lex = source.entries()
+    mapped = set(
+        lex.filter(pl.col("article_es").is_not_null() | pl.col("article_pt").is_not_null())[
+            "topic_id"
+        ].to_list()
+    )
+    path = gold(source.current().pageviews_table)
+    if not path.exists():
+        return pl.DataFrame(
+            schema={"unit_id": pl.String, "dt": pl.Date, "value": pl.Float64}
+        ), mapped
+    pv = pl.read_parquet(path)
+    if pv.schema["dt"] == pl.String:
+        pv = pv.with_columns(pl.col("dt").str.to_date())
+    v = (
+        pv.filter(pl.col("project").is_in(["es.wikipedia", "pt.wikipedia"]))
+        .group_by("topic_id", "dt")
+        .agg(pl.col("views").sum().cast(pl.Float64).alias("value"))
+    )
+    return v.select(pl.col("topic_id").alias("unit_id"), "dt", "value"), mapped
+
+
 def pageview_label(matches: tuple[str, ...] = ("exact",)) -> tuple[pl.DataFrame, set[str]]:
     """The primary label series (es+pt pageviews per unit and day) and the mapped units.
 
@@ -535,7 +567,10 @@ def run_all(labels: list[str]) -> dict[str, Result]:
     for label in labels:
         if label.startswith("pageviews"):
             matches = ("exact", "alias") if label == "pageviews_alias" else ("exact",)
-            daily, mapped = pageview_label(matches)
+            if source.current().prefix is not None:  # AI topics: the lexicon's titles
+                daily, mapped = ai_pageview_label()
+            else:
+                daily, mapped = pageview_label(matches)
             # needed weeks follow the data calendar, so labels WS6 has not fetched count as missing
             end = s["asof"].max()
             out[label] = evaluate(s, raw, daily, mapped, label, gated, MIN_COVERAGE, end)
@@ -563,7 +598,7 @@ def coverage_lines(res: Result) -> list[str]:
 def render_section(res: Result) -> list[str]:
     """One label's section of the report."""
     lines = [
-        f"## {LABELS[res.label]}",
+        f"## {label_title(res.label)}",
         "",
         f"- Ranked topics: {res.n_units}; with an es or pt Wikipedia article (the backtest ranks "
         f"those only): {res.n_mapped_units} "
@@ -777,8 +812,9 @@ def render(results: Result | dict[str, Result]) -> str:
     if isinstance(results, Result):
         results = {results.label: results}
     gen = dt.datetime.now(dt.UTC).astimezone(dt.timezone(dt.timedelta(hours=-5)))
+    ai = source.current().prefix is not None
     lines = [
-        "# Backtest: the radar's weekly top 10",
+        "# Backtest: the radar's weekly top 10" + (" (AI lexicon topics)" if ai else ""),
         "",
         f"Generated {gen:%Y-%m-%d %H:%M} UTC-5 by `models/backtest.py` on the `{profile()}` "
         "profile. Every number below is **measured** on the lake unless marked otherwise. "
@@ -855,8 +891,21 @@ def main(argv: list[str] | None = None) -> int:
         default="all",
         help="default: all three",
     )
+    ap.add_argument(
+        "--source",
+        choices=sorted(source.SOURCES),
+        default=None,
+        help="input: gdelt (topic_daily, default) or ai (topic_ai_daily); models/source.py",
+    )
     args = ap.parse_args(argv)
-    all_labels = ["pageviews", "pageviews_alias", "gdelt_espt"]
+    if args.source:
+        source.use(args.source)
+    # AI topics have no Wikidata aliases: their titles come from the curated lexicon
+    all_labels = (
+        ["pageviews", "gdelt_espt"]
+        if source.current().prefix is not None
+        else ["pageviews", "pageviews_alias", "gdelt_espt"]
+    )
     labels = all_labels if args.label == "all" else [args.label]
     results = run_all(labels)
     for label in ("pageviews", "pageviews_alias"):
@@ -884,8 +933,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  hook may use primary: {worst_case_holds(p)}")  # noqa: T201
     text = render(results)
     if profile() == "full":
-        REPORT.write_text(text, encoding="utf-8")
-        print(f"wrote {REPORT}")  # noqa: T201
+        report = REPORT.parent / source.current().report
+        report.write_text(text, encoding="utf-8")
+        print(f"wrote {report}")  # noqa: T201
     else:
         print("dev profile: numbers are never reported; not writing the report")  # noqa: T201
     return 0

@@ -3,6 +3,8 @@
     uv run python -m models.build_scores                     # dev slice, subtopics, no write
     RADAR_PROFILE=full uv run python -m models.build_scores  # topics -> topic_scores_weekly,
                                                              # subtopics -> subtopic_scores_weekly
+    RADAR_PROFILE=full uv run python -m models.build_scores --source ai --unit topic
+        # AI lexicon topics: topic_ai_daily -> topic_ai_scores_weekly (models/source.py)
 
 Every record is validated against `contracts/topic_scores_weekly.schema.json` before writing.
 """
@@ -19,7 +21,7 @@ from typing import Any
 import polars as pl
 import yaml
 
-from models import decision, features, scores, universe, window
+from models import decision, features, scores, source, universe, window
 from radar.contracts import validate_records
 from radar.paths import REPO_ROOT, gold, profile
 
@@ -43,11 +45,20 @@ NULLABLE = ("emergence_pct", "saturation", "emotional_charge_pct", "z_7d", "grow
 
 
 def _wikidata() -> pl.DataFrame | None:
+    """WS6's Wikidata matches; none for AI lexicon topics (their titles are in the lexicon)."""
     path = gold("topic_wikidata")
-    return pl.read_parquet(path) if path.exists() else None
+    if source.current().prefix is not None or not path.exists():
+        return None
+    return pl.read_parquet(path)
 
 
 def _graph(key: str) -> pl.DataFrame | None:
+    """`new_nbr_rate` per unit and week: WS3's table, or the AI source's own edges."""
+    if (edges := source.current().edges_table) is not None:
+        if not gold(edges).exists():
+            return None
+        rate = source.ai_new_nbr_rate(pl.read_parquet(gold(edges)))
+        return rate.rename({"unit_id": key}) if key != "unit_id" else rate
     path = gold("node_metrics_weekly")
     if not path.exists():
         return None
@@ -59,7 +70,12 @@ def _graph(key: str) -> pl.DataFrame | None:
 
 
 def labels_and_mapped() -> tuple[dict[str, str], set[str]]:
-    """Spanish labels (taxonomy, then Wikidata) and the topics with an es or pt article."""
+    """Spanish labels (taxonomy, then Wikidata) and the topics with an es or pt article. AI topics
+    take both from the lexicon (label_es, wikipedia titles)."""
+    if source.current().prefix is not None:
+        lex = source.entries()
+        has = lex.filter(pl.col("article_es").is_not_null() | pl.col("article_pt").is_not_null())
+        return dict(zip(lex["topic_id"], lex["label_es"], strict=True)), set(has["topic_id"])
     wd = _wikidata()
     labels: dict[str, str] = dict(SUBTOPICS)
     mapped: set[str] = set()
@@ -77,8 +93,8 @@ def label(labels: dict[str, str], topic_id: str) -> str:
 
 
 def units() -> str:
-    """`topic` when WS1's `topic_daily` is in the active profile, else `subtopic`."""
-    return "topic" if gold("topic_daily").exists() else "subtopic"
+    """`topic` when the active source's topic table is in the profile, else `subtopic`."""
+    return "topic" if gold(source.current().topic_table).exists() else "subtopic"
 
 
 def _num(x: Any) -> float | None:
@@ -170,6 +186,8 @@ def _inputs(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None,
     panels.append(scores.weekly_panel(base))
     panel = pl.concat(panels, how="vertical_relaxed")
     own = pl.concat(slims)
+    if source.current().prefix is not None:  # AI topics: the lexicon family is their group
+        return panel, own, source.family_membership(panel), span[0]
     return panel, own, universe.membership(scores.FIT_SUBTOPICS), span[0]
 
 
@@ -230,9 +248,10 @@ def history(own: pl.DataFrame) -> pl.DataFrame:
 
 
 def sources() -> pl.DataFrame | None:
-    """WS1's `topic_sources_weekly` keyed by unit and ISO week, or None when absent."""
-    path = gold("topic_sources_weekly")
-    if not path.exists():
+    """WS1's `topic_sources_weekly` (or the active source's table) keyed by unit and ISO week, or
+    None when absent."""
+    path = source.first_existing(source.current().sources_tables)
+    if path is None:
         return None
     t = pl.read_parquet(path)
     wk = pl.col("week").str.to_date() if t.schema["week"] == pl.String else pl.col("week")
@@ -279,6 +298,8 @@ def gate(scored: pl.DataFrame, own: pl.DataFrame, diversity: bool = True) -> pl.
     established = (pl.col("weeks_active_prior").fill_null(0) >= GATE_WEEKS) & (
         pl.col("articles_prior").fill_null(0) >= GATE_ARTICLES
     )
+    if source.current().gate_by_construction:  # curated lexicon entries: known by construction
+        established = pl.lit(True)
     s = s.with_columns(
         (established | pl.col("match").is_in(GATE_MATCH).fill_null(False)).alias("known"),
         diverse.alias("diverse"),
@@ -428,15 +449,24 @@ def out_path(unit: str) -> Path:
     """Topics are `topic_scores_weekly` (what the API and the agents rank). Once topics exist, the
     12-subtopic table keeps the same contract in `subtopic_scores_weekly` (the agents' overview)."""
     if unit == "subtopic" and units() == "topic":
-        return gold("subtopic_scores_weekly")
-    return gold("topic_scores_weekly")
+        name = "subtopic_scores_weekly"
+        return gold(name if source.current().name == "gdelt" else f"{name}_{source.current().name}")
+    return gold(source.current().scores_table)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--unit", choices=["subtopic", "topic"], default=None, help="default: both")
     ap.add_argument("--out", type=Path, default=None, help="default: the lake on the full profile")
+    ap.add_argument(
+        "--source",
+        choices=sorted(source.SOURCES),
+        default=None,
+        help="input: gdelt (topic_daily, default) or ai (topic_ai_daily); models/source.py",
+    )
     args = ap.parse_args(argv)
+    if args.source:
+        source.use(args.source)
     todo = (
         [args.unit]
         if args.unit

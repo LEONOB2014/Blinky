@@ -808,6 +808,8 @@ _NON_NAME = re.compile(r"[^\w&.-]+")
 def _entity_in_question(question: str, week: str | None) -> str | None:
     """The graph topic a question names: a full node name in the text ('google' -> 'org:google'),
     else the longest 1-3 word phrase that resolves to one ('OpenAI' -> GDELT's 'org:openai inc')."""
+    if tools.ai_source():  # the AI run ranks ai: lexicon topics, never GDELT org ids
+        return tools.ai_topic_in(question)
     # whole words only: a plain substring test found 'org:a co' inside "ha costado"
     padded = f" {_NON_NAME.sub(' ', question.lower())} "
     names = tools.graph_nodes(week)

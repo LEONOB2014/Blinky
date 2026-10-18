@@ -6,6 +6,7 @@ profile) and returns plain JSON. When the table a tool needs does not exist yet,
 import datetime as dt
 import functools
 import json
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,7 +27,8 @@ from agents.trust import (  # noqa: F401 - re-exported for the agents and tests
     ledger_costs,
 )
 from radar.contracts import load_schema
-from radar.paths import REPO_ROOT, gold, lake, profile
+from radar.paths import REPO_ROOT, lake, profile
+from radar.paths import gold as _gold
 
 WEEK_RE = re.compile(r"^(\d{4})-W(\d{2})$")
 Z_DISPLAY_CAP = 10.0  # z-scores above this are shown as ">10": tiny 28-day baselines inflate them
@@ -34,6 +36,31 @@ Z_DISPLAY_CAP = 10.0  # z-scores above this are shown as ">10": tiny 28-day base
 
 def _con() -> duckdb.DuckDBPyConnection:
     return duckdb.connect()
+
+
+# The AI radar (WP2): with RADAR_SOURCE=ai the agents and the briefs read the AI lexicon run's
+# tables (models/source.py writes them); a table with no AI variant in the lake falls back to the
+# shared one, so S13/S14 rows for ai: topics may live in either. Briefs are always written to the
+# AI name, so v0.2's briefs are never overwritten.
+AI_TABLES = {
+    "topic_scores_weekly": "topic_ai_scores_weekly",
+    "topic_daily": "topic_ai_daily",
+    "topic_sources_weekly": "topic_ai_sources_weekly",
+    "topic_evidence_weekly": "topic_ai_evidence_weekly",
+    "topic_briefs_weekly": "topic_ai_briefs_weekly",
+}
+
+
+def ai_source() -> bool:
+    return os.environ.get("RADAR_SOURCE") == "ai"
+
+
+def gold(name: str, *, write: bool = False) -> Path:
+    """radar.paths.gold, switched to the AI run's table under RADAR_SOURCE=ai."""
+    alt = AI_TABLES.get(name) if ai_source() else None
+    if alt and (write or _gold(alt).exists()):
+        return _gold(alt)
+    return _gold(name)
 
 
 def _table(name: str) -> str | None:
@@ -87,6 +114,35 @@ def week_bounds(week: str | None) -> tuple[str, dt.date, dt.date]:
 def labels_es() -> dict[str, str]:
     tax = yaml.safe_load((REPO_ROOT / "contracts" / "taxonomy.yaml").read_text(encoding="utf-8"))
     return {"ai_all": "IA en general"} | {k: v["label_es"] for k, v in tax["subtopics"].items()}
+
+
+@functools.cache
+def _ai_lexicon() -> tuple[tuple[str, tuple[re.Pattern[str], ...]], ...]:
+    """Each AI lexicon entry as (topic id, its name matchers): the entry's patterns, its GDELT org
+    aliases and its Spanish label, all whole-word and case-insensitive (contracts/ai_lexicon.yaml)."""
+    lex = yaml.safe_load((REPO_ROOT / "contracts" / "ai_lexicon.yaml").read_text(encoding="utf-8"))
+    out = []
+    for e in lex["entries"]:
+        names = [*(e.get("gdelt_orgs") or []), e["label_es"]]
+        matchers = [re.compile(p, re.I) for p in e["patterns"]]
+        matchers += [re.compile(rf"(?<!\w){re.escape(n.lower())}(?!\w)", re.I) for n in names]
+        out.append((f"ai:{e['id']}", tuple(matchers)))
+    return tuple(out)
+
+
+def ai_topic_in(text: str) -> str | None:
+    """The AI lexicon topic a text names ('¿Qué está pasando con Nvidia?' -> 'ai:infra:nvidia'),
+    only among topics the AI run scored; the longest match wins, ties go to the lexicon order."""
+    path = gold("topic_scores_weekly")
+    scored = set(_known_topics(str(path), path.stat().st_mtime)) if path.exists() else None
+    best: tuple[int, str] | None = None
+    for topic_id, matchers in _ai_lexicon():
+        if scored is not None and topic_id not in scored:
+            continue
+        span = max((len(m.group(0)) for p in matchers if (m := p.search(text))), default=0)
+        if span and (best is None or span > best[0]):
+            best = (span, topic_id)
+    return best[1] if best else None
 
 
 def _cap(z: float | None) -> float | str | None:
@@ -215,7 +271,7 @@ def list_subtopic_trends(week: str | None = None, lang_bucket: str = "all") -> d
 def get_topic_series(topic: str, lang_bucket: str = "all", weeks: int = 8) -> dict[str, Any]:
     """Weekly articles, share and tone of one subtopic (or `ai_all`) or one org/theme topic."""
     topic = resolve_topic(topic)
-    if topic.startswith(("org:", "thm:")):
+    if topic.startswith(("org:", "thm:", "ai:")):
         return _entity_series(topic, lang_bucket, weeks)
     table = _table("daily_topic")
     if not table:

@@ -181,7 +181,7 @@ def score(
     )
     p = p.filter(~pl.col(key).is_in(list(NOT_RANKED))).join(base, on="week", how="left")
     p = p.with_columns(
-        (pl.col("n7raw").fill_null(0) >= MIN_ARTICLES_7D).alias("eligible"),
+        (pl.col("n7raw").fill_null(0) >= universe.min_articles_week()).alias("eligible"),
     )
     # percentiles are taken over the ranked universe of the week only
     ranked = p.filter("eligible")
