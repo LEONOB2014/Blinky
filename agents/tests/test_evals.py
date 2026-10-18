@@ -51,3 +51,26 @@ def test_summarize_reports_mean_and_repetition_spread():
     assert s["usefulness"] == {"mean": 0.5, "rep_min": 0.25, "rep_max": 0.75, "n": 4}
     assert s["grounding"]["n"] == 3 and s["grounding"]["rep_min"] == 0.0
     assert s["latency_s"]["mean"] is None
+
+
+def test_judge_v2_sees_the_tool_data_and_today(monkeypatch):
+    seen = {}
+
+    class Judge:
+        def chat(self, messages, tools):
+            seen["system"], seen["user"] = messages[0]["content"], messages[1]["content"]
+            from agents.llm import Reply
+
+            return Reply(content='{"score": 4, "reason": "clara"}', model="judge")
+
+    monkeypatch.setattr(ev, "_judge", lambda: Judge())
+    step = {"agent": "scout", "action": "tool_result", "tool": "get_cost_ledger",
+            "result_summary": '{"billed_gb": 376.83}'}  # fmt: skip
+    out = ev.usefulness_v2(
+        {"question": "¿Cuánto ha costado?"}, _resp(answer_es="377 GB", trace=[step])
+    )
+    assert out == {"key": "usefulness_v2", "score": 0.75, "comment": "clara"}
+    assert "get_cost_ledger" in seen["user"] and "376.83" in seen["user"]
+    assert "Hoy es 20" in seen["system"] and "no juzgues si los números" in seen["system"]
+    assert "ninguna herramienta" in ev.tool_data(_resp())
+    assert len(ev.tool_data(_resp(trace=[step] * 500))) <= ev.TOOL_DATA_CHARS
