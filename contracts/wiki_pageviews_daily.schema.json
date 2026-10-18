@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/wiki_pageviews_daily.schema.json",
+  "title": "Daily pageviews of one Wikipedia article (the backtest label's raw series)",
+  "description": "WS6 (Grok) from the Wikimedia REST pageviews API (user agent from .env, agent=user) -> lake/gold/wiki_pageviews_daily.parquet",
+  "type": "object",
+  "x-owner": "WS6",
+  "x-mock": "pending-dev-slice",
+  "properties": {
+    "qid": {
+      "type": "string",
+      "pattern": "^Q[0-9]+$"
+    },
+    "project": {
+      "type": "string",
+      "enum": [
+        "es.wikipedia",
+        "pt.wikipedia",
+        "en.wikipedia"
+      ]
+    },
+    "article": {
+      "type": "string"
+    },
+    "dt": {
+      "type": "string",
+      "format": "date"
+    },
+    "views": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "qid",
+    "project",
+    "article",
+    "dt",
+    "views"
+  ],
+  "additionalProperties": false
+}

@@ -28,6 +28,15 @@ ALLOWED_COLUMNS: dict[str, set[str]] = {
         "negative_share_7d", "controversy_7d", "tone_shift_7d",
     },
     "edges_weekly": {"wk", "x", "y", "n", "n_src", "nx", "ny", "n_docs", "npmi"},
+    "topic_wikidata": {
+        "topic_id", "qid", "label_es", "article_es", "article_pt", "article_en", "match",
+        "confidence",
+    },
+    "wiki_pageviews_daily": {"qid", "project", "article", "dt", "views"},
+    "node_metrics_weekly": {
+        "wk", "entity_id", "deg_w", "deg_growth", "new_nbr_rate", "pagerank", "pr_rank_delta",
+        "kcore", "community_id", "community_event", "is_hub",
+    },
     "gkg_ai_sample": {
         "gkg_id", "ts", "dt", "source", "lang", "tone", "pos_score", "neg_score", "polarity",
         "activity_density", "self_group_ref_density", "word_count", "orgs", "themes", "f_url",

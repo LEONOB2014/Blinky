@@ -13,7 +13,11 @@ FILES = sorted(DEV_DIR.glob("*.parquet"))
 
 @pytest.mark.unit
 def test_dev_slice_exists():
-    assert {p.stem for p in FILES} == set(ALLOWED_COLUMNS)
+    # Every committed file is allow-listed; the orchestrator's GDELT files are always present.
+    assert {p.stem for p in FILES} <= set(ALLOWED_COLUMNS)
+    assert {"daily_totals", "daily_topic", "edges_weekly", "gkg_ai_sample"} <= {
+        p.stem for p in FILES
+    }
 
 
 @pytest.mark.unit

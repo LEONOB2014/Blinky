@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/topic_wikidata.schema.json",
+  "title": "A ranked topic resolved to Wikidata and its Wikipedia articles",
+  "description": "WS6 (Grok) via wbsearchentities es/en/pt + P31 check -> lake/gold/topic_wikidata.parquet. Never persons.",
+  "type": "object",
+  "x-owner": "WS6",
+  "x-mock": "pending-dev-slice",
+  "properties": {
+    "topic_id": {
+      "type": "string",
+      "description": "'org:<name>', 'thm:<GKG theme>' or a subtopic id"
+    },
+    "qid": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^Q[0-9]+$"
+    },
+    "label_es": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "article_es": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "article_pt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "article_en": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "match": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "alias",
+        "manual",
+        "none"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "required": [
+    "topic_id",
+    "qid",
+    "match",
+    "confidence"
+  ],
+  "additionalProperties": false
+}

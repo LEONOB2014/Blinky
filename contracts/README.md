@@ -15,6 +15,9 @@ Changing a contract is a breaking change: open a PR with `feat(contracts)!:` and
 | `edges_weekly` | WS1 Scout | one weekly co-occurrence edge with NPMI |
 | `topic_context_1hop` | WS3 Cartographer | one neighbour in a topic's 1-hop ring |
 | `topic_scores_weekly` | WS4 Signal analyst | one ranked topic in one week, with its decision |
+| `topic_wikidata` | WS6 Scout (cross-source) | a ranked topic resolved to Wikidata and its es/pt/en articles |
+| `wiki_pageviews_daily` | WS6 Scout (cross-source) | one day of pageviews of one article (the backtest label's raw series) |
+| `node_metrics_weekly` | WS3 Cartographer | one graph node in one week: degree growth, new neighbours, community |
 
 ## Agent protocol (`agents/` → API → web)
 
