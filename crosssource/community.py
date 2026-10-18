@@ -216,7 +216,27 @@ def fetch_youtube(client: httpx.Client, src: dict, since: dt.date) -> list[dict]
         token = data.get("nextPageToken")
         if not token or (oldest and oldest < since):
             break
+    if src.get("live_only"):  # keep only past live streams (e.g. a channel's "Live" tab)
+        out = _live_streams(client, out, key, api)
     return out
+
+
+def _live_streams(client: httpx.Client, items: list[dict], key: str, api: str) -> list[dict]:
+    """The items whose video was a live broadcast (YouTube's liveStreamingDetails is present)."""
+    ids = [it["url"].rsplit("=", 1)[-1] for it in items]
+    live: set[str] = set()
+    for i in range(0, len(ids), 50):
+        r = _get(
+            client,
+            f"{api}/videos",
+            part="liveStreamingDetails",
+            id=",".join(ids[i : i + 50]),
+            key=key,
+        )
+        for v in r.json().get("items", []) if r is not None else []:
+            if v.get("liveStreamingDetails"):
+                live.add(v["id"])
+    return [it for it, vid in zip(items, ids, strict=True) if vid in live]
 
 
 _RFS_SKIP = re.compile(r"^(we'd love|if you're|so if|we want|there has never)", re.I)
