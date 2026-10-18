@@ -187,6 +187,9 @@ export interface StoriesIndexData {
 }
 
 export interface GraphWindowMetrics {
+  /** AI graph: volume leaders labelled for the displayed week. */
+  leader_labels?: number;
+  leaders_week?: string;
   renderer?: string;
   t_fetch_ms?: number;
   t_parse_ms?: number;
