@@ -193,6 +193,17 @@ export interface GraphWindowMetrics {
   active_lens?: string;
   fps_relayout?: number;
   settle_time_ms?: number;
+  /** Point positions after the last reheat, sampled at fixed indices (measured). */
+  layout_sample?: number[];
+  /** One sample per lens, so two lenses can be compared (measured). */
+  layout_by_lens?: Record<string, number[]>;
+  /** Mean absolute difference between this lens's sample and another lens (measured). */
+  layout_delta?: number;
+  sim_progress?: number;
+  reheat_count?: number;
+  /** Mean absolute move of the sample during the last reheat (measured). */
+  layout_moved?: number;
+  reheat_skipped?: string;
   is_fullscreen?: boolean;
   split_ratio?: number;
 }
