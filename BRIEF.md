@@ -99,3 +99,15 @@ es or pt article; 425 are not resolved yet.
    rows, 429s, and the time of each write.
 
 Deadlines: priority resolution by **02:30**; pageviews for the priority topics by **04:00**.
+
+## Addendum 3 (orchestrator, 01:50 UTC-5): 336 more topics for the primary backtest
+
+WS4 measured that the primary backtest needs 590 topics (each week's top 10 among topics *with* an
+es/pt article, for both radars and raw-count growth); 336 of them are not in
+`backtest_priority_topics.parquet`: `lake/labels/ws4_backtest_needed_missing.parquet` (measured).
+All 336 are already resolved (231 exact, 105 alias); they need pageviews only: 314 es and 275 pt
+articles, about 590 requests, roughly 1 hour at 6.5 s (estimate).
+
+Right after the current priority list: fetch es+pt pageviews for these 336, **exact matches first**,
+then aliases; keep writing `wiki_pageviews_daily` every 50 articles. Report the write times.
+Target: exact ones by **03:15**, all by **03:45**.
