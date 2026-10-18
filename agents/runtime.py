@@ -575,26 +575,53 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     )
     results += [_run_tool(turn, agent, name, **args) for name, args in calls]
     if agent == "cartographer":
-        label = tools.labels_es().get(leader, leader) if leader else None
-        caption = (
-            f"Vecinos de {entity} esta semana"
-            if entity
-            else f"Grafo de la semana; el subtema que más crece es {label}"
-            if label
-            else "Grafo de la semana"
-        )
+        lens = view_lens(question, entity)
+        top10 = [r["topic_id"] for r in (ctx["signals"].get("rows") or [])][:10]
         results.append(
             _run_tool(
                 turn,
                 agent,
                 "update_view",
                 view="story" if entity else "temporal",
-                caption_es=caption,
+                caption_es=_lens_caption(lens, entity, leader),
+                color_by=lens,
                 focus_topic=entity,
+                highlight=[entity] if entity else top10,
                 week=week,
             )
         )
     return results
+
+
+_TONE_Q = re.compile(r"tono|emoci|sentimiento|[aá]nimo|negativ|positiv", re.I)
+_WINDOW_Q = re.compile(r"ventana|espa[nñ]ol|portugu|llega|a punto|d[ií]as quedan", re.I)
+
+
+def view_lens(question: str, entity: str | None) -> str:
+    """The graph lens a question asks for (view_command.color_by), chosen by code."""
+    if _TONE_Q.search(question):
+        return "tone"
+    if _WINDOW_Q.search(question):
+        return "window"
+    return "segment" if entity else "decision"
+
+
+def _lens_caption(lens: str, entity: str | None, leader: str | None) -> str:
+    name = (entity or leader or "").split(":", 1)[-1]
+    if entity:
+        return {
+            "tone": f"{name}: sus conexiones, coloreadas por tono",
+            "window": f"{name}: sus conexiones y cuánto falta para que llegue al español",
+        }.get(lens, f"{name}: con qué se conecta esta semana (IA, TI e IA × dominio)")
+    return {
+        "tone": "Los temas de la semana, coloreados por tono",
+        "window": "Los temas de la semana según cuánto falta para que lleguen al español",
+    }.get(
+        lens,
+        f"Los temas de la semana por decisión del radar; el n.º 1 es {name}"
+        if name
+        else "Los temas de la semana por decisión del radar",
+    )
 
 
 @traceable(
