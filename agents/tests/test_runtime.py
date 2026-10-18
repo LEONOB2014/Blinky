@@ -131,3 +131,23 @@ def test_out_of_scope_questions_get_an_honest_answer_without_the_llm():
     assert model.calls == []
     assert runtime.out_of_scope("Escribe un gancho para un post de LinkedIn") is None
     assert runtime.out_of_scope("¿Qué debería publicar 30X esta semana?") is None
+
+
+@pytest.mark.unit
+def test_tone_questions_reach_the_audience_strategist():
+    assert "audience_strategist" in runtime.route("¿Cómo está el tono de las noticias de IA?")
+    assert "audience_strategist" in runtime.route("¿Qué sentimiento hay sobre la IA?")
+
+
+@pytest.mark.unit
+def test_cartographer_reads_the_leaders_ring_when_no_entity_is_named():
+    turn = runtime.Turn("t")
+    ctx = {"week": None, "leader": "org:google", "entity": None, "signals": {}}
+    runtime.gather(turn, "cartographer", "Muéstrame el grafo de la semana", ctx)
+    calls = [
+        s for s in turn.trace if s["action"] == "tool_call" and s["tool"] == "get_context_1hop"
+    ]
+    assert calls and calls[0]["arguments"]["entity"] == "org:google"
+    turn = runtime.Turn("t")
+    runtime.gather(turn, "cartographer", "grafo", ctx | {"leader": "chips_infra"})
+    assert not [s for s in turn.trace if s["tool"] == "get_context_1hop"]

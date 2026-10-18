@@ -352,7 +352,10 @@ ROUTES = [
         re.compile(r"public|sube|subiendo|crece|caliente|tendenc|top|semana|tema", re.I),
         "signal_analyst",
     ),
-    (re.compile(r"[aá]ngulo|ejecutiv|latam|audiencia|encaj", re.I), "audience_strategist"),
+    (
+        re.compile(r"[aá]ngulo|ejecutiv|latam|audiencia|encaj|\btono\b|sentimiento|emoci", re.I),
+        "audience_strategist",
+    ),
     (re.compile(r"contenido|guion|gancho|post|formato|escrib|brief", re.I), "editor"),
     (re.compile(r"cost[oóa]|costad|cuesta|gast|factur|fresc|actualiz|fuente", re.I), "scout"),
     (re.compile(r"conf[ií]a|backtest|precisi|evidencia|calidad", re.I), "auditor"),
@@ -554,7 +557,10 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
-        "cartographer": [("get_context_1hop", {"entity": entity, "week": week})] if entity else [],
+        # no entity named: the ring of the week's #1 topic, so the answer has real neighbours
+        "cartographer": [("get_context_1hop", {"entity": entity or leader, "week": week})]
+        if (entity or (leader and ":" in leader))
+        else [],
         "editor": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa", "weeks": 4})
         ],
