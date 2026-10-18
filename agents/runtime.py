@@ -33,6 +33,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
             "get_topic_series",
             "get_top10",
             "get_topic_scores",
+            "get_language_coverage",
             "get_topic_sources",
             "get_topic_evidence",
         ],
@@ -577,6 +578,86 @@ def graph_facts_line(turn: Turn, entity: str | None) -> str:
     return ""
 
 
+def _display_name(turn: Turn, topic_id: str) -> str:
+    """A topic's name as the scores give it ("Marsh & McLennan Companies"), else topic_name."""
+    scored = [
+        row
+        for r in turn.tool_results
+        if r["tool"] in {"get_top10", "get_topic_scores"} and r["result"].get("available")
+        for row in r["result"].get("rows") or []
+        if row.get("topic_id") == topic_id
+    ]
+    return topic_name(scored[0] if scored else {"topic_id": topic_id})
+
+
+def coverage_line(turn: Turn) -> str:
+    """Spanish and Portuguese coverage of the topic, written by code from get_language_coverage."""
+    cov = next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_language_coverage" and r["result"].get("available")
+        ),
+        None,
+    )
+    if not cov:
+        return ""
+    name = _display_name(turn, cov["topic"])
+    days = f" ({cov['dias_con_datos']} días con datos)" if cov.get("dias_con_datos") else ""
+    return (
+        f"Cobertura en español y portugués de {name} ({cov['week']}): {cov['articulos_es']} "
+        f"artículos en español y {cov['articulos_pt']} en portugués, de {cov['articulos_total']} "
+        f"en total{days}."
+    )
+
+
+_REGION = re.compile(r"latinoam[eé]rica|am[eé]rica latina|\blatam\b|la regi[oó]n", re.I)
+_REGION_CLAIM = re.compile(
+    r"crec|\bsub[eiao]|aument|tracci[oó]n|expan|particip|presencia|cobertura|conversaci|se habla|"
+    r"gana(?:ndo)? (?:fuerza|terreno)|tendencia|repunt",
+    re.I,
+)
+_NEGATION = re.compile(r"\bno\b|\bsin\b|nadie|todav[ií]a no|a[uú]n no|\bcero\b|\b0\b", re.I)
+
+
+def latam_claims(answer: str, turn: Turn) -> list[str]:
+    """Sentences claiming growth or presence in LatAm while the topic has 0 es and 0 pt articles."""
+    cov = next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_language_coverage" and r["result"].get("available")
+        ),
+        None,
+    )
+    if not cov or cov["articulos_es"] + cov["articulos_pt"] > 0:
+        return []
+    sentences = re.split(r"(?<=[.!?\n])\s*", answer)
+    return [
+        s.strip()
+        for s in sentences
+        if _REGION.search(s) and _REGION_CLAIM.search(s) and not _NEGATION.search(s)
+    ]
+
+
+def strip_echo(body: str, code_text: str) -> str:
+    """Drop the model's lines that repeat a line code already wrote (the decision line above all)."""
+    if not code_text:
+        return body
+
+    def norm(text: str) -> str:
+        return re.sub(r"[*_`]+", "", text).strip().rstrip(".").lower()
+
+    written = {norm(t) for t in code_text.splitlines() if norm(t)}
+    decision = any(t.startswith("decisión del radar") for t in written)
+    kept = [
+        ln
+        for ln in body.splitlines()
+        if not (norm(ln) in written or (decision and norm(ln).startswith("decisión del radar")))
+    ]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
 def evidence_block(turn: Turn) -> str:
     """The articles behind a named topic, written by code from get_topic_evidence (and the week's
     outlet count from get_topic_sources), so an evidence question lists them verbatim."""
@@ -584,14 +665,7 @@ def evidence_block(turn: Turn) -> str:
     evidence, sources = found.get("get_topic_evidence"), found.get("get_topic_sources")
     if not evidence:
         return ""
-    scored = [
-        row
-        for r in turn.tool_results
-        if r["tool"] in {"get_top10", "get_topic_scores"} and r["result"].get("available")
-        for row in r["result"].get("rows") or []
-        if row.get("topic_id") == evidence["topic_id"]
-    ]
-    name = topic_name(scored[0] if scored else {"topic_id": evidence["topic_id"]})
+    name = _display_name(turn, evidence["topic_id"])
     head = f"Artículos que respaldan a {name} ({evidence['week']})"
     if sources:
         head += f": {sources['n_articulos']} artículos de {sources['n_medios']} medios esa semana"
@@ -701,6 +775,16 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     week, leader, entity = ctx["week"], ctx["leader"], ctx["entity"]
     calls: list[tuple[str, dict[str, Any]]] = {
         "signal_analyst": [("get_topic_series", {"topic": entity or leader or "ai_all"})]
+        + (
+            [
+                (
+                    "get_language_coverage",
+                    {"topic": entity or leader, "week": week or ctx["signals"].get("week")},
+                )
+            ]
+            if (entity or leader)
+            else []
+        )
         + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else [])
         + ([("get_topic_sources", {"topic_id": entity, "week": week})] if entity else [])
         + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
@@ -908,20 +992,37 @@ def run_turn(
         facts = graph_facts_line(turn, entity) if "cartographer" in needed else ""
         if facts:
             line = f"{line}\n\n{facts}" if line else facts
+        coverage = coverage_line(turn) if decides or entity else ""
+        if coverage:
+            line = f"{line}\n\n{coverage}" if line else coverage
         instructions = (
-            f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
-            "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
-            "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
-            "(formato y enfoque). Máximo 6 líneas en total."
-            if decides
-            else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
-            "los informes; no agregues KPIs ni decisiones que no estén en ellos."
-            + (f" El sistema ya lista los artículos: «{block}». No los repitas." if block else "")
-        ) + (
-            f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
-            "menciones otros umbrales, mínimos de co-menciones ni valores de NPMI."
-            if facts
-            else ""
+            (
+                f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
+                "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
+                "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
+                "(formato y enfoque). Máximo 6 líneas en total."
+                if decides
+                else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
+                "los informes; no agregues KPIs ni decisiones que no estén en ellos."
+                + (
+                    f" El sistema ya lista los artículos: «{block}». No los repitas."
+                    if block
+                    else ""
+                )
+            )
+            + (
+                f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
+                "menciones otros umbrales, mínimos de co-menciones ni valores de NPMI."
+                if facts
+                else ""
+            )
+            + (
+                f" El sistema ya escribe la cobertura en español y portugués: «{coverage}». No la "
+                "repitas. No digas que el tema crece, está presente o se habla de él en Latinoamérica, "
+                "LatAm o la región salvo que esa línea muestre artículos en español o portugués."
+                if coverage
+                else ""
+            )
         )
         reply = model.chat(
             [
@@ -942,7 +1043,7 @@ def run_turn(
             tokens=reply.tokens,
             model=reply.model,
         )
-        body = (reply.content or "").strip()
+        body = strip_echo((reply.content or "").strip(), line)
         answer = f"{line}\n\n{body}" if line else body
     # cards only when the question is about what to publish, not about cost or freshness
     turn.decision_cards = (
@@ -995,6 +1096,17 @@ def _audit(
             "auditor", "veto", result_summary="decisión sin tarjeta de decisión: se marca pendiente"
         )
         answer = checked
+    if claims := latam_claims(answer, turn):
+        turn.log(
+            "auditor",
+            "veto",
+            result_summary=f"afirmación sobre LatAm sin artículos en español ni portugués: {claims[0][:120]}",
+        )
+        answer += (
+            "\n\n⚠️ El Auditor: los datos no muestran artículos de este tema en español ni en "
+            "portugués esta semana; lo que se diga de su crecimiento o presencia en Latinoamérica "
+            "no tiene respaldo."
+        )
     bad = untraced_numbers(answer, turn.tool_results, question)
     if bad:
         turn.log("auditor", "veto", result_summary=f"números sin fuente: {', '.join(bad)}")
