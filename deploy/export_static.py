@@ -16,6 +16,8 @@ Layout (``slug`` = the topic id lowercased, every non [a-z0-9] run replaced by "
     context/<slug>/latest.json     GET /api/topic/<id>/context
     evidence/*.json                the trust step offline (deploy/evidence.py): backtest and label
                                    quality reports as JSON, BigQuery and Jev ledger totals
+    evidence/topics/<slug>.json    topic_evidence_weekly (up to 5 articles per week) for the top 10
+                                   of the last 4 scored weeks; titles and URLs, so never in git
 Topics: every topic in a top 10 of the last 4 weeks, the subtopics (timelines only) and the
 entities the UI offers by default.
 """
@@ -27,6 +29,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 from evidence import write_evidence
@@ -63,6 +66,40 @@ def _write(path: Path, body: object) -> int:
     text = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
     path.write_text(text, encoding="utf-8")
     return len(text.encode("utf-8"))
+
+
+EVIDENCE_TOP, EVIDENCE_WEEKS = 10, 4
+
+
+def iso_week(day: dt.date) -> str:
+    iso = day.isocalendar()
+    return f"{iso.year}-W{iso.week:02d}"
+
+
+def topic_evidence_json(scores: Any, evidence: Any) -> dict[str, dict[str, Any]]:
+    """slug -> {topic_id, weeks: {ISO week: [articles]}} for the top 10 of the last 4 scored weeks.
+
+    `scores` is topic_scores_weekly, `evidence` is topic_evidence_weekly (Polars frames). Articles
+    keep the contract's fields; weeks without evidence are left out, never invented.
+    """
+    import polars as pl
+
+    ranked = scores.filter(pl.col("rank").is_not_null() & (pl.col("rank") <= EVIDENCE_TOP))
+    weeks = sorted(ranked["week"].unique().to_list())[-EVIDENCE_WEEKS:]
+    wanted = ranked.filter(pl.col("week").is_in(weeks)).select("week", "topic_id")
+    ev = evidence.with_columns(
+        pl.col("week").map_elements(iso_week, return_dtype=pl.String).alias("iso_week")
+    ).join(wanted, left_on=["iso_week", "topic_id"], right_on=["week", "topic_id"], how="inner")
+    out: dict[str, dict[str, Any]] = {}
+    for row in ev.sort(["topic_id", "iso_week", "evidence_rank"]).iter_rows(named=True):
+        body = out.setdefault(slug(row["topic_id"]), {"topic_id": row["topic_id"], "weeks": {}})
+        article = {
+            k: (v.isoformat() if isinstance(v, dt.date) else v)
+            for k, v in row.items()
+            if k not in {"iso_week", "topic_id", "week"}
+        }
+        body["weeks"].setdefault(row["iso_week"], []).append(article)
+    return out
 
 
 def export(out: Path = OUT) -> dict[str, int]:
@@ -128,6 +165,14 @@ def export(out: Path = OUT) -> dict[str, int]:
 
     sizes["other"] += _write(tmp / "freshness.json", get("/api/freshness"))
     sizes["evidence"] = write_evidence(tmp / "evidence")
+    evidence_path = gold("topic_evidence_weekly")
+    if evidence_path.exists():
+        evidence = topic_evidence_json(
+            pl.read_parquet(gold("topic_scores_weekly"), columns=["week", "topic_id", "rank"]),
+            pl.read_parquet(evidence_path),
+        )
+        for name, body in evidence.items():
+            sizes["evidence"] += _write(tmp / "evidence" / "topics" / f"{name}.json", body)
     index = {
         "generated_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "profile": "full",
