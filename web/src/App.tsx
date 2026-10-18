@@ -9,6 +9,7 @@ import {
 import { StoryGraph } from "./components/StoryGraph";
 import { TemporalGraph } from "./components/TemporalGraph";
 import { LENS_NAMES, type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
+import { placeNamedTopic, type StoryPlacement } from "./temporalNodes";
 import type {
   AgentTraceStep,
   DecisionCard,
@@ -50,6 +51,37 @@ const CONTEXT_ENTITIES = [
   "org:openai group",
   "thm:TECH_AUTOMATION",
 ];
+
+/** Story lens on the GPU graph when the topic is one of the 1,000 nodes. */
+function namedTopicView(
+  topicId: string,
+  week: string | null | undefined,
+  label: string,
+  placement: StoryPlacement,
+): ViewCommand {
+  if (placement === "gpu") {
+    return {
+      view: "temporal",
+      week,
+      focus_topic: topicId,
+      highlight: [topicId],
+      color_by: "segment",
+      caption_es: `Historia en el grafo temporal: ${label} está entre los 1.000 nodos.`,
+    };
+  }
+  const captionEs =
+    placement === "sigma"
+      ? `${label} no está entre los 1.000 nodos del grafo temporal; anillo sigma de 1 salto.`
+      : `Anillo sigma de 1 salto: ${label}. No se pudo comprobar si está en el grafo temporal.`;
+  return {
+    view: "story",
+    week,
+    focus_topic: topicId,
+    highlight: [topicId],
+    color_by: "segment",
+    caption_es: captionEs,
+  };
+}
 
 /** Card title: the taxonomy label for subtopics, the name for org:/thm: topics. */
 function topicName(topicId: string, labelEs?: string | null): string {
@@ -228,6 +260,24 @@ export function App() {
   const [chatCards, setChatCards] = useState<DecisionCard[]>([]);
   const [traceSteps, setTraceSteps] = useState<AgentTraceStep[]>([]);
   const [activeView, setActiveView] = useState<ViewCommand>(getInitialViewFromUrl);
+
+  // A shared ?view=story link still lands on the GPU story lens when the topic
+  // is one of the 1,000 nodes. Later opens go through openNamedTopic.
+  useEffect(() => {
+    const topic = activeView.focus_topic;
+    if (activeView.view !== "story" || !topic) return;
+    let cancelled = false;
+    void placeNamedTopic(topic).then((placement) => {
+      if (cancelled || placement === "unknown") return;
+      setActiveView((prev) => {
+        if (prev.view !== "story" || prev.focus_topic !== topic) return prev;
+        return namedTopicView(topic, prev.week, topic, placement);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
@@ -350,6 +400,31 @@ export function App() {
     if (topicId.includes(":")) setSelectedEntity(topicId);
   }
 
+  async function openNamedTopic(
+    topicId: string,
+    week: string | null | undefined,
+    label: string,
+    fullscreen: boolean,
+  ) {
+    const placement = await placeNamedTopic(topicId);
+    const cmd = namedTopicView(topicId, week, label, placement);
+    setActiveView(cmd);
+    if (fullscreen && (cmd.view === "temporal" || cmd.view === "story")) {
+      setIsFullscreen(true);
+    }
+    selectTopic(topicId);
+  }
+
+  async function applyViewCommand(cmd: ViewCommand) {
+    if (cmd.view === "story" && cmd.focus_topic) {
+      await openNamedTopic(cmd.focus_topic, cmd.week, cmd.focus_topic, true);
+      return;
+    }
+    setActiveView(cmd);
+    if (cmd.view === "temporal" || cmd.view === "story") setIsFullscreen(true);
+    if (cmd.focus_topic) selectTopic(cmd.focus_topic);
+  }
+
   const contextWeek = radarWeek && radarWeek !== "latest" ? radarWeek : undefined;
 
   useEffect(() => {
@@ -435,13 +510,7 @@ export function App() {
     setChatError(null);
     const immediateCmd = resolveChatViewCommand(trimmed, [], contextWeek);
     if (immediateCmd) {
-      setActiveView(immediateCmd);
-      if (immediateCmd.view === "temporal" || immediateCmd.view === "story") {
-        setIsFullscreen(true);
-      }
-      if (immediateCmd.focus_topic) {
-        selectTopic(immediateCmd.focus_topic);
-      }
+      void applyViewCommand(immediateCmd);
     }
     try {
       const res = await sendChatTurn({
@@ -459,13 +528,7 @@ export function App() {
         contextWeek,
       );
       if (resolvedCmd) {
-        setActiveView(resolvedCmd);
-        if (resolvedCmd.view === "temporal" || resolvedCmd.view === "story") {
-          setIsFullscreen(true);
-        }
-        if (resolvedCmd.focus_topic) {
-          selectTopic(resolvedCmd.focus_topic);
-        }
+        void applyViewCommand(resolvedCmd);
       }
     } catch (err: unknown) {
       setChatError(err instanceof Error ? err.message : String(err));
@@ -563,18 +626,12 @@ export function App() {
                     }
                     data-testid={`radar-card-${card.rank ?? card.topic_id}`}
                     onClick={() => {
-                      selectTopic(card.topic_id);
-                      setActiveView({
-                        view: "story",
-                        week: card.week,
-                        focus_topic: card.topic_id,
-                        highlight: [card.topic_id],
-                        color_by: "segment",
-                        caption_es: `Historia de 1 salto: ${topicName(
-                          card.topic_id,
-                          card.label_es,
-                        )} (${card.topic_id})`,
-                      });
+                      void openNamedTopic(
+                        card.topic_id,
+                        card.week,
+                        topicName(card.topic_id, card.label_es),
+                        false,
+                      );
                     }}
                   >
                     <div className="card-top">
@@ -957,18 +1014,20 @@ export function App() {
                     activeView.view === "story" ? "pill pill-active" : "pill"
                   }
                   data-testid="view-btn-story"
-                  onClick={() =>
-                    setActiveView((prev) => ({
-                      ...prev,
-                      view: "story",
-                      focus_topic:
-                        prev.focus_topic ??
-                        (selectedTopic.includes(":") ? selectedTopic : null),
-                      caption_es: `Historia de 1 salto (${
-                        prev.focus_topic ?? selectedTopic
-                      })`,
-                    }))
-                  }
+                  onClick={() => {
+                    const topic =
+                      activeView.focus_topic ??
+                      (selectedTopic.includes(":") ? selectedTopic : null);
+                    if (!topic) {
+                      setActiveView((prev) => ({
+                        ...prev,
+                        view: "story",
+                        caption_es: `Historia de 1 salto (${prev.focus_topic ?? selectedTopic})`,
+                      }));
+                      return;
+                    }
+                    void openNamedTopic(topic, activeView.week, topic, false);
+                  }}
                 >
                   Historia 1-salto
                 </button>
@@ -1036,15 +1095,12 @@ export function App() {
                 onLensChange={selectLens}
                 onSelectTopic={(topicId) => selectTopic(topicId)}
                 onOpenStory={(topicId) => {
-                  selectTopic(topicId);
-                  setActiveView({
-                    view: "story",
-                    week: activeView.week ?? contextWeek ?? null,
-                    focus_topic: topicId,
-                    highlight: [topicId],
-                    color_by: "segment",
-                    caption_es: `Historia de 1 salto: ${topicId}`,
-                  });
+                  void openNamedTopic(
+                    topicId,
+                    activeView.week ?? contextWeek ?? null,
+                    topicId,
+                    false,
+                  );
                 }}
               />
             )}
@@ -1064,7 +1120,7 @@ export function App() {
             {activeView.view === "cards" && (
               <p className="muted view-cards-hint">
                 Haz clic en cualquier tarjeta del Top 10 a la izquierda para abrir su
-                anillo de 1 salto en <code>sigma</code>, o pulsa{" "}
+                historia (en el grafo temporal si el tema está entre los 1.000 nodos), o pulsa{" "}
                 <strong>Grafo temporal (GPU)</strong> / pregunta al Maestro de Medios{" "}
                 <em>«Muéstrame el grafo de la semana»</em>.
               </p>
@@ -1089,18 +1145,12 @@ export function App() {
                       key={card.topic_id}
                       className="drawer-card-item"
                       onClick={() => {
-                        selectTopic(card.topic_id);
-                        setActiveView({
-                          view: "story",
-                          week: card.week,
-                          focus_topic: card.topic_id,
-                          highlight: [card.topic_id],
-                          color_by: "segment",
-                          caption_es: `Historia de 1 salto: ${topicName(
-                            card.topic_id,
-                            card.label_es,
-                          )} (${card.topic_id})`,
-                        });
+                        void openNamedTopic(
+                          card.topic_id,
+                          card.week,
+                          topicName(card.topic_id, card.label_es),
+                          false,
+                        );
                         setIsCardsDrawerOpen(false);
                       }}
                     >

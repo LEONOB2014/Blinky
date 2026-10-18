@@ -46,6 +46,13 @@ const DECISION_LABELS_ES: Record<DecisionValue, string> = {
 };
 
 // Qualitative categorical palette for Leiden communities
+/** Skip a reheat when the current week has at least this many links. */
+const REHEAT_LINK_CAP = 50_000;
+const REHEAT_CAP_MS = 2500;
+const REHEAT_TICK_MS = 100;
+const REHEAT_STABLE_TICKS = 3;
+const LAYOUT_SAMPLE_INDEXES = [0, 100, 250, 500, 750, 999];
+
 const COMMUNITY_COLORS: Array<[number, number, number]> = [
   [56, 189, 248], // sky blue
   [251, 146, 60], // orange
@@ -78,6 +85,12 @@ export function TemporalGraph({
   const [weekIdx, setWeekIdx] = useState<number>(0);
   const [playing, setPlaying] = useState<boolean>(false);
   const activeLens = graphLensFromColorBy(colorBy);
+  const activeLensRef = useRef(activeLens);
+  activeLensRef.current = activeLens;
+  const reheatRef = useRef<() => void>(() => {});
+  const reheatTokenRef = useRef(0);
+  // Null until the first time a live graph sees a lens. That pass stays frozen.
+  const reheatKeyRef = useRef<string | null>(null);
   const [labels, setLabels] = useState<LabelItem[]>([]);
   const [hoveredTooltip, setHoveredTooltip] = useState<TooltipItem | null>(null);
   const [metricsSnapshot, setMetricsSnapshot] = useState<{
@@ -208,7 +221,7 @@ export function TemporalGraph({
 
   // Apply lens styling to graph
   const applyLensToGraph = useCallback(
-    (w: number, lens: LensMode) => {
+    (w: number, lens: LensMode, opts?: { reheat?: boolean }) => {
       const g = graphRef.current;
       const d = dataRef.current;
       const wMap = weekLinkMapRef.current[w];
@@ -480,7 +493,9 @@ export function TemporalGraph({
 
         let width = Math.max(0.45, Math.min(2.8, Math.log(nVal + 1) * 0.45));
         let alpha = Math.max(0.12, Math.min(0.85, npmiVal));
-        let strength = 0.5;
+        // Resting links stay weak. Each lens raises a different class, so two
+        // lenses pull the same nodes toward different neighbours.
+        let strength = 0.15;
         let lr = 148 / 255;
         let lg = 163 / 255;
         let lb = 184 / 255;
@@ -504,18 +519,19 @@ export function TemporalGraph({
           }
 
           case "segment": {
-            if (focusIdx !== null) {
-              if (u === focusIdx || v === focusIdx) {
-                strength = 1.2;
-                width = Math.max(width, 2.4);
-                alpha = 0.95;
-                lr = 250 / 255;
-                lg = 204 / 255;
-                lb = 21 / 255;
-              } else {
-                strength = 0.15;
-                alpha = 0.05;
-              }
+            const sameRing = d.nodes[u].ring === d.nodes[v].ring;
+            if (focusIdx !== null && (u === focusIdx || v === focusIdx)) {
+              strength = 1.35;
+              width = Math.max(width, 2.4);
+              alpha = 0.95;
+              lr = 250 / 255;
+              lg = 204 / 255;
+              lb = 21 / 255;
+            } else if (sameRing) {
+              strength = 0.7;
+            } else {
+              strength = 0.12;
+              alpha = 0.08;
             }
             break;
           }
@@ -569,11 +585,49 @@ export function TemporalGraph({
               strength = 1.1; // Strengthen intra-community edges
               alpha = Math.max(alpha, 0.7);
             } else {
-              strength = 0.15;
+              strength = 0.12;
               alpha = 0.06;
             }
             break;
           }
+
+          case "tone": {
+            const tu = d.nodes[u].tone?.[w] ?? 0;
+            const tv = d.nodes[v].tone?.[w] ?? 0;
+            const samePole = (tu >= 1 && tv >= 1) || (tu <= -1 && tv <= -1);
+            if (samePole) {
+              strength = 1.15;
+              width = Math.max(width, 1.6);
+              alpha = Math.max(alpha, 0.75);
+            } else {
+              strength = 0.1;
+              alpha *= 0.45;
+            }
+            break;
+          }
+
+          case "window": {
+            const wu = d.nodes[u].window_state?.[w] ?? null;
+            const wv = d.nodes[v].window_state?.[w] ?? null;
+            const shared =
+              wu !== null && wv !== null && wu === wv && wu !== "sin_estimacion";
+            if (shared) {
+              strength = 1.2;
+              width = Math.max(width, 1.7);
+              alpha = Math.max(alpha, 0.8);
+            } else {
+              strength = 0.1;
+              alpha *= 0.4;
+            }
+            break;
+          }
+        }
+
+        if (
+          highlightSet.has(d.nodes[u].id.toLowerCase()) ||
+          highlightSet.has(d.nodes[v].id.toLowerCase())
+        ) {
+          strength = Math.max(strength, 1.35);
         }
 
         linkWidths[e] = width;
@@ -586,6 +640,7 @@ export function TemporalGraph({
 
       g.setLinks(links);
       g.setLinkWidths(linkWidths);
+      g.setLinkStrength(linkStrength);
       g.setPointSizes(sizes);
       g.setPointColors(colors);
       try {
@@ -615,72 +670,175 @@ export function TemporalGraph({
         } catch {
           // Ignore if clustering not supported
         }
+      } else {
+        // A cluster assignment survives the next lens until it is cleared.
+        try {
+          g.setPointClusters(new Array<number | undefined>(nNodes).fill(undefined));
+          g.setPointClusterStrength(new Float32Array(nNodes));
+        } catch {
+          // Ignore if clustering not supported
+        }
       }
 
-      g.render(0, 0);
+      g.setPinnedPoints(focusIdx !== null ? [focusIdx] : null);
+      // Upload pending colours, widths and strengths without zeroing alpha.
+      // render(0, 0) would stop the simulation after one frame.
+      g.render(undefined, 0);
       recomputeLabels(w);
 
-      if (lens === "segment" && focusIdx !== null) {
+      if (opts?.reheat && lens === "segment" && focusIdx !== null) {
         try {
-          g.zoomToPointByIndex(focusIdx, 400, 1.8);
+          g.setPointPosition(focusIdx, 2048, 2048);
+        } catch {
+          // No-op before the first render.
+        }
+        try {
+          // enableSimulation false: zoom must not start a second simulation.
+          g.zoomToPointByIndex(focusIdx, 400, 1.8, true, false);
         } catch {
           // ignore
         }
       }
+
+      if (opts?.reheat) reheatRef.current();
     },
     [focusTopicIdx, highlightSet, recomputeLabels],
   );
 
-  // Briefly reheat simulation and measure settle time & fps (Addendum 2 Must #3 & #5, Correction 02:35)
+  // Reheat from the strengths and pins just uploaded. Settle time is wall
+  // clock until graph.progress stops changing (or the cap). fps is rAF during
+  // that same interval, not a fixed timer.
   const reheatSimulation = useCallback(() => {
     const g = graphRef.current;
-    if (!g) return;
+    const d = dataRef.current;
+    if (!g || !d) return;
 
-    const tReheat0 = performance.now();
-    let frames = 0;
-    let animId = 0;
-
-    const onFrame = () => {
-      frames += 1;
-      animId = requestAnimationFrame(onFrame);
-    };
-    animId = requestAnimationFrame(onFrame);
-
-    try {
-      g.setConfigPartial({
-        simulationGravity: 0.15,
-        simulationRepulsion: 0.65,
-      });
-      // Correction 02:35: reheat with graph.start(alpha)
-      g.start(0.35);
-    } catch {
-      // simulation method fallback
+    const lens = activeLensRef.current;
+    const nLinks = weekLinkMapRef.current[weekIdxRef.current]?.src.length ?? 0;
+    if (nLinks >= REHEAT_LINK_CAP) {
+      window.__metrics = {
+        ...window.__metrics,
+        active_lens: lens,
+        reheat_skipped: `links>=${REHEAT_LINK_CAP}`,
+      };
+      return;
     }
 
-    window.setTimeout(() => {
-      cancelAnimationFrame(animId);
+    const token = ++reheatTokenRef.current;
+    const t0 = performance.now();
+    let frames = 0;
+    let rafId = 0;
+    const onFrame = () => {
+      if (reheatTokenRef.current !== token) return;
+      frames += 1;
+      rafId = requestAnimationFrame(onFrame);
+    };
+    rafId = requestAnimationFrame(onFrame);
+
+    const readSample = (): number[] => {
+      const pos = g.getPointPositions();
+      const sample: number[] = [];
+      for (const i of LAYOUT_SAMPLE_INDEXES) {
+        if (i >= d.nodes.length) continue;
+        sample.push(Math.round(pos[i * 2] * 10) / 10, Math.round(pos[i * 2 + 1] * 10) / 10);
+      }
+      return sample;
+    };
+    let before: number[] = [];
+    try {
+      before = readSample();
+    } catch {
+      before = [];
+    }
+
+    try {
+      // The graph is constructed with enableSimulation false so the exported
+      // layout stays frozen. start() is a no-op until the flag is on.
+      g.setConfigPartial({ enableSimulation: true });
+      g.start(0.3);
+    } catch {
+      cancelAnimationFrame(rafId);
+      window.__metrics = {
+        ...window.__metrics,
+        active_lens: lens,
+        reheat_skipped: "start_failed",
+      };
+      return;
+    }
+
+    let lastProgress = g.progress;
+    let stableTicks = 0;
+    const timer = window.setInterval(() => {
+      if (reheatTokenRef.current !== token) {
+        window.clearInterval(timer);
+        cancelAnimationFrame(rafId);
+        return;
+      }
+      const progress = g.progress;
+      const elapsed = performance.now() - t0;
+      if (Number.isFinite(progress) && Math.abs(progress - lastProgress) < 1e-4) {
+        stableTicks += 1;
+      } else {
+        stableTicks = 0;
+      }
+      lastProgress = progress;
+      const settled =
+        stableTicks >= REHEAT_STABLE_TICKS || !g.isSimulationRunning || elapsed >= REHEAT_CAP_MS;
+      if (!settled) return;
+
+      window.clearInterval(timer);
+      cancelAnimationFrame(rafId);
       try {
         g.pause();
       } catch {
-        // fallback
+        // Already stopped.
       }
-      const settleTimeMs = Math.round((performance.now() - tReheat0) * 10) / 10;
-      const elapsedSec = Math.max(0.01, settleTimeMs / 1000);
-      const fpsRelayout = Math.round((frames / elapsedSec) * 10) / 10;
-
+      const settleTimeMs = Math.round((performance.now() - t0) * 10) / 10;
+      const fpsRelayout =
+        Math.round((frames / Math.max(0.01, settleTimeMs / 1000)) * 10) / 10;
+      let sample: number[] = [];
+      try {
+        sample = readSample();
+      } catch {
+        sample = [];
+      }
+      let layoutMoved: number | undefined;
+      if (before.length > 0 && before.length === sample.length) {
+        let acc = 0;
+        for (let i = 0; i < sample.length; i++) acc += Math.abs(sample[i] - before[i]);
+        layoutMoved = Math.round((acc / sample.length) * 10) / 10;
+      }
+      const byLens = { ...(window.__metrics?.layout_by_lens ?? {}) };
+      const otherLens = Object.keys(byLens).find((key) => key !== lens);
+      let layoutDelta: number | undefined;
+      const other = otherLens ? byLens[otherLens] : undefined;
+      if (other && other.length === sample.length && sample.length > 0) {
+        let acc = 0;
+        for (let i = 0; i < sample.length; i++) acc += Math.abs(sample[i] - other[i]);
+        layoutDelta = Math.round((acc / sample.length) * 10) / 10;
+      }
+      byLens[lens] = sample;
       window.__metrics = {
         ...window.__metrics,
-        active_lens: activeLens,
+        active_lens: lens,
         fps_relayout: fpsRelayout,
         settle_time_ms: settleTimeMs,
+        layout_sample: sample,
+        layout_by_lens: byLens,
+        layout_delta: layoutDelta,
+        layout_moved: layoutMoved,
+        sim_progress: Number.isFinite(progress) ? Math.round(progress * 1000) / 1000 : undefined,
+        reheat_count: (window.__metrics?.reheat_count ?? 0) + 1,
+        reheat_skipped: undefined,
       };
       setMetricsSnapshot((prev) => ({
         ...prev,
         fpsRelayout,
         settleTimeMs,
       }));
-    }, 380);
-  }, [activeLens]);
+    }, REHEAT_TICK_MS);
+  }, []);
+  reheatRef.current = reheatSimulation;
 
   // Fetch temporal.json once
   useEffect(() => {
@@ -745,6 +903,9 @@ export function TemporalGraph({
   // Initialize cosmos.gl Graph once `data` and `canvasHostRef` are available
   useEffect(() => {
     if (!data || !canvasHostRef.current) return;
+    // A new graph has not seen a lens yet. StrictMode's second setup must reheat
+    // a focused story instead of treating the destroyed graph's key as current.
+    reheatKeyRef.current = null;
     const host = canvasHostRef.current;
     const tInit0 = performance.now();
 
@@ -830,7 +991,11 @@ export function TemporalGraph({
     let disposed = false;
     void graph.ready.then(() => {
       if (disposed) return;
-      applyLensToGraph(initialW, activeLens);
+      // A lens change that already reheated owns the buffers. Otherwise upload
+      // the current lens without starting the simulation.
+      if (reheatTokenRef.current === 0) {
+        applyLensRef.current(initialW, activeLensRef.current);
+      }
       graph.fitView(0, 0.08, false);
 
       requestAnimationFrame(() => {
@@ -872,11 +1037,21 @@ export function TemporalGraph({
   }, [data]);
 
   const weekIdxRef = useRef<number>(weekIdx);
+  const applyLensRef = useRef(applyLensToGraph);
+  applyLensRef.current = applyLensToGraph;
+
+  useEffect(() => {
+    return () => {
+      reheatTokenRef.current += 1;
+    };
+  }, []);
+
+  // Week playback is a frozen sweep: upload colours and links, do not start().
   useEffect(() => {
     weekIdxRef.current = weekIdx;
     if (!data || !graphRef.current) return;
     const t0 = performance.now();
-    applyLensToGraph(weekIdx, activeLens);
+    applyLensRef.current(weekIdx, activeLensRef.current);
     const dt = Math.round((performance.now() - t0) * 100) / 100;
     const list = window.__metrics?.week_switch_ms ?? [];
     list.push(dt);
@@ -885,12 +1060,24 @@ export function TemporalGraph({
       week_switch_ms: list,
       n_edges_w: weekLinkMapRef.current[weekIdx]?.src.length ?? 0,
     };
-  }, [weekIdx, activeLens, data, applyLensToGraph]);
+  }, [weekIdx, data]);
+
+  // Pill clicks and chat answers both change color_by / focus. That is the
+  // only path that reheats. The unfocused first paint stays on the exported
+  // layout. A story that opens already focused still pins and zooms.
+  useEffect(() => {
+    if (!data || !graphRef.current) return;
+    const key = `${activeLens}|${focusTopic ?? ""}|${highlight.join("\n")}`;
+    if (reheatKeyRef.current === key) return;
+    const first = reheatKeyRef.current === null;
+    reheatKeyRef.current = key;
+    if (first && !focusTopic) return;
+    applyLensRef.current(weekIdxRef.current, activeLens, { reheat: true });
+  }, [activeLens, focusTopic, highlight, data]);
 
   // Pill clicks write the same color_by a chat answer writes (App.onLensChange).
   const handleSelectLens = (lens: LensMode) => {
     onLensChange?.(lens);
-    reheatSimulation();
   };
 
   // Play animation across weeks
