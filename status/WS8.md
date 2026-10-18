@@ -12,7 +12,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 00:45 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
+2026-10-18 00:55 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
 committed locally, the orchestrator pushes.
 
 ## Done
@@ -78,11 +78,32 @@ committed locally, the orchestrator pushes.
     nvidia timeline 51 ms, ring 26 ms, `regulation_policy` timeline 36 ms. `/api/chat` without a
     key: 503. No `.env` in the image (checked).
 
+- **Deployed on Cloud Run** (approved by the maintainer in chat). Service `radar-api`, us-central1,
+  1 CPU, 1 GiB, 0–3 instances, public (`--allow-unauthenticated`). `NEBIUS_API_KEY` comes from the
+  Secret Manager secret `radar-nebius-key`, created from `.env` without being printed; only the
+  compute service account can read it.
+  - The URL stays out of git (it holds the project number). Get it with
+    `gcloud run services describe radar-api --region us-central1 --format='value(status.url)'`.
+  - Deploy (source upload, Cloud Build, revision): 2 min 20 s (measured).
+  - Latency measured from the maintainer's laptop (UTC-5), so it includes the network round trip:
+
+    | Request | Status | Time |
+    |---|---|---|
+    | First `/api/radar` after the deploy (cold start) | 200 | 1.74 s |
+    | Warm `/api/radar` | 200 | 0.32–0.35 s |
+    | `/api/freshness` | 200 | 0.43 s |
+    | `/api/radar?week=2026-W41` | 200 | 0.32 s |
+    | nvidia timeline | 200 | 0.94 s, 131 KB |
+    | nvidia ring | 200 | 0.68 s |
+    | One `/api/chat` turn ("¿Qué tema de IA sube esta semana y por qué?") | 200 | 10.3 s |
+
+  - The chat turn returned `answer_es`, decision cards, view commands and an 8-step trace.
+  - CORS: GET answers with `access-control-allow-origin: *`.
+  - A true cold start after a scale-to-zero (about 15 min idle) has not been measured yet.
+
 ## Waits for approval or for the maintainer
 
-1. Cloud Run: create the Secret Manager secret `radar-nebius-key` from `.env` (runbook step 1),
-   then `make deploy-cloudrun` (public URL). Then measure cold start, warm `/api/radar` and one
-   `/api/chat` turn on Cloud Run.
+1. Done (Cloud Run secret and deploy).
 2. (Alternative only) Fix Modal billing, create the Modal Secret `radar-nebius`, then `modal deploy`.
 4. Netlify login, site creation, deploy and "Make public". The static-only site works without
    Modal: run `make deploy-static` and `make deploy-web API_URL=`, then
@@ -92,6 +113,8 @@ committed locally, the orchestrator pushes.
 
 - WS5: `isStaticMode()` in `web/src/api.ts` can drive a "datos estáticos" badge; CORS in
   `api/app.py` allows every origin (narrow it to the Netlify origin if wanted).
+- WS4: the live chat's first decision card names `org:big news network` (a news outlet) as a
+  topic. It is worth adding to `ranked_universe.org_deny`, like the other outlets.
 - WS4: the 2026-W42 top 10 holds `org:scam centre`, `org:national anti`,
   `org:capital markets department` and `org:technological development area`. They look like GKG
   extraction artefacts, worth a deny-list check.
