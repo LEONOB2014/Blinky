@@ -137,12 +137,32 @@ def test_coverage_counts_each_rankers_top_10(res):
         assert have == need <= 10 * len(res.weeks)
 
 
-def test_refuses_precision_below_the_coverage_threshold(inputs):
+def test_below_the_coverage_threshold_precision_is_bounded(inputs):
     s, raw, daily = inputs
     r = bt.evaluate(s, raw, daily, set(s["unit_id"].to_list()), "gdelt_espt", min_coverage=1.01)
     assert r.refused
-    assert r.pooled == {}
-    assert "Not reported" in "\n".join(bt.render_section(r))
+    assert r.pooled == {}  # no unbounded precision below the rule
+    text = "\n".join(bt.render_section(r))
+    assert "Below the 90.0% coverage rule" in text and "Worst case" in text
+    for name, e in r.bounded.items():
+        if name == "base_rate":
+            continue
+        assert e["worst"] <= (e["precision"] or 0) <= e["best"] or e["labelled"] == 0
+        assert e["worst"] == e["hits"] / e["slots"]
+        assert e["best"] == (e["hits"] + e["slots"] - e["labelled"]) / e["slots"]
+    # the radar's unlabelled W35 slots make its bounds differ; the baselines are fully labelled
+    assert r.bounded["radar"]["worst"] < r.bounded["radar"]["best"]
+    assert r.bounded["persistence"]["worst"] == r.bounded["persistence"]["best"]
+    assert "radar|raw_count_growth" in r.worst_vs
+
+
+def test_worst_case_comparison_uses_the_radars_worst_and_the_baselines_best():
+    res = bt.Result(label="pageviews")
+    res.worst_vs["radar_gated|raw_count_growth"] = {"diff": 0.05, "ci": (0.01, 0.09)}
+    assert bt.worst_case_holds(res)
+    res.worst_vs["radar_gated|raw_count_growth"] = {"diff": 0.05, "ci": (-0.01, 0.09)}
+    assert not bt.worst_case_holds(res)
+    assert not bt.worst_case_holds(bt.Result(label="pageviews"))
 
 
 def test_gated_ranker_reads_the_published_rank(inputs):

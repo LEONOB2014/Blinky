@@ -77,7 +77,9 @@ deploy-cloudrun-local: deploy-cloudrun-stage ## Build and run the Cloud Run imag
 deploy-cloudrun: deploy-cloudrun-stage ## Deploy the API on Cloud Run (MIN_INSTANCES keeps a warm instance; default 0)
 	gcloud run deploy radar-api --source build/cloudrun --region $(or $(REGION),us-central1) \
 		--allow-unauthenticated --cpu 1 --memory 1Gi --min-instances $(or $(MIN_INSTANCES),0) \
-		--max-instances 3 --set-secrets NEBIUS_API_KEY=radar-nebius-key:latest --quiet
+		--max-instances 3 \
+		--set-secrets NEBIUS_API_KEY=radar-nebius-key:latest,LANGSMITH_API_KEY=radar-langsmith-key:latest \
+		--update-env-vars LANGSMITH_TRACING=true,LANGSMITH_PROJECT=radar-agents --quiet
 
 deploy-static: ## Write the static fallback to web/public/data/ from the full lake
 	RADAR_PROFILE=full uv run --extra api python deploy/export_static.py

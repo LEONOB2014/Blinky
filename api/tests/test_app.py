@@ -236,3 +236,54 @@ def test_guard_ring_drops_persons_the_sql_missed():
         {"neighbor": "org:tsmc", "rank": 2},
     ]
     assert _guard_ring(rows) == [{"neighbor": "org:tsmc", "rank": 1}]
+
+
+class _FeedbackSpy:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def create_feedback(self, **kw) -> None:
+        self.calls.append(kw)
+
+
+_TRACE = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+
+def test_chat_returns_a_trace_id_field(client: TestClient, monkeypatch):
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    app.state.chat_model = ScriptedChat("Respuesta.")
+    body = client.post("/api/chat", json={"message": "¿Cuánto ha costado BigQuery?"}).json()
+    assert "trace_id" in body and body["trace_id"] is None  # tracing off in tests
+
+
+def test_feedback_is_503_without_langsmith(client: TestClient, monkeypatch):
+    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+    app.state.feedback_client = None
+    resp = client.post("/api/feedback", json={"trace_id": _TRACE, "score": 1})
+    assert resp.status_code == 503
+
+
+def test_feedback_records_one_score_on_the_trace(client: TestClient):
+    spy = _FeedbackSpy()
+    app.state.feedback_client = spy
+    try:
+        resp = client.post(
+            "/api/feedback", json={"trace_id": _TRACE, "score": 0, "comment": "muy largo"}
+        )
+    finally:
+        app.state.feedback_client = None
+    assert resp.status_code == 202
+    assert spy.calls == [
+        {"run_id": _TRACE, "key": "user_thumbs", "score": 0, "comment": "muy largo"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "body", [{"trace_id": "not-a-uuid", "score": 1}, {"trace_id": _TRACE, "score": 5}]
+)
+def test_feedback_rejects_bad_input(client: TestClient, body):
+    app.state.feedback_client = _FeedbackSpy()
+    try:
+        assert client.post("/api/feedback", json=body).status_code == 422
+    finally:
+        app.state.feedback_client = None

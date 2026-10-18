@@ -39,6 +39,14 @@ gcloud secrets add-iam-policy-binding radar-nebius-key \
   --member="serviceAccount:$(gcloud projects describe $P --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
   --role=roles/secretmanager.secretAccessor
 
+# 1b. The LangSmith key (traces and readers' thumbs up/down, POST /api/feedback); same pattern
+grep '^LANGSMITH_API_KEY=' .env | cut -d= -f2- | tr -d '\r\n"' | \
+  gcloud secrets create radar-langsmith-key --data-file=- --replication-policy=automatic
+gcloud secrets add-iam-policy-binding radar-langsmith-key \
+  --member="serviceAccount:$(gcloud projects describe $P --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor
+# make deploy-cloudrun mounts both secrets and sets LANGSMITH_TRACING=true, LANGSMITH_PROJECT=radar-agents
+
 # 2. Test the image locally (Docker), then deploy (public URL: approval)
 make deploy-cloudrun-local            # http://127.0.0.1:18080/api/freshness
 make deploy-cloudrun                  # prints https://radar-api-<hash>-uc.a.run.app
