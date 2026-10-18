@@ -1,0 +1,51 @@
+# Agent registry. Owner: orchestrator. Each agent owns a part of the system, its tools and a
+# decision log; code computes decisions, the LLM explains them ("Jev decides, the LLM explains,
+# code ranks", MASTER_PLAN §4). Runtime: agents/ (Qwen/Qwen3-30B-A3B-Instruct-2507 via Nebius
+# Token Factory, OpenAI-compatible tool calling).
+version: 1
+model:
+  provider: nebius-token-factory
+  base_url: https://api.tokenfactory.nebius.com/v1
+  name: Qwen/Qwen3-30B-A3B-Instruct-2507
+  auth_env: NEBIUS_API_KEY  # the environment variable that holds the credential (in .env, never committed)
+
+agents:
+  media_master:
+    name_es: Maestro de Medios
+    role: conversational orchestrator; delegates, assembles the decision card
+    tools: [ask_signal_analyst, ask_cartographer, ask_audience_strategist, ask_editor, ask_auditor]
+    outputs: [decision_card, view_command, agent_trace]
+  scout:
+    name_es: Explorador
+    owns: [pipelines/ingest/, crosssource/]
+    decides: what is pulled and its BigQuery spend (dry run, cap, ledger)
+    tools: [get_freshness, get_cost_ledger]
+  curator:
+    name_es: Curador
+    owns: [pipelines/taxonomy/, contracts/taxonomy.yaml]
+    decides: segment and subtopics of each article, label confidence
+    tools: [get_segment_mix, get_filter_quality]
+  signal_analyst:
+    name_es: Analista de señales
+    owns: [models/]
+    decides: emergence, stage, saturation, window, priority, decision
+    tools: [get_top10, get_topic_scores, get_topic_series, compare_topics, why_not_hot]
+  cartographer:
+    name_es: Cartógrafo
+    owns: [graph/]
+    decides: which neighbours explain a topic; what the view shows
+    tools: [get_context_1hop, get_community, update_view]
+  audience_strategist:
+    name_es: Estratega de audiencia
+    owns: [models/ fit and angle]
+    decides: fit for LatAm executives, framing angle, brand safety (Jev)
+    tools: [get_fit_and_angle]
+  editor:
+    name_es: Editor
+    decides: format, hooks and a 30-45 s outline in Spanish
+    tools: [get_evidence, draft_brief]
+  auditor:
+    name_es: Auditor
+    owns: [reports/]
+    decides: veto of any number not traced to a tool result
+    tools: [get_backtest, get_filter_quality, check_answer]

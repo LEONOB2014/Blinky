@@ -1,0 +1,52 @@
+# Radar taxonomy v1. Owner: orchestrator (WS0). Tuned by the Curator (WS2) in the GDELT loop;
+# a change here is a contract change (PR with feat(contracts)!).
+# Rings never overlap: ring 1 iff the core-AI rule; ring 2 = ICT/tech minus ring 1;
+# ring 3 = a domain theme group co-occurring with a tech organization, minus rings 1-2.
+version: 1
+
+rings:
+  ai:
+    rule: "f_url OR f_url_short OR f_title_strong OR f_org OR (f_title_weak AND f_ict)"
+    source: bq_sql/s2_monthly_insert.sql (flags), bq_sql/s4_aggregates.sql S4c
+    ranked: true
+  it:
+    rule: "(f_ict OR f_tech_org) AND NOT ai"
+    tech_org_list: "to be written by WS2 (f_tech_org), v1 starts from the f_org lab list plus large tech companies"
+    ranked: false
+  ai_domain:
+    rule: "domain theme group AND f_tech_org AND NOT ai AND NOT it"
+    ranked: false
+
+# 12 AI subtopics, multi-label, assigned to ring-1 articles only (regex v1 on title + URL).
+# Rules for the first 11 are radar.topic_rules in bq_sql/s1_setup.sql; energy_climate is new.
+subtopics:
+  agents: {label_es: "Agentes de IA"}
+  llms_models: {label_es: "Modelos y LLMs"}
+  chips_infra: {label_es: "Chips e infraestructura"}
+  regulation_policy: {label_es: "Regulación y política"}
+  education: {label_es: "Educación"}
+  jobs_work: {label_es: "Empleo y trabajo"}
+  business_adoption: {label_es: "Adopción empresarial"}
+  safety_risk: {label_es: "Seguridad y riesgos"}
+  creative_media: {label_es: "Creatividad y medios"}
+  health_science: {label_es: "Salud y ciencia"}
+  funding_markets: {label_es: "Inversión y mercados"}
+  energy_climate:
+    label_es: "Energía y clima"
+    re: 'climate|clima|carbon|carbono|emission|emisi[oó]n|emiss[aã]o|energy|energ[ií]a|power grid|electricity|electricidad|eletricidade|water use|consumo de agua|consumo de [aá]gua|nuclear|renewable|renovable|renov[aá]vel'
+    themes_prefix: [ENV_, ENERGY]
+
+# Ring-3 domains: GKG theme prefixes (v1, to be checked against real theme counts in the GDELT loop)
+# and the subtopic each one explains in the "why" bullets.
+domains:
+  business: {themes_prefix: [ECON_, WB_1235_, WB_2670_], explains: [business_adoption, funding_markets]}
+  climate: {themes_prefix: [ENV_, ENERGY, NATURAL_DISASTER], explains: [energy_climate]}
+  labour: {themes_prefix: [UNEMPLOYMENT, LABOR, WB_2689_], explains: [jobs_work]}
+  health: {themes_prefix: [HEALTH_, MEDICAL, WB_621_], explains: [health_science]}
+  education: {themes_prefix: [EDUCATION, WB_470_], explains: [education]}
+  elections_misinformation: {themes_prefix: [ELECTION, MEDIA_CENSORSHIP, TAX_FNCACT_PROPAGANDIST], explains: [safety_risk]}
+  law_regulation: {themes_prefix: [LEGISLATION, WB_696_, GENERAL_GOVERNMENT], explains: [regulation_policy]}
+  security: {themes_prefix: [CYBER_ATTACK, SECURITY_SERVICES, SURVEILLANCE], explains: [safety_risk]}
+
+# Never ranked, never committed: person names (etype 'per'), quotations, URLs, titles.
+ranked_entity_types: [org, thm]

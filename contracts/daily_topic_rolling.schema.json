@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/daily_topic_rolling.schema.json",
+  "title": "Rolling 7-day signals with weekday-adjusted baselines",
+  "description": "BigQuery view radar.daily_topic_rolling (bq_sql/s8_daily_topic_rolling.sql) -> lake/gold/daily_topic_rolling.parquet. NULL on is_missing days.",
+  "type": "object",
+  "x-owner": "WS1",
+  "x-mock": "pending-dev-slice",
+  "properties": {
+    "topic": {
+      "type": "string"
+    },
+    "segment": {
+      "type": "string",
+      "enum": [
+        "ai",
+        "it",
+        "ai_domain"
+      ]
+    },
+    "lang_bucket": {
+      "type": "string",
+      "enum": [
+        "eng",
+        "spa",
+        "por",
+        "other"
+      ]
+    },
+    "latam": {
+      "type": "boolean"
+    },
+    "dt": {
+      "type": "string",
+      "format": "date"
+    },
+    "dow": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7
+    },
+    "is_missing": {
+      "type": "boolean"
+    },
+    "n": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "articles that day"
+    },
+    "n_all": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "stream total"
+    },
+    "share": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "n / n_all"
+    },
+    "n_sources": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "distinct sources"
+    },
+    "n_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "7-day count, scaled to 7 days, NULL with < 5 valid days"
+    },
+    "share_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "7-day share"
+    },
+    "z_dow": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "today vs the same weekday at lags 7-28 (needs >= 3)"
+    },
+    "z_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "share_7d vs its distribution over days 34..7 back"
+    },
+    "growth_7d_log": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "ln(share_7d / share_7d a week ago)"
+    },
+    "accel_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "growth minus growth a week ago"
+    },
+    "mean_tone_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": ""
+    },
+    "extremity_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": ""
+    },
+    "mean_polarity_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": ""
+    },
+    "positive_share_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": ""
+    },
+    "negative_share_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": ""
+    },
+    "controversy_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": ""
+    },
+    "tone_shift_7d": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "mean_tone_7d minus the previous 28-day mean"
+    }
+  },
+  "required": [
+    "topic",
+    "segment",
+    "lang_bucket",
+    "latam",
+    "dt",
+    "is_missing"
+  ],
+  "additionalProperties": false
+}
