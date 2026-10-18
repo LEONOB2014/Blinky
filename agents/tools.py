@@ -280,6 +280,31 @@ def get_topic_scores(topic_id: str, week: str | None = None) -> dict[str, Any]:
     return {"available": bool(rows), "week": label, "topic_id": topic_id, "rows": rows}
 
 
+def brief_available() -> bool:
+    """True when the Editor's pre-written briefs exist in the lake."""
+    return gold("topic_briefs_weekly").exists()
+
+
+def get_topic_brief(topic_id: str, week: str | None = None) -> dict[str, Any]:
+    """The Editor's pre-written Spanish brief of a top-10 topic (agents/briefs.py), Auditor-checked."""
+    path = gold("topic_briefs_weekly")
+    if not path.exists():
+        return _unavailable("topic_briefs_weekly")
+    topic_id = resolve_topic(topic_id)
+    frame = pl.read_parquet(path)
+    if week is None and frame.height:
+        week = frame["week"].max()
+    rows = frame.filter((pl.col("topic_id") == topic_id) & (pl.col("week") == week)).drop(
+        "generated_at", "model"
+    )
+    if not rows.height:
+        return {
+            "available": False,
+            "reason": f"no hay brief para {topic_id} en {week}: solo el top 10 de las últimas semanas",
+        }
+    return {"available": True, "week": week, "topic_id": topic_id, "brief": rows.to_dicts()[0]}
+
+
 # --- Cartographer -----------------------------------------------------------------------------
 
 
@@ -505,6 +530,17 @@ TOOLS: dict[str, Tool] = {
             get_top10,
             "El top 10 semanal con las seis puntuaciones y la decisión.",
             {"type": "object", "properties": {"week": WEEK}},
+        ),
+        Tool(
+            "get_topic_brief",
+            get_topic_brief,
+            "El brief de adaptación en español ya escrito para un tema del top 10 (titular, qué pasó, "
+            "por qué importa en LatAm, ángulo, gancho y formato), revisado por el Auditor.",
+            {
+                "type": "object",
+                "properties": {"topic_id": {"type": "string"}, "week": WEEK},
+                "required": ["topic_id"],
+            },
         ),
         Tool(
             "get_topic_scores",
