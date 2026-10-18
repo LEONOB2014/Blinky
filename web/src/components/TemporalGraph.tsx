@@ -2,7 +2,7 @@ import { Graph, type GraphConfig } from "@cosmos.gl/graph";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FAMILY_PALETTE, STANCE_PALETTE, familyEntry, stanceEntry } from "../aiLexicon";
 import { fetchLeaders } from "../api";
-import { browserHasGraphics } from "../graphics";
+import { browserHasWebGL2 } from "../graphics";
 import { displayName } from "../publicCopy";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
@@ -1268,7 +1268,7 @@ export function TemporalGraph({
   // Initialize cosmos.gl Graph once `data` and `canvasHostRef` are available
   useEffect(() => {
     if (!data) return;
-    if (!browserHasGraphics()) {
+    if (!browserHasWebGL2()) {
       setNoGraphics(true);
       setLoading(false);
       return;
@@ -1372,7 +1372,15 @@ export function TemporalGraph({
       },
     };
     graphConfigRef.current = config;
-    const graph = new Graph(host, config);
+    let graph: Graph;
+    try {
+      graph = new Graph(host, config);
+    } catch {
+      // The context can still fail (a blocked driver, too many contexts): show the image instead.
+      setNoGraphics(true);
+      setLoading(false);
+      return;
+    }
 
     graphRef.current = graph;
     const initialW = Math.max(0, Math.min(weekIdx, nWeeks - 1));
