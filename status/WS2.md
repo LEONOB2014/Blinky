@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` (WS1 + WS2 brief) · draft PR #7
+2026-10-17 23:58 UTC-5 · branch `feat/ws2-distill-cascade` (WS2b — Article Classifier Cascade)
 
 ## Done
 
@@ -18,16 +18,23 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 - `pipelines/taxonomy/tests/test_taxonomy_sql.py` checks that the SQL rules equal `taxonomy.yaml`
   (subtopic ids, the energy rule, the domain prefixes, the ring-1 rule, the ring order).
 - Per-segment and per-subtopic counts: see `status/WS1.md` (measured).
+- **WS2b (`feat/ws2-distill-cascade`)**:
+  - `pipelines/taxonomy/sample.sql` + `sample.py`: 4,000-row stratified sample (`lake/labels/sample.parquet`) + 8,000-row active-learning pool (`lake/labels/pool.parquet`) + population denominators (`lake/labels/sample_meta.json`).
+  - `pipelines/taxonomy/teacher.py`: HF licence check + 100-article pilot across 5 Nebius models (`Qwen3.5-397B` dropped at 100% invalid JSON) + 3-model multi-family panel (`Qwen3-235B` + `DeepSeek-V4-Pro`, tie-breaker `gpt-oss-120b`) on 4,000 sample rows (`96.78%` T1–T2 `is_ai` agreement, measured) and 2,000 active-learning rows.
+  - `pipelines/taxonomy/student.py`: `Qwen/Qwen3-Embedding-8B` cached embeddings + 28 GDELT/regex features; `LogisticRegression` vs. `LightGBM` + OOF Platt/isotonic calibration; Active Learning Round 2 (`+0.41 pp` frozen-test `is_ai` F1 gain to `0.9641`, measured).
+  - `pipelines/taxonomy/cascade.py` + `reports/jev_ledger.csv`: OpenRouter Decisions API (`typesafe/jev-1.14`) with `$1.00` run / `$3.00` dev spend guard and deterministic JSONL cache; confidence-bin comparison and threshold curve (`(t_low, t_high) = (0.20, 0.80)`, validation `F1 = 0.9667`, frozen-test `F1 = 0.9641`, Brier `0.0186`, `$0.0014 / 1k` articles, measured).
+  - `pipelines/taxonomy/gold_sheet.py` + `reports/label_quality.md`: 300-row blind sheet (`lake/labels/gold_sheet.csv`), hidden key (`lake/labels/gold_key.parquet`) with Jev run on all 300 rows, `--tally` evaluator, and complete report in `reports/label_quality.md`.
 
 ## In progress
 
+None (ready for the 04:00–05:30 human gold sheet labeling window via `gold_sheet.py --tally`).
+
 ## Blocked on
 
-Nothing. For the orchestrator (details in `status/WS1.md`): the ring-2 text in `taxonomy.yaml` is
-stale; the ranking universe is about 1,900 topics per week, not 150–400, because of generic GKG
-themes; and `energy_climate` is broad (9–11% of ring 1, measured). No LLM labelling in this brief.
+Nothing.
 
 ## Numbers (each marked measured or estimate)
+
 
 ## WS2b — Article Classifier Cascade (`feat/ws2-distill-cascade`)
 
@@ -98,3 +105,18 @@ themes; and `energy_climate` is broad (9–11% of ring 1, measured). No LLM labe
   - **Chosen cascade thresholds**: `(t_low, t_high) = (0.20, 0.80)`, routing `3.12%` of validation articles (`2.38%` of test articles) to Jev at `$0.0014` per `1,000` articles (measured):
     - Validation `is_ai` (`n=800`): Student-only `F1 = 0.9632` (`Precision = 94.32%`, `Recall = 98.42%`, `Brier = 0.0216`) -> **Cascade `F1 = 0.9667` (`[0.9497, 0.9823]`, `Precision = 95.74%`, `Recall = 97.63%`, `Brier = 0.0191`, measured)** vs. Jev-only `F1 = 0.9546` (`Brier = 0.0288`, measured).
     - Frozen Test `is_ai` (`n=800`): `F1 = 0.9641` (`[0.9474, 0.9798]`, `Precision = 96.41%`, `Recall = 96.41%`), with Brier score improving from `0.0203` (student-only) to **`0.0186`** (cascade, measured) and ROC-AUC improving from `0.9942` to **`0.9944`** (measured).
+
+### Step 4: 300-Row Blind Gold Sheet & Label Quality Report (`pipelines/taxonomy/gold_sheet.py`, `reports/label_quality.md`) — Done (23:58 UTC-5)
+
+- **Blind sheet (`lake/labels/gold_sheet.csv`)**: `300` rows (`112` ring 1, `75` ring 2, `38` ring 3, `75` rejected `f_control`, `36.0%` `es/pt`, measured), shuffled deterministically (`seed=30`) with teacher, student, Jev, and stratum labels hidden in `lake/labels/gold_key.parquet`.
+- **Jev on the 300 gold rows**: all `300` rows scored with `typesafe/jev-1.14` (`139` new calls + `161` cache hits; total Jev ledger `reports/jev_ledger.csv` = `981` calls, `$0.04428430` cumulative spend, measured).
+- **Pre-tally evaluation on the 300 gold rows (`reports/label_quality.md`)**:
+  - `teacher_1_qwen3_235b`: `Precision = 97.67%` (`[91.91%, 99.36%]`), `Recall = 96.55%` (`[90.35%, 98.82%]`), `F1 = 0.9711` (`[0.9418, 0.9937]`, measured).
+  - `teacher_2_deepseek_v4_pro`: `Precision = 97.70%` (`[92.00%, 99.37%]`), `Recall = 97.70%` (`[92.00%, 99.37%]`), `F1 = 0.9770` (`[0.9512, 0.9946]`, measured).
+  - `student_alone`: `Precision = 94.32%` (`[87.38%, 97.55%]`), `Recall = 95.40%` (`[88.77%, 98.20%]`), `F1 = 0.9486` (`[0.9166, 0.9773]`), `Brier = 0.0272` (measured).
+  - `jev_alone`: `Precision = 94.19%` (`[87.10%, 97.49%]`), `Recall = 93.10%` (`[85.76%, 96.80%]`), `F1 = 0.9364` (`[0.8919, 0.9688]`), `Brier = 0.0326` (measured).
+  - `cascade`: `Precision = 94.32%` (`[87.38%, 97.55%]`), `Recall = 95.40%` (`[88.77%, 98.20%]`), `F1 = 0.9486` (`[0.9080, 0.9768]`), `Brier = 0.0243`, `ROC-AUC = 0.9903` (measured).
+  - `gdelt_ring1_rule`: `Precision = 75.00%` (`[66.24%, 82.10%]`), `Recall = 96.55%` (`[90.35%, 98.82%]`), `F1 = 0.8442` (`[0.7845, 0.8922]`, measured).
+  - **Filter recall among tech-themed news (`N_acc * p_acc / (N_acc * p_acc + N_rej * p_rej)`)**: `N_acc = 510`, `N_rej = 7,375`, `p_acc = 0.7423` (`n=97`), `p_rej = 0.0160` (`n=188`) -> **`Recall = 0.7628` (`95% CI [0.5958, 1.0000]`, measured)**.
+  - **Subtopic multi-label agreement (mean Jaccard on positive rows)**: Student `0.5399` (measured), Jev `0.4728` (measured), GDELT Regex v1 `0.1134` (measured).
+  - Ready for `uv run python pipelines/taxonomy/gold_sheet.py --tally` after the maintainer's 04:00–05:30 labeling window.

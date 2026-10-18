@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import joblib
 import numpy as np
 import polars as pl
 from dotenv import load_dotenv
@@ -547,7 +546,7 @@ def _get_bundle_and_thresholds() -> tuple[dict[str, Any], float, float]:
     global _CACHED_BUNDLE, _CACHED_THRESHOLDS
     model_dir = lake() / "models" / "curator"
     if _CACHED_BUNDLE is None:
-        _CACHED_BUNDLE = joblib.load(model_dir / "student_bundle.joblib")
+        _CACHED_BUNDLE = student.load_student_bundle(model_dir / "student_bundle.joblib")
     if _CACHED_THRESHOLDS is None:
         cfg_path = model_dir / "cascade_config.json"
         if cfg_path.exists():

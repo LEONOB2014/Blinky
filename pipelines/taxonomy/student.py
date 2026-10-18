@@ -255,6 +255,8 @@ def _logit(p: np.ndarray) -> np.ndarray:
 class CalibratedTaskModel:
     """Wraps a base binary classifier (logreg or lightgbm) and a post-hoc probability calibrator."""
 
+    __module__ = "pipelines.taxonomy.student"
+
     def __init__(
         self,
         model_type: str,
@@ -276,6 +278,14 @@ class CalibratedTaskModel:
             logits = _logit(raw_p).reshape(-1, 1)
             return np.clip(self.calibrator.predict_proba(logits)[:, 1], 0.001, 0.999)
         return np.clip(raw_p, 0.001, 0.999)
+
+
+def load_student_bundle(bundle_path: Path | None = None) -> dict[str, Any]:
+    """Load the pickled student bundle safely regardless of caller __main__."""
+    if "__main__" in sys.modules:
+        sys.modules["__main__"].CalibratedTaskModel = CalibratedTaskModel  # type: ignore[attr-defined]
+    path = bundle_path or (lake() / "models" / "curator" / "student_bundle.joblib")
+    return joblib.load(path)
 
 
 def fit_and_compare_binary(
