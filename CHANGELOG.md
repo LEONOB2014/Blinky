@@ -6,6 +6,33 @@ All notable changes to this project are documented here. The format follows
 Entries are generated from Conventional Commits by commitizen; see
 [docs/development/releasing.md](docs/development/releasing.md).
 
+## v0.3.1 (2026-10-18)
+
+### Highlights (every number measured)
+
+- **An expressive AI graph.** ForceAtlas2 layout seeded by Leiden, node size by importance (5-24 px), fine
+  translucent curves whose width and brightness follow co-mentions and NPMI, frameless labels. 2026-W42: 86
+  topics and 147 links (was 38 and 51).
+- **Guaranteed in every configuration.** An end-to-end browser matrix (`graph/views/e2e_ai_matrix.mjs`): 130 of
+  130 lens x week cells pass with the week's top 10 labelled 10/10, 0 console errors and 0 broken positions;
+  playing 13 weeks ends at 2026-W42 at 116-121 fps.
+- **No blank canvas.** Browsers without WebGL2 now get the fallback image of the AI graph (checked with
+  `--disable-webgl2` on the live site).
+- **README media** re-recorded from the live site.
+
+### Feat
+
+- **graph**: guarantee every week, lens and important topic of the ai graph
+- **graph**: an expressive ai graph: metrics, forceatlas2, sizes and frameless labels
+
+### Fix
+
+- **web**: show the fallback image when the browser lacks webgl2 (#87)
+- **web**: recapture the fallback graph with the fine curves
+- **web**: never cut the ai graph's must-show labels at the label cap
+- **web**: draw the ai graph with fine translucent curves
+- **web**: render the expressive ai graph at its intended sizes
+
 ## v0.3.0 (2026-10-18)
 
 ### Highlights (every number measured unless marked)
