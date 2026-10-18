@@ -84,3 +84,24 @@ Baseline with repetitions by **02:30**; best change committed with its table by 
 ## If blocked
 
 `BLOCKED: <reason>` at the top of `status/WS0-agents.md`, then stop.
+
+## Addendum (orchestrator, 01:25 UTC-5): a fairer judge, then the decision line's scope
+
+Reviewed and kept: the code-written decision line, the out-of-scope route (narrowed by the
+orchestrator: it refused "¿Qué predice el radar?" and "¿Cuántos días tendrá la ventana?"; tests now
+cover both directions), the routing fixes. Your two notes become the next steps:
+
+1. **Judge v2:** give the judge the tool results the answer was built from (trimmed) and today's date,
+   and ask it to score only usefulness to the executive given that data (not whether numbers are
+   "verificables"). Keep v1 in the code; name the evaluator `usefulness_v2`. Re-score the 3-repetition
+   baseline and your final experiment with v2 (LangSmith can re-run evaluators on an existing
+   experiment) so both judges are reported side by side.
+2. **Decision line only when asked:** show it for what-to-publish / what-is-rising / entity-decision
+   questions, not for graph, audience-only or tone questions (q12, q15, q16). One experiment, 3
+   repetitions, v2 judge; keep it only if usefulness improves beyond the spread without hurting
+   grounding or decision faithfulness.
+3. Update `agents/README.md`'s table and `status/WS0-agents.md`. At most 3 more experiments.
+
+The merged agents reach the public site only after a Cloud Run redeploy: the orchestrator arranges it.
+
+Deadline: **03:30**.
