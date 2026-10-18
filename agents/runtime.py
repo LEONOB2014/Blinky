@@ -1233,7 +1233,11 @@ def run_turn(
                 )
             )
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
-        decides = "signal_analyst" in needed or "editor" in needed
+        # a community question is not about what to publish: no decision format (release eval
+        # v0.3: with it the answers drifted to the emergence top 10, usefulness_v2 0.17-0.33)
+        decides = ("signal_analyst" in needed or "editor" in needed) and not (
+            _COMMUNITY_Q.search(question)
+        )
         leaders = leaders_block(turn) if _LEADERS_Q.search(question) else ""
         community = community_line(turn) if _COMMUNITY_Q.search(question) else ""
         # a leaders or community question is not about what to publish: no emergence decision
@@ -1278,6 +1282,15 @@ def run_turn(
                     if block
                     else ""
                 )
+            )
+            + (
+                f" El sistema ya escribe lo que publica la comunidad IA: «{community}». No lo "
+                "repitas: responde en 2 o 3 líneas solo con lo que dice esa línea (qué temas "
+                "dominan y en qué categoría), di que es una señal no validada y no hables del top "
+                "10, de decisiones ni de temas que esa línea no nombra. Si la pregunta pide algo que "
+                "los conteos no dicen (por ejemplo qué piden exactamente), dilo."
+                if community
+                else ""
             )
             + (
                 f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
