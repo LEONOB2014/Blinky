@@ -379,6 +379,58 @@ def _decisions_by_code(turn: Turn) -> dict[str, str]:
 
 _WEEK_IN_TEXT = re.compile(r"\b(\d{4}-W\d{2})\b")
 
+DECISION_ES = {
+    "publicar_ahora": "Publicar ahora",
+    "preparar": "Preparar",
+    "esperar": "Esperar",
+    "no_es_tema_caliente": "No es tema caliente",
+}
+_PLURAL = re.compile(r"\btop\b|\btemas\b|\d", re.I)
+
+# How the Media Master writes for an executive (measured: the judge penalised raw ids, field names,
+# long data dumps and decisions about topics nobody asked about).
+PLAIN = (
+    "Escribe para un ejecutivo de medios, en español llano. Nunca uses nombres de campos ni "
+    "identificadores internos (z_7d, emergence_pct, saturation, npmi, growth_7d_log, 'org:…', "
+    "'thm:…', 'funding_markets'): di el nombre del tema y lo que significa ('crece muy rápido', "
+    "'casi nadie lo cuenta en español'). Redondea: porcentajes sin decimales y como mucho tres "
+    "cifras. Responde primero exactamente lo que se pregunta."
+)
+
+
+def topic_name(row: dict[str, Any]) -> str:
+    """How an executive reads a topic: its Spanish label, else the name without the 'org:' prefix."""
+    tid = row.get("topic_id") or ""
+    label = row.get("label_es")
+    if label and label != tid:
+        return label
+    return tools.labels_es().get(tid) or (tid.split(":", 1)[1] if ":" in tid else tid)
+
+
+def decision_line(turn: Turn, entity: str | None, question: str) -> str:
+    """The first line of the answer, written by code from WS4's decisions, in plain words.
+
+    An entity question gets that entity's decision only (or says it has none); otherwise the #1
+    topic, or the top 3 when the question asks for several.
+    """
+    rows: list[dict[str, Any]] = []
+    for r in turn.tool_results:
+        if r["tool"] in {"get_top10", "get_topic_scores"} and r["result"].get("available"):
+            rows += r["result"]["rows"]
+    if entity:
+        mine = [r for r in rows if r.get("topic_id") == entity]
+        name = entity.split(":", 1)[1] if ":" in entity else entity
+        if not mine:
+            return f"Decisión del radar: {name} no está entre los temas puntuados esta semana."
+        return f"Decisión del radar para {topic_name(mine[0])}: {DECISION_ES[mine[0]['decision']]}."
+    top = [r for r in rows if r.get("rank") is not None]
+    top = sorted({r["topic_id"]: r for r in top}.values(), key=lambda r: r["rank"])
+    if not top:
+        return "Decisión del radar: pendiente (las puntuaciones de esta semana aún no están)."
+    n = 3 if _PLURAL.search(question) else 1
+    parts = [f"{DECISION_ES[r['decision']]} — {topic_name(r)}" for r in top[:n]]
+    return "Decisión del radar: " + "; ".join(parts) + "."
+
 
 _WORD = re.compile(r"[\wáéíóúñü&.-]+", re.I)
 
@@ -591,11 +643,16 @@ def run_turn(
                 )
             )
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
-        decided = _decisions_by_code(turn)
-        decision_line = (
-            ", ".join(f"{k}: {v}" for k, v in list(decided.items())[:3])
-            if decided
-            else "PENDIENTE (las puntuaciones formales aún no están calculadas)"
+        decides = "signal_analyst" in needed or "editor" in needed
+        line = decision_line(turn, entity, question) if decides else ""
+        instructions = (
+            f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
+            "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
+            "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
+            "(formato y enfoque). Máximo 6 líneas en total."
+            if decides
+            else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
+            "los informes; no agregues KPIs ni decisiones que no estén en ellos."
         )
         reply = model.chat(
             [
@@ -603,14 +660,7 @@ def run_turn(
                 {
                     "role": "user",
                     "content": f"Pregunta: {question}\n\nInformes de tu equipo:\n{team}\n\n"
-                    + (
-                        f"Decisión calculada por código: {decision_line}. Cópiala tal cual en una "
-                        "línea 'Decisión:'; no propongas otra. Luego integra (máx. 8 líneas): por qué, "
-                        "KPIs con sus números y qué contenido preparar."
-                        if "signal_analyst" in needed or "editor" in needed
-                        else "Responde la pregunta directamente (máx. 5 líneas) usando solo lo que "
-                        "dicen los informes; no agregues KPIs ni decisiones que no estén en ellos."
-                    ),
+                    f"{instructions} {PLAIN}",
                 },
             ],
             [],
@@ -623,7 +673,8 @@ def run_turn(
             tokens=reply.tokens,
             model=reply.model,
         )
-        answer = reply.content or ""
+        body = (reply.content or "").strip()
+        answer = f"{line}\n\n{body}" if line else body
     answer, bad, decision_vetoed = _audit(turn, answer, question)
     turn.answer_es = answer
     # cards only when the question is about what to publish, not about cost or freshness

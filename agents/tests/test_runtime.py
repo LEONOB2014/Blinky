@@ -74,3 +74,44 @@ def test_cost_questions_reach_the_scout():
 
     assert "scout" in route("¿Cuánto ha costado BigQuery hasta ahora?")
     assert "scout" in route("¿Cuánto se ha gastado?")
+
+
+def _turn_with(rows, tool="get_top10"):
+    turn = runtime.Turn("t")
+    turn.tool_results.append(
+        {"source": "t:1", "tool": tool, "args": {}, "result": {"available": True, "rows": rows}}
+    )
+    return turn
+
+
+_ROWS = [
+    {"topic_id": "org:marsh mclennan", "label_es": "Marsh & McLennan", "rank": 1,
+     "decision": "preparar"},
+    {"topic_id": "org:euronext", "label_es": "org:euronext", "rank": 2, "decision": "esperar"},
+    {"topic_id": "chips_infra", "label_es": None, "rank": 3, "decision": "publicar_ahora"},
+]  # fmt: skip
+
+
+@pytest.mark.unit
+def test_decision_line_is_plain_words_for_what_was_asked():
+    turn = _turn_with(_ROWS)
+    one = runtime.decision_line(turn, None, "¿Qué tema sube esta semana?")
+    assert one == "Decisión del radar: Preparar — Marsh & McLennan."
+    three = runtime.decision_line(turn, None, "Dame el top 3")
+    assert three.endswith("Esperar — euronext; Publicar ahora — Chips e infraestructura.")
+    assert "org:" not in three and "_" not in three
+    mine = runtime.decision_line(turn, "org:euronext", "¿Euronext es tema caliente?")
+    assert mine == "Decisión del radar para euronext: Esperar."
+    none = runtime.decision_line(turn, "org:nvidia", "¿Qué pasa con Nvidia?")
+    assert "nvidia no está entre los temas puntuados" in none
+    assert "pendiente" in runtime.decision_line(runtime.Turn("t"), None, "¿Qué sube?")
+
+
+@pytest.mark.unit
+def test_the_answer_starts_with_the_code_decision_line():
+    model = ScriptedChat("Por qué:\n- crece rápido\nQué hacer: un carrusel.")
+    response = runtime.run_turn("¿Qué tema sube esta semana?", model=model)
+    first = response["answer_es"].splitlines()[0]
+    assert first.startswith("Decisión del radar:")  # dev slice: no scores -> pendiente
+    master = [m for m in model.calls if m[0]["content"].startswith("Eres el Maestro")][-1]
+    assert "No la repitas" in master[1]["content"] and "z_7d" in master[1]["content"]
