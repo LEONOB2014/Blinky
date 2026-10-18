@@ -74,3 +74,11 @@ report by **05:00**; editor sheet by **08:30**.
 ## If blocked
 
 `BLOCKED: <reason>` at the top of `status/WS4.md`, then stop.
+
+## Addendum (orchestrator, 21:10 UTC-5): measured on the dev slice
+
+- `z_7d` reaches 46 for `regulation_policy` on 2026-10-17: the 28-day baseline's SD is tiny for low-volume
+  subtopics. Use a robust z (median/MAD, or a floor on the SD) or a percentile, and test it on that row.
+- `energy_climate` has no rows yet (WS1 adds its rule in S4); do not special-case it.
+- The agent runtime (`agents/`, merged) reads `topic_scores_weekly` through `get_top10` and
+  `get_topic_scores`: once your table validates, decision cards appear in the Media Master's answers.
