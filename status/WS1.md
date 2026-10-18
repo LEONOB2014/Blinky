@@ -6,7 +6,29 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` · draft PR #7
+2026-10-17 22:45 UTC-5 · branch `feat/ws1-gdelt-loop` · Addendum 2 done, push waits for the maintainer
+
+Previous: 2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` · draft PR #7
+
+## Addendum 2 (22:30): topic -> subtopic table and the dev cut
+
+- `bq_sql/s12_topic_subtopic_weekly.sql` -> `radar.topic_subtopic_weekly`, per the contract: ring-1 articles,
+  topics = the `topic_daily` ids, Monday weeks, `subtopic` NULL for articles with none. It reads the ring-1
+  org/theme arrays of `article_segment` instead of `article_entities` (the same entities: 1.24 GB vs 2.89 GB
+  dry run, so the whole job dry-runs at 1.42 GiB instead of 2.95 GiB).
+  - Bill: 1,526,726,656 bytes = 1.42 GiB (measured), dry run 1,526,319,470 (measured); check query 0.08 GiB (measured).
+  - Rows: 1,265,930; 9,123 topics; 51 weeks; 233,351 NULL-subtopic rows; 0 duplicate keys; 0 rows with
+    n_articles > n_topic_articles (measured). Where a topic has articles without a subtopic, those are 55.2%
+    of its articles (pooled over such rows, measured): the regex leaves most ring-1 articles unlabelled.
+- Lake: `lake/gold/topic_subtopic_weekly.parquet`, 1,265,930 rows, 3.5 MiB, 1,000 sampled rows valid
+  (measured). `RADAR_PROFILE=full uv run pytest -m data`: 20 passed.
+- Dev cut (`fixtures/dev/`, from the lake, 0 bytes billed): 2026-08-24..2026-10-17, ranked universe of
+  `taxonomy.yaml` (orgs minus `org_deny`, `TECH_` themes, >= 20 articles in some week): 1,757 topics
+  (1,753 orgs, 4 themes), all kept, no top-N cut needed. `topic_daily.parquet` 42,133 rows, 699 KiB;
+  `topic_subtopic_weekly.parquet` 34,101 rows, 82 KiB (measured). 0 deny-listed orgs in either file.
+- `x-mock` NOT changed: with `dev-slice`, `make test-ws` fails (`test_mock_matches_contract[topic_daily]`,
+  checked) because it needs `mocks/<name>.json`, which this brief does not let me write. For the
+  orchestrator: copy records from the two fixtures into `mocks/` and then flip both `x-mock` values.
 
 ## Done
 
