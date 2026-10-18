@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "radar"
-version = "0.1.0"
+version = "0.2.0"
 description = "Radar de Señal Temprana: the early-signal radar of AI topics for 30X (Reto 30X \"Radar de contenido\")"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -108,7 +108,7 @@ markers = [
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.0"
+version = "0.2.0"
 version_files = ["pyproject.toml:^version"]
 tag_format = "v$version"
 update_changelog_on_bump = true
