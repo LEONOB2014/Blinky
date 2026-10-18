@@ -153,6 +153,8 @@ export interface LeaderRow {
   espt_share?: number | null;
   emergence_rank?: number | null;
   decision?: string | null;
+  /** false for a context-only lexicon entry: shown as "contexto", never ranked */
+  ranked?: boolean;
 }
 
 export interface LeadersResult {
