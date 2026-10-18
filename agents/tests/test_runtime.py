@@ -336,3 +336,46 @@ def test_no_role_or_instruction_gives_the_model_a_video_duration():
     assert "30-45" not in prompt and " s en español" not in prompt
     assert "no inventes duraciones" in runtime.SPECIALISTS["editor"]["role"]
     assert "format_es" not in prompt  # field names leak into answers
+
+
+@pytest.mark.unit
+def test_the_ai_source_resolves_named_topics_to_lexicon_ids(tmp_path, monkeypatch):
+    """Under RADAR_SOURCE=ai a named company resolves to its ai: lexicon id, never a GDELT org."""
+    import polars as pl
+
+    gold = tmp_path / "gold"
+    gold.mkdir()
+    scored = ["ai:infra:nvidia", "ai:lab:nvidia_models", "ai:lab:openai", "ai:lab:google_ai"]
+    pl.DataFrame({"topic_id": scored, "week": ["2026-W42"] * 4}).write_parquet(
+        gold / "topic_ai_scores_weekly.parquet"
+    )
+    monkeypatch.setenv("RADAR_PROFILE", "full")
+    monkeypatch.setenv("RADAR_LAKE", str(tmp_path))
+    monkeypatch.setenv("RADAR_SOURCE", "ai")
+    assert runtime._entity_in_question("¿Qué está pasando con Nvidia?", None) == "ai:infra:nvidia"
+    assert runtime._entity_in_question("¿Con qué se conecta OpenAI?", None) == "ai:lab:openai"
+    assert (
+        runtime._entity_in_question("Los vecinos de Google en el grafo", None) == "ai:lab:google_ai"
+    )
+    # a lexicon topic the AI run did not score never resolves
+    assert runtime._entity_in_question("¿Microsoft es tema caliente?", None) is None
+    assert runtime._entity_in_question("¿Qué opina Sam Altman de la regulación?", None) is None
+    assert runtime._entity_in_question("¿Qué debería publicar 30X esta semana?", None) is None
+
+
+@pytest.mark.unit
+def test_without_the_ai_source_named_topics_stay_gdelt_ids(monkeypatch):
+    monkeypatch.delenv("RADAR_SOURCE", raising=False)
+    assert runtime._entity_in_question("Muéstrame los vecinos de Google en el grafo", None) == (
+        "org:google"
+    )
+
+
+@pytest.mark.unit
+def test_auditor_does_not_read_a_number_out_of_30x():
+    from agents.runtime import untraced_numbers
+
+    results = [{"result": {"articles": 44}}]
+    assert untraced_numbers('Enfoque: "Datos del radar de 30X".', results, "") == []
+    assert untraced_numbers("30X vio 44 artículos y 9999 medios.", results, "") == ["9999"]
+    assert untraced_numbers("Subió un 31% esta semana.", results, "") == ["31%"]  # % still read

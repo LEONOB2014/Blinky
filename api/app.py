@@ -3,6 +3,7 @@
 Implements every path in `contracts/api.yaml`:
 - `GET /api/radar`
 - `GET /api/community`
+- `GET /api/leaders`
 - `GET /api/topic/{topic_id}/timeline`
 - `GET /api/topic/{topic_id}/context`
 - `GET /api/freshness`
@@ -30,7 +31,7 @@ from pydantic import BaseModel, Field
 
 from agents.llm import ChatModel, NebiusChat, model_config
 from agents.runtime import run_turn
-from agents.tools import week_bounds
+from agents.tools import LEADERS_LIMIT, get_leaders, week_bounds
 from radar.contracts import CONTRACTS_DIR, load_schema
 from radar.paths import REPO_ROOT, gold, profile
 
@@ -74,6 +75,22 @@ _FRESHNESS_TABLES: tuple[tuple[str, str], ...] = (
 
 
 PERSON_PREFIX = "per:"  # persons are never served (privacy guard, whatever the lake holds)
+
+# The AI lexicon run writes parallel tables. The default stays the v0.2 GDELT ranking.
+_AI_TABLES = {
+    "topic_scores_weekly": "topic_ai_scores_weekly",
+    "topic_daily": "topic_ai_daily",
+}
+
+
+def _lake_table(name: str) -> str:
+    """Table the API reads. `RADAR_SOURCE=ai` uses the lexicon run when that file exists."""
+    if os.environ.get("RADAR_SOURCE") != "ai":
+        return name
+    alt = _AI_TABLES.get(name)
+    if alt is not None and gold(alt).exists():
+        return alt
+    return name
 
 
 @lru_cache(maxsize=1)
@@ -140,17 +157,6 @@ def _normalize_score_row(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _ranked_scores_table() -> str:
-    """Lexicon scores when that table is in the profile; otherwise the v0.2 table.
-
-    Both match ``topic_scores_weekly``. The dev slice has no ``topic_ai_scores_weekly``,
-    so the default profile keeps the org and subtopic ranking.
-    """
-    if gold("topic_ai_scores_weekly").exists():
-        return "topic_ai_scores_weekly"
-    return "topic_scores_weekly"
-
-
 @app.get("/api/radar")
 def get_radar(
     response: Response,
@@ -165,9 +171,10 @@ def get_radar(
     The table is small and DuckDB 1.5.6 cannot filter the Polars-written file ("PlainSkip
     not implemented"), so it is scanned with Polars and the week filter pushed down.
     """
-    path = gold(_ranked_scores_table())
+    table = _lake_table("topic_scores_weekly")
+    path = gold(table)
     if not path.exists():
-        reason = f"topic_scores_weekly not available yet in profile {profile()} (pending WS4)"
+        reason = f"{table} not available yet in profile {profile()} (pending WS4)"
         response.headers["X-Radar-Empty-Reason"] = reason
         response.headers["X-Radar-Status"] = "pending-ws4"
         return []
@@ -243,12 +250,35 @@ def get_community(
     return rows
 
 
+@app.get("/api/leaders")
+def get_leaders_endpoint(
+    response: Response,
+    week: Annotated[str | None, Query(pattern=r"^[0-9]{4}-W[0-9]{2}$")] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = LEADERS_LIMIT,
+) -> dict[str, Any]:
+    """The week's AI leaders by volume (`agents.tools.get_leaders`), the giants the emergence top
+    10 leaves out by design. Only under `RADAR_SOURCE=ai`: the v0.2 GDELT ranking has no leaders
+    list, so it returns no rows and says why in `X-Radar-Empty-Reason`."""
+    empty = {"week": week, "days_with_data": None, "prev_week_days_with_data": None, "rows": []}
+    if os.environ.get("RADAR_SOURCE") != "ai":
+        response.headers["X-Radar-Empty-Reason"] = "leaders need RADAR_SOURCE=ai (AI lexicon run)"
+        return empty
+    out = get_leaders(week, limit)
+    if not out.get("available"):
+        response.headers["X-Radar-Empty-Reason"] = out.get("reason") or "no AI leaders"
+        return empty
+    rows = [r for r in out["rows"] if not is_person(r["topic_id"])]
+    return {k: out[k] for k in ("week", "days_with_data", "prev_week_days_with_data")} | {
+        "rows": rows
+    }
+
+
 @app.get("/api/topic/{topic_id}/timeline")
 def get_topic_timeline(topic_id: str) -> list[dict[str, Any]]:
     """Daily series of one topic by language (`topic_daily.schema.json`)."""
     if is_person(topic_id):
         return []
-    topic_daily_path = gold("topic_daily")
+    topic_daily_path = gold(_lake_table("topic_daily"))
     if topic_daily_path.exists():
         file_path = str(topic_daily_path)
         rows = _query_rows(

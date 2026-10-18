@@ -1,3 +1,7 @@
+READY FOR WP2 (09:05 UTC-5): `lake/gold/topic_ai_daily.parquet` (66,473 rows, 110 topics `ai:<id>`, the columns
+of `topic_daily`) and `lake/gold/edges_ai_weekly.parquet` (126,669 rows) exist and are validated.
+`topic_sources_weekly` and `topic_evidence_weekly` now also hold the `ai:` topics. See "WP1" below.
+
 READY FOR EVIDENCE (03:05 UTC-5): `lake/gold/topic_evidence_weekly.parquet` exists (1,200 rows, validated). The
 static files for the Evidence card are written under `web/public/data/evidence/topics/` (git-ignored); the final
 redeploy ships them.
@@ -13,7 +17,52 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 06:40 UTC-5 · branch `fix/ws1-evidence-suffix` · committed locally, not pushed, not deployed.
+2026-10-18 09:38 UTC-5 · branch `feat/ws1-ai-topics` (evidence for the scored AI topics) · committed locally, not pushed.
+
+## Evidence for the scored AI topics (09:38 UTC-5)
+
+`evidence_topics.py --ai` now takes the AI topics from `lake/gold/topic_ai_scores_weekly.parquet` (WS4, floor
+of 20, `feat/ws4-ai-ranking` 2c58b03) like the v0.2 topics: rank <= 30, last 8 scored weeks. The volume
+stand-in remains only for when that file is missing. All numbers *measured*.
+
+- `radar.evidence_topics`: 480 rows (240 v0.2 + 240 `ai:`), 8 weeks 2026-08-24..2026-10-12, loaded (0 bytes).
+- **S14: 1,220,542,464 bytes billed** (dry run within the guard; logged in `reports/bq_ledger.csv`).
+- `topic_evidence_weekly`: 2,391 rows, of which 1,200 `ai:` (240 topic-weeks, 88 topics, 5 each) and the
+  1,191 v0.2 rows unchanged. 0 duplicates by normalized title.
+- **Coverage of the scored W42 top 10:** 10 / 10 `ai:` topics with rank <= 10 in 2026-W42 are in the loaded
+  evidence set, and 10 / 10 have evidence rows.
+
+Previous: 2026-10-18 09:05 UTC-5 · branch `feat/ws1-ai-topics` (WP1, AI-lexicon topics and edges) · committed locally, not pushed.
+
+## WP1: AI-lexicon topics and edges (09:05 UTC-5)
+
+`pipelines/ingest/gen_ai_sql.py` turns `contracts/ai_lexicon.yaml` (PR #66, 110 entries) into S15 and S16.
+All numbers *measured*.
+
+- **BigQuery, 4 jobs, 4,152,360,960 bytes billed** (logged in `reports/bq_ledger.csv`):
+  S15 823,132,160; S16 659,554,304; S13 1,449,132,032; S14 1,220,542,464. Ledger total 388.50 GB over 73 jobs.
+- **`topic_ai_daily`:** 66,473 rows, 2025-11-01..2026-10-18. All 110 entries match at least one article.
+  No article floor.
+- **`edges_ai_weekly`:** 126,669 rows (51 weeks, `lang_bucket` 'all' plus each language). No floor on `n`,
+  unlike `edges_weekly` (n >= 3): consumers choose theirs.
+- **`topic_sources_weekly`:** 5,237 `ai:` rows (110 topics) next to the 270,888 v0.2 rows.
+- **`topic_evidence_weekly`:** 1,200 `ai:` rows (top 30 `ai:` topics by articles, 8 weeks, 5 each; 49
+  topics) next to the 1,191 v0.2 rows, which are unchanged. 0 duplicates by normalized title.
+- **W42 (2026-10-12) top 20 by articles, all languages** (articles, of which es+pt):
+  1 `infra:nvidia` 4,767 (75) · 2 `lab:openai` 2,698 (203) · 3 `lab:microsoft_ai` 2,161 (67) ·
+  4 `lab:google_ai` 2,122 (28) · 5 `lab:anthropic` 1,947 (137) · 6 `tech:agents` 997 (81) ·
+  7 `product:chatgpt` 929 (101) · 8 `infra:datacenters` 764 (33) · 9 `product:ai_browser_search` 686 (2) ·
+  10 `infra:cloud_neoclouds` 555 (10) · 11 `lab:meta_ai` 533 (118) · 12 `infra:amd` 485 (3) ·
+  13 `infra:tsmc_foundry` 442 (2) · 14 `risk:cyber` 416 (46) · 15 `society:jobs` 379 (44) ·
+  16 `biz:ai_stocks_markets` 368 (4) · 17 `policy:copyright` 336 (33) · 18 `lab:amazon_ai` 326 (13) ·
+  19 `infra:energy` 309 (12) · 20 `society:leaders_executives` 307 (26).
+  W42 has data through 2026-10-18 only. This is a volume ranking, not WS4's priority.
+- **Mocks** `mocks/topic_ai_daily.json` and `mocks/edges_ai_weekly.json` are real rows from the dev
+  window. The tables have no text columns.
+- **For WP2:** the `ai:` evidence covers the top 30 by volume (`evidence_topics.py --ai`). Once WS4 scores
+  the `ai:` topics, rerun `evidence_topics.py` (its scored top 30 then holds them) and S14 (about 1.2 GB).
+
+Previous: 2026-10-18 06:40 UTC-5 · branch `fix/ws1-evidence-suffix` · committed locally, not pushed, not deployed.
 
 Previous: 2026-10-18 03:05 UTC-5 · branch `feat/ws1-topic-evidence` (WS1d) · committed locally, the orchestrator pushes.
 

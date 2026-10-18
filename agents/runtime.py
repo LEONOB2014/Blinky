@@ -36,6 +36,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
             "get_language_coverage",
             "get_topic_sources",
             "get_topic_evidence",
+            "get_leaders",
         ],
         "role": "Mides qué temas de IA crecen, en qué etapa están y su carga emocional, con las "
         "señales normalizadas de GDELT (participación del día, z_7d, crecimiento, tono, controversia). "
@@ -270,7 +271,8 @@ def run_specialist(model: ChatModel, turn: Turn, agent: str, question: str) -> s
 
 # --- Auditor (deterministic) ------------------------------------------------------------------
 
-_NUM = re.compile(r"(?<![\w-])-?\d+(?:[.,]\d+)?%?")
+# whole tokens only: "30X" (the client's name) is not the number 30
+_NUM = re.compile(r"(?<![\w-])-?\d+(?:[.,]\d+)?%?(?![\w])")
 
 
 _MONTHS_ES = [
@@ -808,6 +810,8 @@ _NON_NAME = re.compile(r"[^\w&.-]+")
 def _entity_in_question(question: str, week: str | None) -> str | None:
     """The graph topic a question names: a full node name in the text ('google' -> 'org:google'),
     else the longest 1-3 word phrase that resolves to one ('OpenAI' -> GDELT's 'org:openai inc')."""
+    if tools.ai_source():  # the AI run ranks ai: lexicon topics, never GDELT org ids
+        return tools.ai_topic_in(question)
     # whole words only: a plain substring test found 'org:a co' inside "ha costado"
     padded = f" {_NON_NAME.sub(' ', question.lower())} "
     names = tools.graph_nodes(week)
@@ -892,6 +896,50 @@ def _leader(result: dict[str, Any]) -> str | None:
     return (trends or {}).get("fastest_growing_subtopic")
 
 
+# "¿qué es lo más grande / lo más importante esta semana?": the leaders by volume, not the
+# emergence top 10 (which ranks what is rising and leaves Nvidia or OpenAI out by design)
+_LEADERS_Q = re.compile(
+    r"lo m[aá]s (?:grande|importante|relevante|destacado|comentado|mencionado)|l[ií]deres|"
+    r"m[aá]s se habla|temas m[aá]s grandes|m[aá]s cobertura",
+    re.I,
+)
+LEADERS_SHOWN = 5
+
+
+def leaders_block(turn: Turn) -> str:
+    """The week's AI leaders by volume, written by code from get_leaders."""
+    out = next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_leaders" and r["result"].get("available")
+        ),
+        None,
+    )
+    if not out or not out["rows"]:
+        return ""
+    lines = []
+    for r in out["rows"][:LEADERS_SHOWN]:
+        change = ""
+        if r["change_vs_prev_week"] is not None:
+            change = (
+                f", {r['change_vs_prev_week']:+.0%} por día con datos frente a la semana previa"
+            )
+        rank = (
+            f"; en emergencia va en el puesto {r['emergence_rank']}"
+            if r.get("emergence_rank") is not None
+            else ""
+        )
+        lines.append(
+            f"{r['leader_rank']}. {r['label_es']} ({r['family_es']}): {r['articles']} artículos"
+            f"{change}{rank}"
+        )
+    return (
+        f"Lo más grande de la semana ({out['week']}, por volumen de artículos en todos los "
+        f"idiomas; {out['days_with_data']} días con datos):\n" + "\n".join(lines)
+    )
+
+
 @traceable(
     run_type="chain", process_inputs=lambda i: {"agent": i["agent"], "question": i["question"]}
 )
@@ -912,7 +960,12 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
         )
         + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else [])
         + ([("get_topic_sources", {"topic_id": entity, "week": week})] if entity else [])
-        + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
+        + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else [])
+        + (
+            [("get_leaders", {"week": week or ctx["signals"].get("week")})]
+            if _LEADERS_Q.search(question)
+            else []
+        ),
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
@@ -1117,7 +1170,11 @@ def run_turn(
             )
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
         decides = "signal_analyst" in needed or "editor" in needed
-        line = decision_line(turn, entity, question) if decides else ""
+        leaders = leaders_block(turn) if _LEADERS_Q.search(question) else ""
+        # a leaders question is about volume: the emergence #1's decision line would mislead
+        line = decision_line(turn, entity, question) if decides and not leaders else ""
+        if leaders:
+            line = f"{line}\n\n{leaders}" if line else leaders
         block = evidence_block(turn) if _EVIDENCE_Q.search(question) else ""
         if block:
             line = f"{line}\n\n{block}" if line else block
@@ -1130,7 +1187,7 @@ def run_turn(
         trust = trust_line(turn) if "auditor" in needed and _TRUST_Q.search(question) else ""
         if trust:
             line = f"{line}\n\n{trust}" if line else trust
-        coverage = coverage_line(turn) if decides or entity else ""
+        coverage = coverage_line(turn) if (decides or entity) and not leaders else ""
         if coverage:
             line = f"{line}\n\n{coverage}" if line else coverage
         instructions = (
