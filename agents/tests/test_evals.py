@@ -103,3 +103,12 @@ def test_v2_questions_keep_v1_and_name_only_lexicon_ids():
     assert set(named.values()) <= ids
     changed = {a["id"] for a, b in zip(v1["questions"], v2["questions"], strict=True) if a != b}
     assert changed == set(named)  # only the entity questions differ
+
+
+def test_v3_adds_three_community_questions_to_a_frozen_v2():
+    v2 = ev.load_questions(ev.QUESTIONS.with_name("questions_v2.yaml"))
+    v3 = ev.load_questions(ev.QUESTIONS.with_name("questions_v3.yaml"))
+    assert v3["version"] == 3 and v3["questions"][:25] == v2["questions"]
+    new = v3["questions"][25:]
+    assert [q["id"] for q in new] == ["q26", "q27", "q28"]
+    assert all(q["kind"] == "community" and not q.get("entity") for q in new)
