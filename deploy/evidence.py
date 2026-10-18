@@ -6,6 +6,8 @@ The reports are read as they are in git; nothing is recomputed or summarised by 
   A report that does not exist yet is written as `{"available": false}`.
 - `ledgers.json`: totals of `reports/bq_ledger.csv` (jobs, bytes billed, by workstream) and
   `reports/jev_ledger.csv` (calls, input tokens, cost, median latency), computed from the rows.
+- `trust_summary.json`: the executive summary at the top of the trust panel, short Spanish points
+  marked measured or estimate, from agents/trust.py (the same parsers as the chat's trust line).
 - `index.json`: which files exist and when they were generated.
 
     uv run python deploy/evidence.py [OUT_DIR]     # default web/public/data/evidence/
@@ -20,6 +22,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+from agents.trust import trust_summary
 
 REPO = Path(__file__).resolve().parents[1]
 REPORTS = REPO / "reports"
@@ -116,6 +120,7 @@ def write_evidence(out: Path = OUT, reports: Path = REPORTS) -> int:
         "backtest.json": report_json("backtest.md", reports),
         "label_quality.json": report_json("label_quality.md", reports),
         "ledgers.json": ledgers(reports),
+        "trust_summary.json": trust_summary(reports),
     }
     files["index.json"] = {
         "generated_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

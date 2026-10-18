@@ -1,0 +1,122 @@
+[
+  {
+    "lang_bucket": "all",
+    "n": 874,
+    "n_docs": 18106,
+    "n_src": 358,
+    "npmi": 0.1416337157756287,
+    "nx": 4767,
+    "ny": 2161,
+    "wk": "2026-10-12",
+    "x": "ai:infra:nvidia",
+    "y": "ai:lab:microsoft_ai"
+  },
+  {
+    "lang_bucket": "all",
+    "n": 504,
+    "n_docs": 18106,
+    "n_src": 327,
+    "npmi": 0.19213992996827536,
+    "nx": 2122,
+    "ny": 2161,
+    "wk": "2026-10-12",
+    "x": "ai:lab:google_ai",
+    "y": "ai:lab:microsoft_ai"
+  },
+  {
+    "lang_bucket": "all",
+    "n": 434,
+    "n_docs": 18106,
+    "n_src": 386,
+    "npmi": 0.306267076951931,
+    "nx": 2698,
+    "ny": 929,
+    "wk": "2026-10-12",
+    "x": "ai:lab:openai",
+    "y": "ai:product:chatgpt"
+  },
+  {
+    "lang_bucket": "all",
+    "n": 398,
+    "n_docs": 18106,
+    "n_src": 230,
+    "npmi": 0.2977905492129272,
+    "nx": 485,
+    "ny": 4767,
+    "wk": "2026-10-12",
+    "x": "ai:infra:amd",
+    "y": "ai:infra:nvidia"
+  },
+  {
+    "lang_bucket": "all",
+    "n": 391,
+    "n_docs": 18106,
+    "n_src": 215,
+    "npmi": 0.31599267096528283,
+    "nx": 4767,
+    "ny": 442,
+    "wk": "2026-10-12",
+    "x": "ai:infra:nvidia",
+    "y": "ai:infra:tsmc_foundry"
+  },
+  {
+    "lang_bucket": "all",
+    "n": 349,
+    "n_docs": 18106,
+    "n_src": 198,
+    "npmi": -0.11915039961314845,
+    "nx": 4767,
+    "ny": 2122,
+    "wk": "2026-10-12",
+    "x": "ai:infra:nvidia",
+    "y": "ai:lab:google_ai"
+  },
+  {
+    "lang_bucket": "spa",
+    "n": 26,
+    "n_docs": 780,
+    "n_src": 24,
+    "npmi": 0.43876093849848813,
+    "nx": 152,
+    "ny": 30,
+    "wk": "2026-10-12",
+    "x": "ai:lab:openai",
+    "y": "ai:policy:copyright"
+  },
+  {
+    "lang_bucket": "spa",
+    "n": 21,
+    "n_docs": 780,
+    "n_src": 18,
+    "npmi": 0.020683368491152557,
+    "nx": 100,
+    "ny": 152,
+    "wk": "2026-10-12",
+    "x": "ai:lab:anthropic",
+    "y": "ai:lab:openai"
+  },
+  {
+    "lang_bucket": "spa",
+    "n": 20,
+    "n_docs": 780,
+    "n_src": 17,
+    "npmi": 0.11236004931160869,
+    "nx": 152,
+    "ny": 68,
+    "wk": "2026-10-12",
+    "x": "ai:lab:openai",
+    "y": "ai:product:chatgpt"
+  },
+  {
+    "lang_bucket": "spa",
+    "n": 16,
+    "n_docs": 780,
+    "n_src": 14,
+    "npmi": 0.4659930360234941,
+    "nx": 30,
+    "ny": 68,
+    "wk": "2026-10-12",
+    "x": "ai:policy:copyright",
+    "y": "ai:product:chatgpt"
+  }
+]

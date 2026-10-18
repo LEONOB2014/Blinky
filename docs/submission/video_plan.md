@@ -10,7 +10,7 @@ comandos. Todo vive en `lake/video/` (fuera de git).
 ```
 lake/video/
   audio/   01_gancho.wav  02_top10.wav  03_porque.wav  04_confianza.wav  05_cierre.wav
-  shots/   01_gancho.png  02_top10.png  03a_serie_anillo.png  03b_chat.png  04_confianza.png
+  shots/   01_gancho.png  02_top10.png  03a_lentes.mov  03b_chat.png  04_confianza.png
            05a_temporal.mov  05b_historia.png
   build/   (segmentos intermedios)
   radar_demo.mp4
@@ -18,13 +18,22 @@ lake/video/
 
 ## Lista de tomas (coincide con el guion)
 
+Todas las tomas salen del sitio público en una sola pantalla: el top 10 a la izquierda, el grafo con
+sus 8 lentes en el centro y la píldora del chat abajo a la derecha. Chrome con ventana visible, nunca
+headless (headless no captura las capas WebGL), a 1440x900 como las capturas de ensayo de
+`status/WS9.md`; ffmpeg las lleva a 1920x1080 con bandas.
+
 | Bloque | Audio (≈ duración) | Toma | Cómo se captura |
 |---|---|---|---|
-| 1. Gancho | `01_gancho.wav` (30 s) | `01_gancho.png`: parte superior del sitio público (título, frescura, perfil `full`) | Chrome con ventana visible a 1920x1080, captura de ventana (⇧⌘4, espacio) |
-| 2. Top 10 | `02_top10.wav` (75 s) | `02_top10.png`: las tarjetas #1-#3 con sus fichas | igual, con la página desplazada a las tarjetas |
-| 3. Por qué y cómo adaptarlo | `03_porque.wav` (75 s) | `03a_serie_anillo.png` (serie diaria y anillo de la historia 1 de `stories.md`) y `03b_chat.png` (respuesta del chat y traza) | captura después de una pregunta real; el chat gasta crédito y tiene límite de 10 cada 10 min por IP |
-| 4. Confianza | `04_confianza.wav` (60 s) | `04_confianza.png`: tabla de evidencia (backtest, P/R, costo, fuentes) con los números ya llenos | captura de la diapositiva o de `submission_text.md` renderizado |
-| 5. Cierre | `05_cierre.wav` (60 s) | `05a_temporal.mov` (barrido de las 13 semanas, ~35 s) y `05b_historia.png` (vista de historia del #1) | **Chrome con ventana visible, nunca headless** (headless no captura las capas WebGL): servir `lake/views` en local, abrir `temporal.html`, grabar la ventana con `screencapture -v -V 35 lake/video/shots/05a_temporal.mov` (macOS) mientras corre el play |
+| 1. Gancho | `01_gancho.wav` (30 s) | `01_gancho.png`: la vista inicial (título, frescura, top 10, grafo en la lente Radar, chat cerrado) | captura de ventana (⇧⌘4, espacio) |
+| 2. Top 10 | `02_top10.wav` (75 s) | `02_top10.png`: la tarjeta #1 abierta con sus fichas medido / estimado, **Brief y Evidencia cerrados**, y el grafo en la lente Historia con el tema y sus vecinos nombrados | igual, después de un clic en la tarjeta #1 |
+| 3. Por qué, cómo adaptarlo y las lentes | `03_porque.wav` (75 s) | `03a_lentes.mov` (Radar → Momento → Puente → Comunidades → Novedad, unos 2 s cada una) y `03b_chat.png` (la respuesta a "¿Cuál es el ángulo para ejecutivos de LatAm esta semana?" con la línea "Decisión del radar: …", la línea de cobertura y la traza) | `screencapture -v -V 12 lake/video/shots/03a_lentes.mov` mientras se pulsan las lentes; el chat gasta crédito y tiene un límite de 10 preguntas cada 10 min por visitante |
+| 4. Confianza | `04_confianza.wav` (60 s) | `04_confianza.png`: la respuesta calibrada a "¿Cuánto puedo confiar en el radar? ¿Hay backtest?" (la línea del código con 29,2%, el intervalo y "Úsalo como señal temprana, no como garantía"), o el panel **Confianza** abierto | captura después de la pregunta; el panel no gasta crédito |
+| 5. Cierre | `05_cierre.wav` (60 s) | `05a_temporal.mov` (pantalla completa, ▶ Reproducir 13 semanas, ~35 s) y `05b_historia.png` (la tarjeta #1 en la lente Historia) | `screencapture -v -V 35 lake/video/shots/05a_temporal.mov` mientras corre el play |
+
+Si algo no se puede grabar en vivo, `docs/media/` tiene GIF y capturas del sitio ya revisados (sin
+titulares, URLs ni nombres de personas): `radar-lenses.gif` para el bloque 3, `radar-trust.png` para
+el 4 y `radar-play.gif` para el 5. Para el video, mejor grabar `.mov`: los GIF tienen 64 a 128 colores.
 
 Las duraciones son objetivos; ffmpeg usa la duración real de cada toma.
 
@@ -47,14 +56,15 @@ seg_still shots/02_top10.png     audio/02_top10.wav     build/02.mp4
 seg_still shots/04_confianza.png audio/04_confianza.wav build/04.mp4
 ```
 
-Bloque 3: dos imágenes que se reparten la toma en partes iguales.
+Bloque 3: el clip de las lentes, repetido hasta llenar la primera mitad de la toma, y luego la
+imagen del chat.
 
 ```bash
 dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 audio/03_porque.wav)
 half=$(python3 -c "print($dur/2)")
-ffmpeg -y -loop 1 -framerate 30 -t "$half" -i shots/03a_serie_anillo.png \
+ffmpeg -y -stream_loop -1 -t "$half" -i shots/03a_lentes.mov \
           -loop 1 -framerate 30 -t "$half" -i shots/03b_chat.png -i audio/03_porque.wav \
-  -filter_complex "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[a];\
+  -filter_complex "[0:v]fps=30,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[a];\
 [1:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[b];\
 [a][b]concat=n=2:v=1:a=0,format=yuv420p[v];[2:a]loudnorm=I=-16:TP=-1.5:LRA=11[aud]" \
   -map "[v]" -map "[aud]" -ar 48000 -c:v libx264 -preset medium -crf 20 -c:a aac -b:a 192k \
@@ -89,7 +99,9 @@ ffprobe -v error -show_entries format=duration -of csv=p=0 radar_demo.mp4   # ob
 - Duración total de 300 s o menos (`ffprobe`); si se pasa, regrabar la toma más larga, no acelerar.
 - Escuchar el volumen: `loudnorm` deja cada bloque cerca de -16 LUFS, así que no hay saltos entre
   bloques.
-- Ninguna captura muestra titulares, URLs de noticias ni nombres de personas: el sitio muestra ids de
-  temas, no titulares. Si una captura del chat cita uno, recortarla.
-- Los números que se dicen en el audio son los de `stories.md`, `status/WS9.md` y los reportes del
-  momento de la grabación; los `[PENDIENTE]` se graban solo cuando llegan los números.
+- Ninguna toma muestra titulares, URLs de noticias ni nombres de personas. El sitio sí los muestra en
+  **Evidencia** y en las respuestas del chat sobre artículos: dejar Evidencia cerrada, no preguntar
+  por artículos, y revisar cuadro a cuadro las tomas del chat antes de montar. Si alguna cita uno,
+  recortarla o regrabarla.
+- Los números que se dicen en el audio son los de `stories.md`, `status/WS9.md`,
+  `status/WS0-agents.md` y los reportes de `reports/` del momento de la grabación.

@@ -3,7 +3,6 @@ profile) and returns plain JSON. When the table a tool needs does not exist yet,
 (`available: false` and the reason) instead of returning anything invented.
 """
 
-import csv
 import datetime as dt
 import functools
 import json
@@ -18,6 +17,14 @@ import polars as pl
 import yaml
 from jsonschema import Draft202012Validator
 
+from agents.trust import (  # noqa: F401 - re-exported for the agents and tests
+    BQ_FREE_TIB_PER_MONTH,
+    BQ_PRICE_SOURCE,
+    BQ_USD_PER_TIB,
+    TIB,
+    backtest_summary,
+    ledger_costs,
+)
 from radar.contracts import load_schema
 from radar.paths import REPO_ROOT, gold, lake, profile
 
@@ -596,59 +603,10 @@ def get_freshness() -> dict[str, Any]:
     return {"available": True, "profile": profile(), "newest": out}
 
 
-# BigQuery on-demand compute: first 1 TiB per month free, then USD 6.25 per TiB (checked
-# 2026-10-18 at https://cloud.google.com/bigquery/pricing).
-BQ_FREE_TIB_PER_MONTH = 1
-BQ_USD_PER_TIB = 6.25
-BQ_PRICE_SOURCE = "cloud.google.com/bigquery/pricing (on-demand, consultado el 2026-10-18)"
-TIB = 2**40
-
-
 def get_cost_ledger() -> dict[str, Any]:
     """What the radar has cost: BigQuery bytes billed (measured) with the free tier and the USD it
-    implies (estimate), plus Jev's USD from its own ledger (measured)."""
-    path = REPO_ROOT / "reports" / "bq_ledger.csv"
-    with path.open(encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    billed = sum(int(r["billed_bytes"] or 0) for r in rows)
-    month = max((r["ts_utc"][:7] for r in rows), default=None)
-    month_billed = sum(int(r["billed_bytes"] or 0) for r in rows if r["ts_utc"][:7] == month)
-    over_free = max(0.0, month_billed / TIB - BQ_FREE_TIB_PER_MONTH)
-    return {
-        "available": True,
-        "bigquery": {
-            "medido": "bytes facturados según reports/bq_ledger.csv",
-            "jobs": len(rows),
-            "billed_gb": round(billed / 1e9, 2),
-            "billed_tib": round(billed / TIB, 4),
-            "mes": month,
-            "billed_tib_mes": round(month_billed / TIB, 4),
-            "cuota_gratuita_tib_mes": BQ_FREE_TIB_PER_MONTH,
-            "cuota_gratuita_usada": round(month_billed / TIB / BQ_FREE_TIB_PER_MONTH, 4),
-            "estimado": "costo en USD calculado con el precio público, no una factura",
-            "precio_usd_por_tib": BQ_USD_PER_TIB,
-            "fuente_precio": BQ_PRICE_SOURCE,
-            "costo_usd_con_cuota_gratuita": round(over_free * BQ_USD_PER_TIB, 2),
-            "costo_usd_sin_cuota_gratuita": round(billed / TIB * BQ_USD_PER_TIB, 2),
-            "nota": "la cuota gratuita es por cuenta de facturación; si otros proyectos de la cuenta "
-            "ya la usaron este mes, el costo real se acerca al de sin cuota",
-        },
-        "jev": _jev_ledger(),
-    }
-
-
-def _jev_ledger() -> dict[str, Any]:
-    path = REPO_ROOT / "reports" / "jev_ledger.csv"
-    if not path.exists():
-        return {"available": False, "reason": "reports/jev_ledger.csv todavía no existe"}
-    with path.open(encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    return {
-        "available": True,
-        "medido": "suma de cost_usd en reports/jev_ledger.csv",
-        "llamadas": len(rows),
-        "costo_usd": round(sum(float(r["cost_usd"] or 0) for r in rows), 4),
-    }
+    implies (estimate), plus Jev's USD from its own ledger (measured). See agents/trust.py."""
+    return {"available": True} | ledger_costs(REPO_ROOT / "reports")
 
 
 def get_segment_mix(week: str | None = None) -> dict[str, Any]:
@@ -670,70 +628,6 @@ def _report(name: str) -> dict[str, Any]:
     if not path.exists():
         return {"available": False, "reason": f"reports/{name} todavía no existe"}
     return {"available": True, "report": path.read_text(encoding="utf-8")[:4000]}
-
-
-PUBLISHED = "Radar, with the eligibility gate and the syndication guard (published)"
-RAW_GROWTH = "Baseline: raw-count growth"
-PERSISTENCE = "Baseline: persistence"
-_PCT = r"(\d+(?:\.\d+)?)%"
-
-
-def backtest_summary(text: str) -> dict[str, Any] | None:
-    """The published radar against its baselines, parsed from the primary label's table of
-    reports/backtest.md (the first one): precision on labelled slots with its 95% interval, the
-    worst and best cases, the base rate, and whether each worst-case advantage holds. None when
-    the report has no such table, so no trust line is written from a guess."""
-    start = text.find("### Precision@10")
-    if start < 0:
-        return None
-    section = text[start:]
-    end = section.find("\n## ")
-    section = section if end < 0 else section[:end]
-
-    def row(prefix: str) -> list[str] | None:
-        for line in section.splitlines():
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if cells and cells[0].startswith(prefix):
-                return cells
-        return None
-
-    def ranker(prefix: str) -> dict[str, float] | None:
-        cells = row(prefix)
-        if not cells or len(cells) < 6:
-            return None
-        prec, ci = re.search(_PCT, cells[2]), re.findall(_PCT, cells[3])
-        worst, best = re.search(_PCT, cells[4]), re.search(_PCT, cells[5])
-        if not (prec and len(ci) == 2 and worst and best):
-            return None
-        return {
-            "precision_pct": float(prec.group(1)),
-            "ic95_pct": [float(ci[0]), float(ci[1])],
-            "peor_caso_pct": float(worst.group(1)),
-            "mejor_caso_pct": float(best.group(1)),
-        }
-
-    def holds(baseline: str) -> bool | None:
-        for line in section.splitlines():
-            if line.startswith(f"- {PUBLISHED} (worst) minus {baseline}"):
-                return "does not hold" not in line
-        return None
-
-    published, raw, persistence = ranker(PUBLISHED), ranker(RAW_GROWTH), ranker(PERSISTENCE)
-    base = row("Base rate")
-    base_pct = re.search(_PCT, base[2]) if base else None
-    weeks = re.search(r"Evaluable weeks: (\d+)", text)
-    if not (published and raw and persistence and base_pct):
-        return None
-    return {
-        "etiqueta": "el tema sube en páginas vistas de Wikipedia en español y portugués",
-        "semanas_evaluadas": int(weeks.group(1)) if weeks else None,
-        "radar_publicado": published,
-        "tasa_base_pct": float(base_pct.group(1)),
-        "crecimiento_de_menciones": raw,
-        "persistencia": persistence,
-        "supera_crecimiento_en_peor_caso": holds(RAW_GROWTH),
-        "supera_persistencia_en_peor_caso": holds(PERSISTENCE),
-    }
 
 
 def get_backtest() -> dict[str, Any]:
