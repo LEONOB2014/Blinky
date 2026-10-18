@@ -40,6 +40,17 @@ PERSON_PREFIX = "per:"
 SPAN_WEEKS = 13
 MAX_NODES = 1000
 MIN_N = 20
+# The AI graph (--ai) has ~110 curated topics: the v0.2 floor of 20 co-mentions per pair leaves it
+# sparse (2026-W42: 51 edges), so it uses the 1-hop ring's floor (graph/context.py MIN_N = 3); the
+# NPMI cut and the per-node top-k are the same. The floor used is written to _meta.params.
+MIN_N_AI = 3
+
+
+def default_min_n(ai: bool) -> int:
+    """The co-mention floor of the exported graph: the ring's for the AI graph, v0.2's otherwise."""
+    return MIN_N_AI if ai else MIN_N
+
+
 MIN_NPMI = 0.1
 TOP_K = 5
 TOP_LABELS = 30
@@ -1700,7 +1711,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--topic", help="story topic id (default: #1 of the latest scored week)")
     parser.add_argument("--week", help="story ISO week, e.g. 2026-W42 (default: latest scored)")
     parser.add_argument("--max-nodes", type=int, default=MAX_NODES)
-    parser.add_argument("--min-n", type=int, default=MIN_N)
+    parser.add_argument(
+        "--min-n",
+        type=int,
+        default=None,
+        help=f"co-mention floor (default {MIN_N}; {MIN_N_AI} with --ai)",
+    )
     parser.add_argument("--top-k", type=int, default=TOP_K)
     parser.add_argument(
         "--edges",
@@ -1769,7 +1785,7 @@ def main(argv: list[str] | None = None) -> int:
         lexicon=lexicon,
         ai_only=args.ai,
         max_nodes=args.max_nodes,
-        min_n=args.min_n,
+        min_n=args.min_n if args.min_n is not None else default_min_n(args.ai),
         top_k=args.top_k,
     )
     t1 = time.perf_counter()
