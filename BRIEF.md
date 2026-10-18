@@ -66,3 +66,11 @@ API on the dev slice by **23:00**; UI with cards, chat and trace panels by **01:
 
 `BLOCKED: <reason>` at the top of `status/WS5.md`, then stop. If your account cannot run (auth), the
 orchestrator reassigns this brief to Claude #4.
+
+## Addendum (orchestrator, 21:10 UTC-5)
+
+- The agent runtime is merged into this branch: `from agents.runtime import run_turn`; `run_turn(message,
+  conversation_id, week=week)` returns exactly the `/api/chat` response of `contracts/api.yaml`. It needs
+  `NEBIUS_API_KEY` in `.env` (already there). Replace the 503 stub with it; keep the 503 when the key is
+  missing. In tests, pass a scripted model as `agents/tests/test_runtime.py` does (no network in CI).
+- Open this worktree in **Antigravity** (Gemini AI Pro account).
