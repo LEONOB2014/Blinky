@@ -6,7 +6,9 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 06:25 UTC-5 · branch `docs/ws9-final-redeploy` (the final redeploy of `develop` 0a006f8) · committed locally, not pushed.
+2026-10-18 07:20 UTC-5 · branch `docs/ws9-redeploy-0715` (batched redeploy of `develop` 3675f48) · committed locally, not pushed.
+
+Previous: 2026-10-18 06:25 UTC-5 · branch `docs/ws9-final-redeploy` (the final redeploy of `develop` 0a006f8) · committed locally, not pushed.
 
 Previous: 2026-10-18 05:34 UTC-5 · branch `docs/ws9-predeploy-check` (pre-deploy check of `develop` e830a28, no deploy) · committed locally, not pushed.
 
@@ -17,6 +19,80 @@ Previous: 2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 r
 Previous: 2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+
+## Batched redeploy of `develop` 3675f48 (orchestrator's order, 07:14, approved)
+
+On top of revision 00006, this adds:
+- the graph facts and the staging of `views/temporal.json` (#48);
+- the answer polish (#50);
+- the evidence suffix dedupe (#51, shipped through the static re-export);
+- the design polish with the dock pill (#54).
+
+**Result: every step and check passed. Nothing was fixed on the live service.**
+
+- `deploy-develop` was moved to `origin/develop` 3675f48. The dry run passed: every step was
+  listed, and min-instances (0) was kept.
+- **`make redeploy-all ARGS=--run`: 2 min 54 s** (measured):
+  - Cloud Run revision **`radar-api-00007-l96`**, built with Cloud Build;
+  - static export, 7.53 MiB;
+  - 3b graph views: temporal 1,000 nodes / 44,005 edges / 13 weeks, plus 15 stories;
+  - web build;
+  - Netlify production deploy (579 files);
+  - closing `make demo-check`: **7/7**.
+- **Live checks** (measured):
+
+  | Check | Result |
+  |---|---|
+  | `make demo-check` | 7/7 |
+  | `make demo-check ARGS=--chat` | **8/8** (chat turn 12.4 s, 10 trace steps, 3 cards) |
+  | `/fallback/temporal.png` | **200** (343 KB) |
+
+- **Chat, 5 questions on the live API** (Marsh McLennan, W42 #1): **5/5 meet every expectation**.
+
+  | Question | Decision lines | Key fact | Auditor |
+  |---|---|---|---|
+  | Contenido (brief) | 1 | the brief's format and angle; es/pt line "0 en español y 0 en portugués, de 44" | ok |
+  | Artículos (evidence) | 1 | evidence block: "44 artículos de 39 medios" + 5 outlets with date and title | ok |
+  | ¿Cuántos medios? | 1 | **39** (en 44 artículos) | ok |
+  | Subtemas | 1 | finanzas y mercados, infraestructura de chips | ok |
+  | ¿Cómo se arma el grafo? | 1 | "hasta sus 5 conexiones más fuertes, con al menos 20 co-menciones y NPMI mayor que 0,1", 930 topics and 3,463 links this week (`get_graph_facts`) | ok |
+
+  - Every answer carries the es/pt coverage line.
+  - Latency 9.6-14.9 s. 39,870 tokens for the 5 turns (estimate: well under $0.02).
+  - The evidence list no longer holds the site-suffix copy (#51). One prefix variant remains ("THE
+    CLOSING BELL: Wall Street muscles higher…" next to "Wall Street muscles higher…"); a suffix rule
+    does not cover it, by design (WS1e).
+- **Rehearsal shots**, headed Chrome with WebGL at 1440x900, in `lake/submission/shots/` (the
+  revision-00006 shots moved to `rev00006-0630/`):
+
+  | File | What it shows |
+  |---|---|
+  | `01_default_dock_collapsed.png` | Default view, dock collapsed. First frame 0.55 s, ANGLE Metal on the M1 Pro (measured). |
+  | `02_fullscreen.png` | Full screen |
+  | `03_lens_momento.png` | Momento lens |
+  | `04_lens_puente.png` | Puente lens |
+  | `05_card_detail.png` | #1 card detail |
+  | `06_trust.png` | Trust panel |
+  | `07_dock_expanded_answer.png` | Dock expanded with the evidence answer, the decision card and "Auditor: verificado" |
+
+  No page exceptions during the walk.
+
+**Seen live, for the design and agents lanes** (nothing changed):
+- **N1 (design, visible on the first screen):** the "Powered by Netlify" badge sits on top of the
+  collapsed dock pill and hides most of "Pregúntale al Maestro de Medios" (`01_default_dock_collapsed.png`).
+  Move the pill up or left, or check whether the badge can be turned off for the site.
+- N2 (design): the Historia lens legend shows a raw `AI_DOMAIN` chip.
+- N3 (agents):
+  - The subtopics answer still leaks the raw id `funding_markets` and ends with an invented sector
+    story ("cómo la inversión en IA está redefiniendo el sector de seguros").
+  - The graph answer says "temas de seguridad social en LatAm", but there is no LatAm data behind it.
+  - The decision line, the facts and the evidence are right in both; these sentences come from the
+    model, and the number-only Auditor cannot see them.
+- Fixed since 00006, seen live:
+  - a single decision line (was duplicated in the evidence answer);
+  - the dock's decision card is readable;
+  - audience fit is marked as an estimate;
+  - es/pt coverage is stated.
 
 ## Final redeploy of `develop` 0a006f8 (orchestrator's order, 06:15, approved)
 
