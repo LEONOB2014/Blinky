@@ -1,6 +1,6 @@
 """Run the frozen question set through the agents as a LangSmith experiment.
 
-    RADAR_PROFILE=full uv run python -m agents.evals.run_evals --prefix baseline
+    RADAR_PROFILE=full uv run python -m agents.evals.run_evals --prefix baseline --repetitions 3
 
 Needs LANGSMITH_API_KEY (and NEBIUS_API_KEY) in .env. Each run is one experiment on the dataset
 `radar-agents-v<version>`, so prompt, routing or model changes can be compared side by side.
@@ -9,10 +9,13 @@ tokens; one LLM judge (a larger model than the one answering) scores usefulness 
 """
 
 import argparse
+import datetime as dt
 import json
 import os
 import re
+import statistics
 import time
+from collections import defaultdict
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -22,8 +25,8 @@ from dotenv import load_dotenv
 from langsmith import Client
 
 from agents.llm import NebiusChat
-from agents.runtime import _DECISION_WORDS, run_turn
-from radar.paths import REPO_ROOT
+from agents.runtime import _DECISION_WORDS, _git_sha, run_turn
+from radar.paths import REPO_ROOT, gold, lake
 
 QUESTIONS = Path(__file__).with_name("questions.yaml")
 JUDGE_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
@@ -154,12 +157,60 @@ def usefulness(inputs: dict[str, Any], outputs: dict[str, Any]) -> dict[str, Any
 
 
 EVALUATORS = [grounding, decision_faithful, routing, entity_resolved, latency_s, tokens, usefulness]
+KEYS = [e.__name__ for e in EVALUATORS]
+
+
+def summarize(rows: list[dict[str, Any]], repetitions: int) -> dict[str, dict[str, Any]]:
+    """Per evaluator: the mean over every scored run and the spread of the repetition means.
+
+    ``rows`` holds one dict per run: ``{"qid": ..., "scores": {key: score or None}}``. The k-th run
+    of each question is assigned to repetition k (repetitions are independent draws, so any fixed
+    assignment is valid). Spread = min and max of the per-repetition means.
+    """
+    seen: dict[str, int] = defaultdict(int)
+    per_rep: dict[str, list[list[float]]] = {k: [[] for _ in range(repetitions)] for k in KEYS}
+    for row in rows:
+        r = seen[row["qid"]] % repetitions
+        seen[row["qid"]] += 1
+        for k, v in row["scores"].items():
+            if v is not None and k in per_rep:
+                per_rep[k][r].append(float(v))
+    out = {}
+    for k, reps in per_rep.items():
+        flat = [v for rep in reps for v in rep]
+        means = [statistics.fmean(rep) for rep in reps if rep]
+        out[k] = {
+            "mean": statistics.fmean(flat) if flat else None,
+            "rep_min": min(means) if means else None,
+            "rep_max": max(means) if means else None,
+            "n": len(flat),
+        }
+    return out
+
+
+def _rows(results: Any) -> list[dict[str, Any]]:
+    rows = []
+    for r in results:
+        evals = r["evaluation_results"]["results"]
+        out = r["run"].outputs or {}
+        rows.append(
+            {
+                "qid": (r["example"].outputs or {}).get("id"),
+                "question": (r["example"].inputs or {}).get("question"),
+                "answer": out.get("answer_es"),
+                "scores": {e.key: e.score for e in evals},
+                "comments": {e.key: e.comment for e in evals if e.comment},
+            }
+        )
+    return rows
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--prefix", default="baseline", help="experiment name prefix")
     parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument("--repetitions", type=int, default=1, help="runs per question")
+    parser.add_argument("--change", default="", help="what this experiment changes (metadata)")
     args = parser.parse_args()
     load_dotenv(REPO_ROOT / ".env")
     os.environ.setdefault("LANGSMITH_TRACING", "true")
@@ -172,9 +223,37 @@ def main() -> None:
         evaluators=EVALUATORS,
         experiment_prefix=args.prefix,
         max_concurrency=args.concurrency,
-        metadata={"profile": os.environ.get("RADAR_PROFILE", "dev"), "judge": JUDGE_MODEL},
+        num_repetitions=args.repetitions,
+        metadata={
+            "profile": os.environ.get("RADAR_PROFILE", "dev"),
+            "judge": JUDGE_MODEL,
+            "git_sha": _git_sha(),
+            "change": args.change,
+            "repetitions": args.repetitions,
+            "scores_file_mtime": _scores_mtime(),
+        },
+    )
+    rows = _rows(results)
+    summary = summarize(rows, args.repetitions)
+    out = lake() / "evals" / f"{results.experiment_name}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False, indent=1, default=str)
     )
     print(results.experiment_name)
+    for k, v in summary.items():
+        if v["mean"] is not None:
+            print(
+                f"{k}: mean {v['mean']:.3f} reps {v['rep_min']:.3f}..{v['rep_max']:.3f} n={v['n']}"
+            )
+    print(f"rows: {out}")
+
+
+def _scores_mtime() -> str | None:
+    path = gold("topic_scores_weekly")
+    if not path.exists():
+        return None
+    return dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.UTC).isoformat(timespec="seconds")
 
 
 if __name__ == "__main__":

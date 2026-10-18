@@ -124,3 +124,19 @@ def test_topic_subtopic_weekly_is_consistent():
     topics = _gold("topic_daily").select(pl.col("topic_id").unique())
     orphans = lf.select(pl.col("topic_id").unique()).join(topics, on="topic_id", how="anti")
     assert orphans.select(pl.len()).collect().item() == 0
+
+
+def test_topic_sources_weekly_is_consistent():
+    lf = _gold("topic_sources_weekly")
+    bad = lf.filter(
+        (pl.col("n_sources") > pl.col("n_articles"))
+        | (pl.col("top_source_share") > pl.col("top3_source_share") + 1e-12)
+        | (pl.col("top_source_share") * pl.col("n_articles") < 1 - 1e-9)
+        | (pl.col("week").dt.weekday() != 1)
+    )
+    assert bad.select(pl.len()).collect().item() == 0
+    dup = lf.group_by(["topic_id", "week"]).len().filter(pl.col("len") > 1)
+    assert dup.select(pl.len()).collect().item() == 0
+    topics = _gold("topic_daily").select(pl.col("topic_id").unique())
+    orphans = lf.select(pl.col("topic_id").unique()).join(topics, on="topic_id", how="anti")
+    assert orphans.select(pl.len()).collect().item() == 0
