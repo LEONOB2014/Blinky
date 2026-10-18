@@ -59,6 +59,46 @@ def test_the_ai_universe_is_every_ai_topic_with_one_article(ai):
     assert ai.scores_table == "topic_ai_scores_weekly" and ai.report == "backtest_ai.md"
 
 
+CONTEXT_ENTRY = """
+  - id: biz:ai_smes
+    label_es: IA para pymes
+    family: biz
+    stance: neutral
+    ranked: false
+    patterns: ['\\bpymes?\\b']
+"""
+
+
+@pytest.fixture
+def ai_with_context(tmp_path, monkeypatch):
+    path = tmp_path / "ai_lexicon.yaml"
+    path.write_text(LEXICON + CONTEXT_ENTRY, encoding="utf-8")
+    monkeypatch.setenv("RADAR_AI_LEXICON", str(path))
+    monkeypatch.setenv("RADAR_LAKE", str(tmp_path / "lake"))
+    yield source.use("ai")
+    source._active.clear()
+
+
+def test_context_only_entries_are_never_ranked(ai_with_context):
+    assert source.unranked_ids() == {"ai:biz:ai_smes"}
+    ids = pl.DataFrame({"topic_id": ["ai:lab:openai", "ai:biz:ai_smes"]})
+    assert ids.filter(universe.in_universe())["topic_id"].to_list() == ["ai:lab:openai"]
+    assert "ai:biz:ai_smes" in source.entries()["topic_id"].to_list()  # still a lexicon topic
+
+
+def test_a_link_to_a_context_entry_does_not_make_a_topic_new(ai_with_context):
+    w = [dt.date(2026, 9, 7) + dt.timedelta(days=7 * k) for k in range(5)]
+    rows = [(w[k], "lab:openai", "tech:agents", "all", 5) for k in range(5)]
+    rows.append((w[4], "lab:openai", "biz:ai_smes", "all", 9))  # new, but context only
+    edges = pl.DataFrame(rows, schema=["wk", "x", "y", "lang_bucket", "n"], orient="row")
+    got = {
+        (r["unit_id"], r["week"]): r["new_nbr_rate"]
+        for r in source.ai_new_nbr_rate(edges).iter_rows(named=True)
+    }
+    assert got[("ai:lab:openai", "2026-W41")] == 0.0
+    assert not any(u == "ai:biz:ai_smes" for u, _ in got)
+
+
 def test_labels_titles_and_family_groups_come_from_the_lexicon(ai):
     labels, mapped = build_scores.labels_and_mapped()
     assert labels["ai:lab:openai"] == "OpenAI" and labels["ai:tech:agents"] == "Agentes de IA"

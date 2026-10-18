@@ -40,8 +40,8 @@ def in_universe(col: str = "topic_id") -> pl.Expr:
     from models import source
 
     c = pl.col(col)
-    if (prefix := source.current().prefix) is not None:
-        return c.str.starts_with(prefix)
+    if (prefix := source.current().prefix) is not None:  # lexicon entries, minus context-only ones
+        return c.str.starts_with(prefix) & ~c.is_in(list(source.unranked_ids()))
     deny = [f"org:{name}" for name in RULES.get("org_deny") or []]
     org = c.str.starts_with("org:") & ~c.is_in(deny) if RULES.get("org") else pl.lit(False)
     thm = pl.lit(False)
