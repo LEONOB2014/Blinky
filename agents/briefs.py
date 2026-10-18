@@ -23,7 +23,7 @@ import polars as pl
 
 from agents import tools
 from agents.llm import ChatModel, NebiusChat
-from agents.runtime import DECISION_ES, PLAIN, topic_name, untraced_numbers
+from agents.runtime import DECISION_ES, NO_NARRATIVE, PLAIN, topic_name, untraced_numbers
 from radar.contracts import validate_records
 from radar.paths import gold, profile
 
@@ -44,9 +44,9 @@ SYSTEM = (
     "no nombres personas; la decisión del radar es la que te doy y no propongas otra. "
     "No predigas alcance ni impacto ('estará en todos los medios', 'impactará', 'llegará pronto'): "
     "di solo lo que los datos muestran. La ventana es una estimación del radar: escríbela como tal "
-    "('según la estimación del radar, faltan unos N días'), nunca como un hecho. Los subtemas son "
-    "categorías del radar, no el negocio de la empresa: no afirmes que el tema 'está conectado' "
-    "con ellos ni inventes por qué crece; si no sabes la causa, dilo. "
+    "('según la estimación del radar, faltan unos N días'), nunca como un hecho. "
+    + NO_NARRATIVE
+    + " "
     "Responde SOLO con un objeto JSON con estas claves, todas en español: "
     '"headline_es" (título de trabajo, máximo 100 caracteres), '
     '"what_happened_es" (2-3 frases: qué muestran los datos esta semana), '

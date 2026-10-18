@@ -305,6 +305,40 @@ def get_topic_brief(topic_id: str, week: str | None = None) -> dict[str, Any]:
     return {"available": True, "week": week, "topic_id": topic_id, "brief": rows.to_dicts()[0]}
 
 
+def get_topic_sources(topic_id: str, week: str | None = None) -> dict[str, Any]:
+    """How many articles and distinct outlets covered a topic in a week (WS1c), and how concentrated.
+
+    ``n_medios`` is the count of distinct outlets, not of articles: "¿cuántos medios?" is answered
+    with it, never with ``n_articulos``.
+    """
+    path = gold("topic_sources_weekly")
+    if not path.exists():
+        return _unavailable("topic_sources_weekly")
+    topic_id = resolve_topic(topic_id)
+    frame = pl.read_parquet(path).filter(pl.col("topic_id") == topic_id)
+    if week:
+        _, monday, _ = week_bounds(week)
+        frame = frame.filter(pl.col("week") == monday)
+    elif frame.height:
+        frame = frame.filter(pl.col("week") == frame["week"].max())
+    if not frame.height:
+        return {
+            "available": False,
+            "reason": f"no hay conteo de medios para {topic_id} en esa semana",
+        }
+    row = frame.row(0, named=True)
+    iso = row["week"].isocalendar()
+    return {
+        "available": True,
+        "topic_id": topic_id,
+        "week": f"{iso.year}-W{iso.week:02d}",
+        "n_articulos": row["n_articles"],
+        "n_medios": row["n_sources"],
+        "cuota_medio_principal": round(row["top_source_share"], 2),
+        "cuota_3_medios_principales": round(row["top3_source_share"], 2),
+    }
+
+
 def get_topic_evidence(topic_id: str, week: str | None = None) -> dict[str, Any]:
     """Up to 5 representative articles behind a ranked topic in a week (WS1d), without URLs.
 
@@ -339,8 +373,9 @@ def get_topic_evidence(topic_id: str, week: str | None = None) -> dict[str, Any]
         "available": True,
         "topic_id": topic_id,
         "week": week_label,
-        "n_articulos": len(rows),
-        "n_medios": len({r["source"] for r in rows}),
+        # counts of the articles shown here, not the week's totals (get_topic_sources has those)
+        "articulos_mostrados": len(rows),
+        "medios_entre_mostrados": len({r["source"] for r in rows}),
         "articles": rows,
     }
 
@@ -641,6 +676,18 @@ TOOLS: dict[str, Tool] = {
             get_topic_evidence,
             "Hasta 5 artículos representativos de un tema en una semana: medio, fecha, idioma y "
             "título (sin URL), con cuántos artículos y medios son.",
+            {
+                "type": "object",
+                "properties": {"topic_id": {"type": "string"}, "week": WEEK},
+                "required": ["topic_id"],
+            },
+        ),
+        Tool(
+            "get_topic_sources",
+            get_topic_sources,
+            "Cuántos artículos y cuántos medios distintos cubrieron un tema en una semana, y qué "
+            "parte se lleva el medio principal. Para '¿cuántos medios?' usa n_medios, no "
+            "n_articulos.",
             {
                 "type": "object",
                 "properties": {"topic_id": {"type": "string"}, "week": WEEK},
