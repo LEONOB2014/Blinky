@@ -6,9 +6,10 @@ Both tables share `topic_daily`'s schema, so the pipeline is the same; what diff
 `--source` flag of `models.build_scores` and `models.backtest` calls.
 
 AI run (orchestrator's WP2, 2026-10-18):
-- ranked universe = every `ai:` topic with at least one article in the week (no 20-article
-  floor); the eligibility gate holds by construction (curated lexicon entries), the syndication
-  guard is kept;
+- ranked universe = every `ai:` topic that reaches the taxonomy's `min_articles_week`
+  (20) in the week. A floor of 1 let 3-article and 9-article spikes into the W41/W42
+  top 10 (measured). The eligibility gate holds by construction (curated lexicon
+  entries), the syndication guard is kept;
 - each topic's group is its lexicon `family` (the window's lag pool and the audience fit), in
   place of WS1's subtopic mapping, which covers only GDELT topics;
 - `new_nbr_rate` comes from `edges_ai_weekly` (`ai_new_nbr_rate`, the same rule as WS3's);
@@ -63,7 +64,7 @@ SOURCES = {
         scores_table="topic_ai_scores_weekly",
         report="backtest_ai.md",
         prefix="ai:",
-        min_articles_week=1,
+        min_articles_week=None,  # contracts/taxonomy.yaml ranked_universe.min_articles_week
         gate_by_construction=True,
         sources_tables=("topic_ai_sources_weekly", "topic_sources_weekly"),
         edges_table="edges_ai_weekly",

@@ -55,7 +55,7 @@ def test_the_default_source_is_gdelt_and_unknown_sources_fail():
 def test_the_ai_universe_is_every_ai_topic_with_one_article(ai):
     ids = pl.DataFrame({"topic_id": ["ai:lab:openai", "org:kroger", "thm:TECH_AI", "ai:x:y"]})
     assert ids.filter(universe.in_universe())["topic_id"].to_list() == ["ai:lab:openai", "ai:x:y"]
-    assert universe.min_articles_week() == 1  # no 20-article floor
+    assert universe.min_articles_week() == 20  # taxonomy floor, not 1
     assert ai.scores_table == "topic_ai_scores_weekly" and ai.report == "backtest_ai.md"
 
 
