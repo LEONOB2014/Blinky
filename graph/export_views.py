@@ -1380,6 +1380,19 @@ def export_temporal(
                 if v in rank_now and v in prev_rank:
                     pr_rank_delta[v][wi] = prev_rank[v] - rank_now[v]
             prev_wdeg, prev_rank = wdeg_w, rank_now
+            # Novedad: share of this week's neighbours not seen in the previous 4 weeks.
+            nbrs: dict[str, set[str]] = {}
+            for u, v, _n, _p in edges_by_week[wi]:
+                nbrs.setdefault(u, set()).add(v)
+                nbrs.setdefault(v, set()).add(u)
+            seen: dict[str, set[str]] = {}
+            for back in range(max(0, wi - 4), wi):
+                for u, v, _n, _p in edges_by_week[back]:
+                    seen.setdefault(u, set()).add(v)
+                    seen.setdefault(v, set()).add(u)
+            if wi > 0:
+                for v, ns in nbrs.items():
+                    new_nbr_rate[v][wi] = len(ns - seen.get(v, set())) / len(ns)
         if topic_daily is not None and weeks:
             vol_df = (
                 topic_daily.lazy()
@@ -1457,12 +1470,12 @@ def export_temporal(
         ranked_top10_ids = {v for v in ids if any(r is not None and r <= 10 for r in rank[v])}
     label_ids = top_pr_ids | ranked_top10_ids
     if ai_only:
-        # About 14 labels: the radar's top 10 and the week's 6 largest topics by volume.
+        # About 16 labels: the radar's top 10 and the week's 8 largest topics by volume.
         by_volume = sorted(
             (v for v in ids if last_w >= 0 and volume[v][last_w] is not None),
             key=lambda v: -(volume[v][last_w] or 0.0),
         )
-        label_ids = ranked_top10_ids | set(by_volume[:6])
+        label_ids = ranked_top10_ids | set(by_volume[:8])
 
     sources = [idx[x] for x in kept["x"]]
     targets = [idx[y] for y in kept["y"]]
