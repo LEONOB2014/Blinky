@@ -1,12 +1,21 @@
 # WS4 status
 
+BLOCKED: switching to topic units needs a topic -> subtopic mapping that no contract provides.
+`topic_daily` (contract, and WS1's brief) has no subtopic column, and no other table carries one.
+Every remaining deliverable depends on topic units: the 150-400 ranked topics, a backtest that
+means something (on 12 subtopics a top 10 is the base rate) and the W42 editor sheet. Proposed
+fix, for the lead to decide: WS1 adds `topic_subtopic_daily` (`topic_id`, `subtopic`, `dt`,
+`lang_bucket`, `n_articles`: ring-1 articles of the topic that carry the subtopic), or a
+`subtopic` column in `topic_daily`. With it, the primary subtopic and the pooled window lags
+follow the design, and `models/build_scores.py` needs only its `topic` branch.
+
 Owner: claude-cacho · Directories: `models/`
 
 Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 21:05 UTC-5 · branch `feat/ws4-scores` (local commits, not pushed) · no PR yet
+2026-10-17 21:30 UTC-5 · branch `feat/ws4-scores` (local commits, not pushed: the push and draft PR wait for the maintainer) · no PR yet
 
 ## Done
 
@@ -38,22 +47,28 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
   the git-ignored lake) and a `--tally`.
 - Gate: `ruff check`/`ruff format` clean on `models/`; `uv run pytest models` passes (70 tests).
 
+- Full profile, subtopics: `RADAR_PROFILE=full uv run python -m models.build_scores` wrote
+  `lake/gold/topic_scores_weekly.parquet`. 1,200 rows, every one valid against the contract: 100
+  weeks (2024-W47..2026-W42, after the 5 warm-up weeks) x 12 subtopics. The lake has
+  `daily_totals`, `daily_topic` and `daily_topic_rolling` for 2024-10-17..2026-10-18. The
+  `domain:*` and `it_all` rows of `daily_topic` are excluded from the ranking (segment != ai).
+  The agent runtime can read this table now; its top 10 is subtopics.
+
 ## In progress
 
-- Waiting for the full-profile inputs: WS1 `topic_daily` (22:30), WS3 `node_metrics_weekly`, WS6
-  `topic_wikidata` and `wiki_pageviews_daily` (22:00). `lake/gold/` is empty at 21:05.
+- Stopped (BLOCKED above). Still missing in the lake at 21:30: WS1 `topic_daily`, WS3
+  `node_metrics_weekly`, WS6 `topic_wikidata` and `wiki_pageviews_daily`.
+- Not run: `models.backtest` (needs pageviews, and on subtopics its top 10 would equal the base
+  rate) and `models.editor_sheet` (on 12 subtopics the two top 10s overlap almost entirely).
 
 ## Blocked on
 
-- Not blocked yet. **Needed at 22:30:** the switch to topic units needs each topic's subtopics
-  (the design's primary subtopic = the subtopic with most of the topic's articles over 28 days).
-  No contract carries a topic -> subtopic mapping (`topic_daily` has no subtopic column), and
-  I cannot add one (contracts are out of scope). Until a contract provides it, `build_scores` and
-  the backtest run on subtopics only, where a top 10 of 11 says nothing (design, "What is ranked").
+- The topic -> subtopic mapping (BLOCKED, top of this file).
 - Evidence ids: `topic_scores_weekly.evidence_ids` is empty for now. No contract gives gkg_id per
   topic in the lake; the dev `gkg_ai_sample` is a sample.
 
 ## Numbers (each marked measured or estimate)
 
-- None reported: everything so far ran on the dev profile, whose numbers are never reported.
+- Full profile: 1,200 rows of `topic_scores_weekly`, 100 weeks x 12 subtopics, 0 contract
+  violations (measured). No backtest numbers yet.
 - All score weights and thresholds are hand-set (estimate), to be tuned on the backtest.
