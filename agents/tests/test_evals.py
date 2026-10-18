@@ -36,8 +36,19 @@ def test_routing_and_entity():
     step = {"agent": "cartographer", "action": "tool_call", "arguments": {"entity": "org:nvidia"}}
     out = _resp(trace=[step])
     assert ev.routing(out, {"agents": ["cartographer", "signal_analyst"]})["score"] == 0.5
-    assert ev.entity_resolved(out, {"entity": "org:nvidia"})["score"] == 1
-    assert ev.entity_resolved(out, {"entity": None})["score"] is None
+
+
+def test_entity_resolved_counts_false_positives():
+    def turn(entity):
+        step = {"agent": "media_master", "action": "delegate", "arguments": {"entity": entity}}
+        return _resp(trace=[step])
+
+    assert ev.entity_resolved(turn("org:nvidia"), {"entity": "org:nvidia"})["score"] == 1
+    assert ev.entity_resolved(turn(None), {"entity": None})["score"] == 1
+    assert ev.entity_resolved(_resp(), {"entity": None})["score"] == 1  # out of scope: no route
+    assert ev.entity_resolved(turn("org:a co"), {"entity": None})["score"] == 0  # false positive
+    assert ev.entity_resolved(turn("org:openai"), {"entity": "org:nvidia"})["score"] == 0
+    assert ev.entity_resolved(turn(None), {"entity": "org:nvidia"})["score"] == 0
 
 
 def test_summarize_reports_mean_and_repetition_spread():

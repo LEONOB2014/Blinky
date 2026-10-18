@@ -103,14 +103,28 @@ def routing(outputs: dict[str, Any], reference_outputs: dict[str, Any]) -> dict[
 
 
 def entity_resolved(outputs: dict[str, Any], reference_outputs: dict[str, Any]) -> dict[str, Any]:
-    """The named entity reached a tool as its graph id."""
-    entity = reference_outputs.get("entity")
-    if not entity:
-        return {"key": "entity_resolved", "score": None}
-    args = json.dumps([s.get("arguments") for s in _steps(outputs)], ensure_ascii=False)
-    views = json.dumps(outputs.get("view_commands") or [], ensure_ascii=False)
-    hit = entity in args or entity in views
-    return {"key": "entity_resolved", "score": 1 if hit else 0}
+    """1 when the turn resolved exactly the entity the question names, including none.
+
+    The resolved entity is the one the code route recorded on the Media Master's delegate step; a
+    topic resolved when the question names none, or a different one, scores 0 (false positives
+    counted, since 2026-10-18 02:00: earlier experiments scored only the 6 entity questions).
+    """
+    expected = reference_outputs.get("entity")
+    resolved = next(
+        (
+            (s.get("arguments") or {}).get("entity")
+            for s in _steps(outputs)
+            if s["agent"] == "media_master"
+            and s["action"] == "delegate"
+            and "entity" in (s.get("arguments") or {})
+        ),
+        None,
+    )
+    return {
+        "key": "entity_resolved",
+        "score": 1 if resolved == expected else 0,
+        "comment": f"expected={expected} resolved={resolved}",
+    }
 
 
 def latency_s(outputs: dict[str, Any]) -> dict[str, Any]:

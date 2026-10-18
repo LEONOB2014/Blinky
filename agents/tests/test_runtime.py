@@ -202,3 +202,26 @@ def test_entity_resolution_needs_whole_words(monkeypatch):
 
     for q in load_questions()["questions"]:
         assert runtime._entity_in_question(q["question"], None) == q.get("entity"), q["id"]
+
+
+@pytest.mark.unit
+def test_auditor_keeps_a_decision_only_when_a_card_shows_it():
+    turn = _turn_with(_ROWS)  # the scores hold decisions, as on the full lake
+    answer = "Sin backtest no se puede confiar. No se recomienda publicar ahora."
+    out, bad, vetoed = runtime._audit(turn, answer, "¿Cuánto puedo confiar?", [])
+    assert vetoed and "publicar ahora" not in out.lower() and "decisión pendiente" in out
+    card = {"topic_id": "chips_infra", "decision": "publicar_ahora"}
+    out, _, vetoed = runtime._audit(_turn_with(_ROWS), "Publicar ahora — Chips.", "q", [card])
+    assert not vetoed and out == "Publicar ahora — Chips."
+    other = {"topic_id": "org:x", "decision": "preparar"}
+    out, _, vetoed = runtime._audit(_turn_with(_ROWS), "Publicar ahora — Chips.", "q", [other])
+    assert vetoed and "decisión pendiente" in out
+
+
+@pytest.mark.unit
+def test_the_route_records_the_resolved_entity():
+    response = runtime.run_turn(
+        "¿Qué tema sube esta semana?", model=ScriptedChat("Por qué: crece.")
+    )
+    step = next(s for s in response["trace"] if s["action"] == "delegate")
+    assert step["agent"] == "media_master" and step["arguments"] == {"entity": None}
