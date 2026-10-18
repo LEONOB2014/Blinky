@@ -69,6 +69,17 @@ answer and `/api/chat` returns 503, as the API does locally without a key.
 
 ## Notes
 
+- Chat rate limit (`api/app.py`): 10 turns per 10 minutes per client IP and 500 turns per UTC day in
+  total. Over the limit the API answers HTTP 429 with a Spanish message (shown in the chat panel) and
+  `Retry-After`. Configure with `RADAR_CHAT_PER_CLIENT`, `RADAR_CHAT_WINDOW_S` and
+  `RADAR_CHAT_DAILY_CAP` (for example `gcloud run services update radar-api --update-env-vars
+  RADAR_CHAT_DAILY_CAP=300`). The counters live in memory, one set per instance; with Cloud Run's
+  3 instances at most, the effective limits are up to 3x the configured ones. The client IP is the
+  last `X-Forwarded-For` entry (the one Cloud Run appends), so a client cannot reset its limit by
+  sending its own header.
+- The image's Python packages come from `pyproject.toml` (core + `api` extra) at stage time, so a new
+  dependency of `agents/` (for example `langsmith`) reaches the image without editing `deploy/`.
+
 - CORS: `api/app.py` (WS5) allows every origin, so the Netlify origin works. Narrowing it to the
   site's origin is a WS5 change.
 - The static export holds the top 10 of every scored week, the timelines of every topic in a top 10

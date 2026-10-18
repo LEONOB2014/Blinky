@@ -14,6 +14,7 @@ endpoints work and /api/chat answers 503, as the API does locally without a key.
 """
 
 import os
+import tomllib
 from pathlib import Path
 
 import modal
@@ -23,20 +24,9 @@ APP_DIR = "/root/app"
 VOLUME_NAME = "radar-lake"
 NEBIUS_MODAL_REF = "radar-nebius"  # the name of the Modal Secret object, not a value
 
-# Runtime dependencies of api/ and agents/ (pyproject.toml core + the api extra), pinned loosely
-# like pyproject; no BigQuery, graph or model extras.
-PACKAGES = [
-    "duckdb>=1.1.0",
-    "polars>=1.10.0",
-    "pyarrow>=18.0.0",
-    "pydantic>=2.9.0",
-    "jsonschema>=4.23.0",
-    "pyyaml>=6.0.2",
-    "python-dotenv>=1.0.0",
-    "httpx>=0.27.0",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
-]
+# Runtime dependencies of api/ and agents/: pyproject's core list plus the api extra.
+_PROJECT = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+PACKAGES = [*_PROJECT["dependencies"], *_PROJECT["optional-dependencies"]["api"]]
 IGNORE = ["**/__pycache__/**", "**/tests/**", "**/*.pyc"]
 
 image = (

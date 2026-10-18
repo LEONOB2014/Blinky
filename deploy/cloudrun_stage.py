@@ -12,6 +12,7 @@ Cloud Build. The lake tables are copied in, so the image is self-contained (no v
 import argparse
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 
 from push_lake import plan  # the same 7 tables as the Modal Volume, never edges_weekly
@@ -21,19 +22,12 @@ from radar.paths import gold
 REPO = Path(__file__).resolve().parents[1]
 CODE = ("api", "agents", "src/radar", "contracts", "reports")
 SKIP = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", ".pytest_cache")
-# Runtime dependencies of api/ and agents/ (pyproject.toml core + the api extra).
-REQUIREMENTS = """\
-duckdb>=1.1.0
-polars>=1.10.0
-pyarrow>=18.0.0
-pydantic>=2.9.0
-jsonschema>=4.23.0
-pyyaml>=6.0.2
-python-dotenv>=1.0.0
-httpx>=0.27.0
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-"""
+
+
+def requirements() -> str:
+    """The API's runtime dependencies: pyproject's core list plus the api extra (never drifts)."""
+    project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    return "\n".join([*project["dependencies"], *project["optional-dependencies"]["api"]]) + "\n"
 
 
 def stage(out: Path) -> Path:
@@ -44,7 +38,7 @@ def stage(out: Path) -> Path:
     for rel in CODE:
         shutil.copytree(REPO / rel, out / rel, ignore=SKIP)
     shutil.copy(REPO / "deploy" / "cloudrun" / "Dockerfile", out / "Dockerfile")
-    (out / "requirements.txt").write_text(REQUIREMENTS, encoding="utf-8")
+    (out / "requirements.txt").write_text(requirements(), encoding="utf-8")
     (out / ".dockerignore").write_text("**/__pycache__\n**/*.pyc\n", encoding="utf-8")
     (out / ".gcloudignore").write_text("**/__pycache__\n**/*.pyc\n", encoding="utf-8")
     gold_dir = out / "lake" / "gold"
