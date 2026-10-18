@@ -75,3 +75,10 @@ def test_entity_series_reads_topic_daily():
     out = tools.get_topic_series("Google")
     assert out["available"] and out["topic"] == "org:google"
     assert all(r["articles"] > 0 for r in out["rows"])
+
+
+def test_prefix_resolution_only_adds_a_company_suffix(monkeypatch):
+    topics = ("org:openai inc", "org:altman to microsoft corp", "org:google")
+    monkeypatch.setattr(tools, "known_topics", lambda: topics)
+    assert tools.resolve_topic("OpenAI") == "org:openai inc"
+    assert tools.resolve_topic("Altman") == "Altman"

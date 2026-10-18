@@ -1,7 +1,12 @@
+import os
+
 import pytest
+
+# Set before the agents package loads .env, so tests never send anything to LangSmith.
+os.environ["LANGSMITH_TRACING"] = "false"
 
 
 @pytest.fixture(autouse=True)
-def _traces_in_tmp(tmp_path, monkeypatch):
-    """run_turn writes a trace per turn; tests keep them out of the shared lake."""
+def _offline(tmp_path, monkeypatch):
+    """Tests keep traces out of the shared lake."""
     monkeypatch.setenv("RADAR_LAKE", str(tmp_path))
