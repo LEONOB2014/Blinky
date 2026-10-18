@@ -1,6 +1,8 @@
 import Graph from "graphology";
 import Sigma from "sigma";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { browserHasGraphics } from "../graphics";
+import { displayName } from "../publicCopy";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
 import type {
@@ -58,8 +60,12 @@ const EXTRA_THEME_LABELS_ES: Record<string, string> = {
 
 function cleanSpanishLabel(id: string, rawEs?: string | null): string {
   if (EXTRA_THEME_LABELS_ES[id]) return EXTRA_THEME_LABELS_ES[id];
-  if (rawEs && rawEs.trim()) return rawEs;
-  return id;
+  if (rawEs && rawEs.trim()) return displayName(rawEs);
+  return displayName(id);
+}
+
+function sectorBadge(ring: string): string {
+  return ring.toUpperCase() === "OTHER" ? "Otros" : ring.toUpperCase();
 }
 
 function resolveStoryEntry(
@@ -134,6 +140,7 @@ export function StoryGraph({
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [storyData, setStoryData] = useState<StoryGraphData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [noGraphics, setNoGraphics] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [unmatchedTopicNotice, setUnmatchedTopicNotice] = useState<string | null>(null);
   const activeLens = graphLensFromColorBy(colorBy);
@@ -180,13 +187,13 @@ export function StoryGraph({
     const wkLabel = indexData._meta?.week ?? "2026-W42";
     if (!exactMatch && requestedClean) {
       setUnmatchedTopicNotice(
-        `El tema "${requestedClean}" no está entre las 10 historias priorizadas de ${wkLabel}. Mostrando #1 (${entry.label_es} · ${entry.topic_id}).`,
+        `El tema "${requestedClean}" no está entre las 10 historias priorizadas de ${wkLabel}. Mostrando #1 (${displayName(entry.label_es)}).`,
       );
     } else if (!entry.in_top10) {
       const rankInfo =
         entry.rank != null ? `puesto #${entry.rank}` : "sin rango Top-10";
       setUnmatchedTopicNotice(
-        `Nota: "${entry.label_es}" (${entry.topic_id}) no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}, decisión: ${entry.decision ?? "referencia"}); abajo se muestra su anillo real de 1 salto medido en GDELT.`,
+        `Nota: "${displayName(entry.label_es)}" no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}, decisión: ${entry.decision ?? "referencia"}); abajo se muestra su anillo de 1 salto ●.`,
       );
     } else {
       setUnmatchedTopicNotice(null);
@@ -225,7 +232,13 @@ export function StoryGraph({
 
   // Instantiate Sigma 3.0.3 when `storyData` changes
   useEffect(() => {
-    if (!storyData || !sigmaContainerRef.current) return;
+    if (!storyData) return;
+    if (!browserHasGraphics()) {
+      setNoGraphics(true);
+      setLoading(false);
+      return;
+    }
+    if (!sigmaContainerRef.current) return;
     const container = sigmaContainerRef.current;
     const t0 = performance.now();
 
@@ -374,6 +387,34 @@ export function StoryGraph({
     };
   }, [storyData, highlightSet, activeLens]);
 
+  useEffect(() => {
+    const host = sigmaContainerRef.current;
+    if (!host || !storyData || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    let lastW = -1;
+    let lastH = -1;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      const w = rect.width;
+      const h = rect.height;
+      if (w < 2 || h < 2) return;
+      if (lastW >= 0 && Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return;
+      lastW = w;
+      lastH = h;
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        sigmaRef.current?.resize();
+      });
+    });
+    observer.observe(host);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [storyData]);
+
   const top10Stories = useMemo(() => indexData?.top10 ?? [], [indexData]);
   const referenceStories = useMemo(
     () =>
@@ -393,14 +434,14 @@ export function StoryGraph({
 
   return (
     <div
-      className={`story-graph-container${isFullscreen ? " story-fullscreen" : ""}`}
+      className={`story-graph-container${isFullscreen ? " story-fullscreen" : ""}${noGraphics ? " story-no-webgl" : ""}`}
       data-testid="story-graph"
     >
       {/* Top Banner with Caption, Lens switcher, and Fullscreen Toggle */}
       <div className="graph-lens-banner">
         <div className="lens-banner-left">
           <span className="lens-current-badge">
-            Historia de 1 salto: <strong>{storyData?._meta?.label_es ?? "Cargando..."}</strong>
+            Historia de 1 salto: <strong>{storyData?._meta?.label_es ? displayName(storyData._meta.label_es) : "Cargando..."}</strong>
             {" · "}
             Lente: <strong>{LENS_NAMES[activeLens]}</strong>
           </span>
@@ -465,7 +506,7 @@ export function StoryGraph({
                 onSelectTopic?.(s.topic_id);
               }}
             >
-              #{s.rank} {s.label_es}
+              #{s.rank} {displayName(s.label_es)}
             </button>
           ))}
         </div>
@@ -487,12 +528,12 @@ export function StoryGraph({
                   const rankInfo =
                     s.rank != null ? `puesto #${s.rank}` : "sin rango Top-10";
                   setUnmatchedTopicNotice(
-                    `Nota: "${s.label_es}" (${s.topic_id}) no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}); viendo su anillo real de 1 salto medido.`,
+                    `Nota: "${displayName(s.label_es)}" no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}); viendo su anillo de 1 salto ●.`,
                   );
                   onSelectTopic?.(s.topic_id);
                 }}
               >
-                {s.label_es}
+                {displayName(s.label_es)}
               </button>
             ))}
           </div>
@@ -526,7 +567,7 @@ export function StoryGraph({
                 : "Referencia"}
           </span>
           <span className="topic-title-lg">
-            {storyData._meta.label_es} (<code>{storyData._meta.topic_id}</code>)
+            {displayName(storyData._meta.label_es)}
           </span>
           {scores?.decision && (
             <span className={`decision-badge decision-${scores.decision}`}>
@@ -536,7 +577,7 @@ export function StoryGraph({
           )}
           {scores?.priority != null && (
             <span className="chip">
-              Prioridad: <strong>{scores.priority.toFixed(3)}</strong> (medido)
+              Prioridad: <strong>{scores.priority.toFixed(3)}</strong> ●
             </span>
           )}
           {scores?.emergence_pct != null && (
@@ -546,7 +587,7 @@ export function StoryGraph({
           )}
           {scores?.audience_fit != null && (
             <span className="chip">
-              Encaje LatAm: <strong>{(scores.audience_fit * 100).toFixed(0)}%</strong>
+              Encaje LatAm: <strong>{(scores.audience_fit * 100).toFixed(0)}%</strong> ○
             </span>
           )}
           {scores?.window?.state && (
@@ -561,7 +602,7 @@ export function StoryGraph({
         <div className="story-canvas-wrap">
           {loading && (
             <div className="graph-loading-overlay">
-              Cargando grafo de 1 salto (sigma.js 3)...
+              Cargando la historia…
             </div>
           )}
           <div
@@ -574,7 +615,7 @@ export function StoryGraph({
               <span className="legend-dot legend-focus" /> ★ Tema central
             </span>
             <span className="legend-item">
-              Sector (regla por nombre): IA / TI / otros sectores
+              Sector: IA / TI / otros sectores
             </span>
             <span className="legend-item">
               <span className="legend-dot legend-ring-ai" /> IA
@@ -595,7 +636,7 @@ export function StoryGraph({
           <div className="movers-header">
             <h4>Anillo de 1 salto ({neighborsList.length} vecinos)</h4>
             <span className="muted">
-              Ordenados por NPMI descendente (medido en GDELT)
+              Ordenados por NPMI descendente ●
             </span>
           </div>
           <ul className="story-neighbors-list">
@@ -610,19 +651,19 @@ export function StoryGraph({
                       type="button"
                       className="neighbor-link"
                       onClick={() => onSelectTopic?.(n.key)}
-                      title={`Seleccionar ${n.key}`}
+                      title={`Seleccionar ${lbl}`}
                     >
                       {lbl}
                     </button>
                     <span
                       className={`badge ring-badge-${a.ring ?? "ai_domain"}`}
-                      title="Sector (regla por nombre): IA / TI / otros sectores"
+                      title="Sector: IA / TI / otros sectores"
                     >
-                      {(a.ring ?? "ai_domain").toUpperCase()}
+                      {sectorBadge(a.ring ?? "ai_domain")}
                     </span>
                   </div>
                   <div className="story-neighbor-meta">
-                    <code>{n.key}</code> · n=<strong>{a.n}</strong> · NPMI=
+                    n=<strong>{a.n}</strong> · NPMI=
                     <strong>{a.npmi?.toFixed(4)}</strong>
                     {a.edge_state && ` · ${a.edge_state}`}
                   </div>

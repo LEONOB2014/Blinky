@@ -1,5 +1,7 @@
-import { Graph } from "@cosmos.gl/graph";
+import { Graph, type GraphConfig } from "@cosmos.gl/graph";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { browserHasGraphics } from "../graphics";
+import { displayName } from "../publicCopy";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
 import type { TemporalGraphData, TemporalMover, TemporalNodeEntry } from "../types/views";
@@ -89,9 +91,12 @@ export function TemporalGraph({
 }: TemporalGraphProps) {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Graph | null>(null);
+  const graphConfigRef = useRef<GraphConfig | null>(null);
+  const graphReadyRef = useRef(false);
   const dataRef = useRef<TemporalGraphData | null>(null);
   const [data, setData] = useState<TemporalGraphData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [noGraphics, setNoGraphics] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [weekIdx, setWeekIdx] = useState<number>(0);
   const [playing, setPlaying] = useState<boolean>(false);
@@ -187,7 +192,7 @@ export function TemporalGraph({
         candidates.push({
           idx: i,
           id: node.id,
-          text: node.label_es || node.label || node.id,
+          text: displayName(node.label_es || node.label || node.id),
           x: sx,
           y: sy,
           priority,
@@ -913,7 +918,13 @@ export function TemporalGraph({
 
   // Initialize cosmos.gl Graph once `data` and `canvasHostRef` are available
   useEffect(() => {
-    if (!data || !canvasHostRef.current) return;
+    if (!data) return;
+    if (!browserHasGraphics()) {
+      setNoGraphics(true);
+      setLoading(false);
+      return;
+    }
+    if (!canvasHostRef.current) return;
     // A new graph has not seen a lens yet. StrictMode's second setup must reheat
     // a focused story instead of treating the destroyed graph's key as current.
     reheatKeyRef.current = null;
@@ -972,7 +983,8 @@ export function TemporalGraph({
     }
     weekLinkMapRef.current = linkMapByWeek;
 
-    const graph = new Graph(host, {
+    // setConfig replaces the whole config, so a resize must pass this same object.
+    const config: GraphConfig = {
       spaceSize: 4096,
       backgroundColor: "#0f172a",
       pointDefaultSize: 4,
@@ -993,7 +1005,9 @@ export function TemporalGraph({
           onSelectTopic?.(data.nodes[index].id);
         }
       },
-    });
+    };
+    graphConfigRef.current = config;
+    const graph = new Graph(host, config);
 
     graphRef.current = graph;
     const initialW = Math.max(0, Math.min(weekIdx, nWeeks - 1));
@@ -1008,6 +1022,7 @@ export function TemporalGraph({
         applyLensRef.current(initialW, activeLensRef.current);
       }
       graph.fitView(0, 0.08, false);
+      graphReadyRef.current = true;
 
       requestAnimationFrame(() => {
         if (disposed) return;
@@ -1019,7 +1034,7 @@ export function TemporalGraph({
               10,
           ) / 10;
 
-        let renderer = "WebGL2 (cosmos.gl 3.5.1)";
+        let renderer = "WebGL2";
         const canvas = host.querySelector("canvas");
         const gl = canvas?.getContext("webgl2") || canvas?.getContext("webgl");
         if (gl) {
@@ -1042,6 +1057,8 @@ export function TemporalGraph({
 
     return () => {
       disposed = true;
+      graphReadyRef.current = false;
+      graphConfigRef.current = null;
       graph.destroy();
       graphRef.current = null;
     };
@@ -1050,6 +1067,50 @@ export function TemporalGraph({
   const weekIdxRef = useRef<number>(weekIdx);
   const applyLensRef = useRef(applyLensToGraph);
   applyLensRef.current = applyLensToGraph;
+  const recomputeLabelsRef = useRef(recomputeLabels);
+  recomputeLabelsRef.current = recomputeLabels;
+
+  // The library resizes its drawing buffer on its own. The camera stays framed
+  // for the old box until we pass the full config and fit the new host size.
+  useEffect(() => {
+    const host = canvasHostRef.current;
+    if (!host || !data || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    let lastW = -1;
+    let lastH = -1;
+
+    const fitToHost = () => {
+      frame = 0;
+      const g = graphRef.current;
+      const cfg = graphConfigRef.current;
+      if (!g || !cfg || !graphReadyRef.current) return;
+      const rect = host.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return;
+      g.setConfig(cfg);
+      applyLensRef.current(weekIdxRef.current, activeLensRef.current);
+      g.fitView(0, 0.08, false);
+      recomputeLabelsRef.current(weekIdxRef.current);
+    };
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      const w = rect.width;
+      const h = rect.height;
+      if (w < 2 || h < 2) return;
+      if (lastW >= 0 && Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return;
+      lastW = w;
+      lastH = h;
+      if (!graphReadyRef.current) return;
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitToHost);
+    });
+    observer.observe(host);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [data]);
 
   useEffect(() => {
     return () => {
@@ -1154,7 +1215,7 @@ export function TemporalGraph({
         const oNode = d.nodes[other];
         neighbors.push({
           id: oNode.id,
-          label_es: oNode.label_es || oNode.label || oNode.id,
+          label_es: displayName(oNode.label_es || oNode.label || oNode.id),
           n: wMap.n[e],
           npmi: wMap.npmi[e],
         });
@@ -1254,7 +1315,7 @@ export function TemporalGraph({
             <>
               <strong>{data.nodes.length.toLocaleString()}</strong> nodos ·{" "}
               <strong>{currentEdgesCount.toLocaleString()}</strong> aristas (top-
-              {data._meta.params.top_k_per_node} NPMI/nodo, medido)
+              {data._meta.params.top_k_per_node} NPMI/nodo) ●
             </>
           ) : (
             "Cargando..."
@@ -1272,8 +1333,7 @@ export function TemporalGraph({
       {focusTopic && focusTopicIdx === null && (
         <div className="graph-notice-box">
           <span>
-            <code>{focusTopic}</code> no figura entre los 1.000 nodos del grafo temporal de
-            esta semana.
+            Este tema no figura entre los 1.000 nodos del grafo de esta semana.
           </span>
           {onOpenStory && (
             <button
@@ -1281,7 +1341,7 @@ export function TemporalGraph({
               className="pill pill-primary"
               onClick={() => onOpenStory(focusTopic)}
             >
-              Ver anillo 1-salto en Sigma.js →
+              Ver anillo de 1 salto
             </button>
           )}
         </div>
@@ -1289,9 +1349,18 @@ export function TemporalGraph({
 
       <div className="temporal-split">
         <div className="temporal-canvas-wrap">
+          {noGraphics ? (
+            <div className="graph-fallback" data-testid="graph-fallback">
+              <p>
+                Este navegador no tiene aceleración gráfica activada; mostramos una imagen del grafo
+              </p>
+              <img src="/fallback/temporal.png" alt="Grafo temporal semanal" />
+            </div>
+          ) : (
+            <>
           {loading && (
             <div className="graph-loading-overlay">
-              Cargando grafo temporal GPU (`temporal.json`)...
+              Cargando el grafo…
             </div>
           )}
           <div
@@ -1314,7 +1383,7 @@ export function TemporalGraph({
                 }}
                 onClick={() => onSelectTopic?.(lbl.id)}
                 onMouseEnter={(ev) => handleNodeHover(lbl.idx, ev)}
-                title={`${lbl.text} (${lbl.id})`}
+                title={lbl.text}
               >
                 {lbl.text}
               </button>
@@ -1335,14 +1404,14 @@ export function TemporalGraph({
                   <span className="legend-dot legend-esp" /> Esperar
                 </span>
                 <span className="legend-item">
-                  <span className="legend-dot legend-ctx" /> Muted / otro
+                  <span className="legend-dot legend-ctx" /> Otros temas
                 </span>
               </>
             )}
             {activeLens === "segment" && (
               <>
                 <span className="legend-item">
-                  Sector (regla por nombre): IA / TI / otros sectores
+                  Sector: IA / TI / otros sectores
                 </span>
                 <span className="legend-item">
                   <span className="legend-dot legend-ring-ai" /> IA
@@ -1358,16 +1427,16 @@ export function TemporalGraph({
             {activeLens === "bridge" && (
               <>
                 <span className="legend-item">
-                  <span className="legend-dot legend-bridge-high" /> cruce de sector (regla) 70%+ (Oro)
+                  <span className="legend-dot legend-bridge-high" /> cruce de sector 70%+ (Oro)
                 </span>
                 <span className="legend-item">
-                  <span className="legend-dot legend-bridge-mid" /> cruce de sector (regla) 35%+ (Naranja)
+                  <span className="legend-dot legend-bridge-mid" /> cruce de sector 35%+ (Naranja)
                 </span>
                 <span className="legend-item">
                   <span className="legend-dot legend-bridge-low" /> mismo sector (Azul marino)
                 </span>
                 <span className="legend-item">
-                  Tamaño = Betweenness normalizada (igraph)
+                  Tamaño = betweenness normalizada
                 </span>
               </>
             )}
@@ -1437,12 +1506,14 @@ export function TemporalGraph({
               </>
             )}
           </div>
+            </>
+          )}
         </div>
 
         <aside className="temporal-movers-aside" aria-label="Mayores subidas de la semana">
           <div className="movers-header">
             <h4>Temas destacados ({currentWeekStr})</h4>
-            <span className="muted">Top priorizados y subidas de grado (medido)</span>
+            <span className="muted">Top priorizados y subidas de grado ●</span>
           </div>
           <ul className="movers-list">
             {topMovers.map((m) => {
@@ -1459,19 +1530,17 @@ export function TemporalGraph({
                       }}
                     >
                       {m.rank != null ? `#${m.rank} ` : ""}
-                      {m.label_es}
+                      {displayName(m.label_es)}
                     </button>
                     <span className={`decision-badge decision-${dec}`}>
                       {DECISION_LABELS_ES[dec]}
                     </span>
                   </div>
                   <div className="mover-meta">
-                    <code>{m.id}</code>
                     {m.deg_growth != null && Number.isFinite(m.deg_growth) && (
                       <>
-                        {" "}
-                        · grado{" "}
-                        <strong title="exp(log del grado) − 1, medido">
+                        grado{" "}
+                        <strong title="variación del grado">
                           {formatDegreeGrowth(m.deg_growth)}
                         </strong>
                       </>
@@ -1503,7 +1572,7 @@ export function TemporalGraph({
               {metricsSnapshot.fpsRelayout !== undefined && (
                 <> · re-layout <strong>{metricsSnapshot.fpsRelayout} fps</strong> ({metricsSnapshot.settleTimeMs} ms)</>
               )}{" "}
-              (medido)
+              ●
             </div>
           )}
         </aside>
@@ -1519,17 +1588,18 @@ export function TemporalGraph({
           }}
         >
           <div className="tooltip-title">
-            <strong>{hoveredTooltip.node.label_es}</strong>
+            <strong>{displayName(hoveredTooltip.node.label_es)}</strong>
             <span
               className={`badge ring-badge-${hoveredTooltip.node.ring}`}
-              title="Sector (regla por nombre): IA / TI / otros sectores"
+              title="Sector: IA / TI / otros sectores"
             >
-              {hoveredTooltip.node.ring.toUpperCase()}
+              {hoveredTooltip.node.ring.toUpperCase() === "OTHER"
+                ? "Otros"
+                : hoveredTooltip.node.ring.toUpperCase()}
             </span>
           </div>
           <div className="tooltip-sub">
-            <code>{hoveredTooltip.node.id}</code>
-            {hoveredTooltip.node.domain && ` · ${hoveredTooltip.node.domain}`}
+            {hoveredTooltip.node.domain ?? ""}
           </div>
           <div className="tooltip-metrics-grid">
             <div>
@@ -1551,7 +1621,7 @@ export function TemporalGraph({
               </strong>
             </div>
             <div>
-              cruce de sector (regla):{" "}
+              cruce de sector:{" "}
               <strong>
                 {hoveredTooltip.node.cross_ring_share?.[weekIdx] !== null &&
                 hoveredTooltip.node.cross_ring_share?.[weekIdx] !== undefined

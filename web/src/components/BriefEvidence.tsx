@@ -3,15 +3,15 @@ import {
   type CardLoad,
   type EvidenceArticle,
   type TopicBrief,
-  kindLabel,
   loadBrief,
   loadEvidence,
 } from "../demoCards";
+import { markForKind } from "../publicCopy";
 
 function Pending({ testId, path, label }: { testId: string; path: string; label: string }) {
   return (
-    <p className="pendiente" data-testid={testId}>
-      {label} pendiente <code>{path}</code>
+    <p className="pendiente" data-testid={testId} data-source={path}>
+      {label} pendiente
     </p>
   );
 }
@@ -78,8 +78,7 @@ function BriefBody({ brief }: { brief: TopicBrief }) {
         <div className="chips-row">
           {brief.numbers_cited.map((item, index) => (
             <span key={`${item.name}-${index}`} className="chip">
-              {item.name}: <strong>{String(item.value)}</strong> ({kindLabel(item.kind)} ·{" "}
-              <code>{item.source}</code>)
+              {item.name}: <strong>{String(item.value)}</strong> {markForKind(item.kind)}
             </span>
           ))}
         </div>
@@ -179,7 +178,7 @@ export function StoryIndexCards() {
   if (missing) {
     return (
       <p className="pendiente" data-testid="story-index-pending">
-        Índice de historias pendiente <code>views/stories_index.json</code>
+        Índice de historias pendiente
       </p>
     );
   }
@@ -189,8 +188,7 @@ export function StoryIndexCards() {
   return (
     <div data-testid="static-brief-list">
       <p className="muted">
-        La API no devolvió el top 10. Brief y evidencia de los {top.length} temas en{" "}
-        <code>stories_index.json</code>.
+        La API no devolvió el top 10. Brief y evidencia de {top.length} temas.
       </p>
       <TopicBriefList rows={top} />
       {refs.length > 0 && (
@@ -215,7 +213,7 @@ function TopicBriefList({ rows }: { rows: IndexTopic[] }) {
           <div className="card-top">
             <span className="rank-badge">#{row.rank ?? "-"}</span>
             <h3>
-              {row.label_es || row.topic_id} <code className="topic-id">{row.topic_id}</code>
+              {row.label_es || row.topic_id}
             </h3>
           </div>
           <BriefBlock topicId={row.topic_id} week={row.week ?? ""} />
