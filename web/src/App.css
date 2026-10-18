@@ -1502,14 +1502,19 @@ body {
   font-size: 0.95rem;
 }
 
+/* Netlify's free tier injects a "Powered by Netlify" badge into the bottom-right
+   corner for every visitor (about 46 px tall at bottom 16 px). Both dock states sit
+   above it. */
 .chat-dock {
   width: min(420px, calc(100% - 1.5rem));
+  bottom: 72px;
+  max-height: min(480px, calc(100% - 88px));
 }
 
 .chat-dock-pill {
   position: absolute;
   right: 16px;
-  bottom: 16px;
+  bottom: 72px;
   z-index: 10000;
   height: 48px;
   max-width: calc(100% - 2rem);

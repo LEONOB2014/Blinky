@@ -57,6 +57,10 @@ const REHEAT_TICK_MS = 100;
 const REHEAT_STABLE_TICKS = 3;
 const LAYOUT_SAMPLE_INDEXES = [0, 100, 250, 500, 750, 999];
 const FIT_PAD = 0.08;
+/** Rendered label height in CSS px (the global button min-height). */
+const LABEL_H = 36;
+/** A focused neighbourhood is framed at most this many times the whole-graph zoom. */
+const SUBSET_MAX_ZOOM = 2.5;
 
 type ViewTransform = { k: number; x: number; y: number };
 
@@ -106,10 +110,20 @@ function dockObstacle(host: HTMLElement): { x0: number; y0: number; x1: number; 
 /**
  * fitView only pads every side by the same fraction. Place the points in the
  * larger of the two rectangles that clear the dock: above it, or to its left.
+ * `only` frames a subset of points (a focused topic and its neighbours); with
+ * fewer than two of them it frames the whole graph.
  */
-function fitClearingCorner(graph: Graph, host: HTMLElement): void {
+function fitClearingCorner(graph: Graph, host: HTMLElement, only?: number[] | null): void {
   const zoom = zoomApi(graph);
-  const positions = graph.getPointPositions();
+  const all = graph.getPointPositions();
+  let positions = all;
+  if (only && only.length >= 2) {
+    positions = [];
+    for (const i of only) {
+      if (i * 2 + 1 < all.length) positions.push(all[i * 2], all[i * 2 + 1]);
+    }
+    if (positions.length < 4) positions = all;
+  }
   if (!zoom || positions.length < 2) {
     graph.fitView(0, FIT_PAD, false);
     return;
@@ -118,6 +132,13 @@ function fitClearingCorner(graph: Graph, host: HTMLElement): void {
   if (!Number.isFinite(fitted.k) || fitted.k <= 0) {
     graph.fitView(0, FIT_PAD, false);
     return;
+  }
+  // Points grow with zoom: a tight neighbourhood would fill the canvas with
+  // discs. Cap a subset fit at SUBSET_MAX_ZOOM times the whole-graph fit.
+  let maxK = Infinity;
+  if (positions !== all) {
+    const whole = zoom.getTransform(all, undefined, 0);
+    if (Number.isFinite(whole.k) && whole.k > 0) maxK = whole.k * SUBSET_MAX_ZOOM;
   }
   graph.setViewTransform(fitted);
 
@@ -149,7 +170,7 @@ function fitClearingCorner(graph: Graph, host: HTMLElement): void {
     const innerW = safeW * (1 - FIT_PAD * 2);
     const innerH = safeH * (1 - FIT_PAD * 2);
     if (innerW < 40 || innerH < 40 || unitsW < 1 || unitsH < 1) return null;
-    const k = Math.min(innerW / unitsW, innerH / unitsH);
+    const k = Math.min(innerW / unitsW, innerH / unitsH, maxK);
     if (!Number.isFinite(k) || k <= 0) return null;
     return {
       k,
@@ -274,16 +295,37 @@ export function TemporalGraph({
       const width = rect.width || 680;
       const height = rect.height || 440;
 
+      // A reheat moves the points away from the exported layout: place labels
+      // at the live positions, or they float over empty space and get culled.
+      let live: number[] = [];
+      try {
+        live = g.getPointPositions();
+      } catch {
+        live = [];
+      }
+      const focusIdx = focusTopicIdx;
+      const neighbours =
+        focusIdx !== null
+          ? new Set(weekLinkMapRef.current[w]?.incidentMap.get(focusIdx) ?? [])
+          : null;
+
       const candidates: LabelItem[] = [];
+      const mustShow = new Set<number>();
       for (let i = 0; i < d.nodes.length; i++) {
         const node = d.nodes[i];
         const isFocused = highlightSet.has(node.id.toLowerCase());
+        const isNeighbour = neighbours?.has(i) ?? false;
         const rk = node.rank?.[w] ?? null;
         const isTop10 = rk !== null && rk >= 1 && rk <= 10;
-        const show = node.show_label || isTop10 || isFocused;
+        const show = node.show_label || isTop10 || isFocused || isNeighbour;
         if (!show) continue;
+        if (isTop10 || isFocused) mustShow.add(i);
 
-        const screen = g.spaceToScreenPosition([node.x, node.y]);
+        const lx = live[i * 2];
+        const ly = live[i * 2 + 1];
+        const screen = g.spaceToScreenPosition(
+          Number.isFinite(lx) && Number.isFinite(ly) ? [lx, ly] : [node.x, node.y],
+        );
         const sx = screen[0];
         const sy = screen[1];
         if (sx < 28 || sx > width - 28 || sy < 18 || sy > height - 22) {
@@ -296,6 +338,7 @@ export function TemporalGraph({
 
         const priority =
           (isFocused ? 10000 : 0) +
+          (isNeighbour ? 6000 : 0) +
           (isTop10 ? 5000 - (rk ?? 10) * 100 : 0) +
           (decision === "publicar_ahora" || decision === "preparar" ? 600 : 0) +
           pr * 100000 +
@@ -320,47 +363,67 @@ export function TemporalGraph({
       const maxLabels = 26;
       const obstacle = dockObstacle(host);
 
+      type Box = { x0: number; y0: number; x1: number; y1: number };
+      const overlaps = (a: Box, b: Box) =>
+        a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
       for (const cand of candidates) {
         if (accepted.length >= maxLabels && !cand.isFocused) break;
-        const estW = Math.min(185, Math.max(54, cand.text.length * 6.4 + 14));
-        const estH = 20;
+        const estW = Math.min(200, Math.max(54, cand.text.length * 7 + 12));
         const half = estW / 2;
         const pad = 4;
         if (cand.x - half < pad) cand.x = half + pad;
         if (cand.x + half > width - pad) cand.x = width - pad - half;
         if (cand.x - half < pad || cand.x + half > width - pad) continue;
-        const box = {
-          x0: cand.x - half,
-          y0: cand.y - estH - 5,
-          x1: cand.x + half,
-          y1: cand.y + 4,
+        // The rendered box: LABEL_H tall, lifted by translate(-50%, -115%).
+        const boxAt = (y: number): Box => {
+          const y0 = y - LABEL_H * 1.15;
+          return { x0: cand.x - half, y0, x1: cand.x + half, y1: y0 + LABEL_H };
         };
-        if (
-          obstacle &&
-          box.x0 < obstacle.x1 &&
-          box.x1 > obstacle.x0 &&
-          box.y0 < obstacle.y1 &&
-          box.y1 > obstacle.y0
-        ) {
-          continue;
-        }
-        let collides = false;
-        for (const p of placed) {
-          if (box.x0 < p.x1 && box.x1 > p.x0 && box.y0 < p.y1 && box.y1 > p.y0) {
-            collides = true;
+        if (obstacle && overlaps(boxAt(cand.y), obstacle)) continue;
+        // Top-10 and highlighted labels must show: in a dense layout they step one
+        // label height up or down to a free slot instead of covering each other.
+        const must = mustShow.has(cand.idx);
+        const steps = must ? [0, -1, 1, -2, 2] : [0];
+        let chosen: number | null = null;
+        for (const step of steps) {
+          const y = cand.y + step * LABEL_H;
+          const box = boxAt(y);
+          if (box.y0 < 0 || box.y1 > height) continue;
+          if (obstacle && overlaps(box, obstacle)) continue;
+          if (!placed.some((p) => overlaps(box, p))) {
+            chosen = y;
             break;
           }
         }
-        if (!collides || cand.isFocused) {
-          placed.push(box);
-          accepted.push(cand);
-        }
+        if (chosen === null && must) chosen = cand.y;
+        if (chosen === null) continue;
+        cand.y = chosen;
+        placed.push(boxAt(chosen));
+        accepted.push(cand);
       }
 
       setLabels(accepted);
     },
-    [highlightSet],
+    [focusTopicIdx, highlightSet],
   );
+
+  // Frame the camera, then the labels. A focused topic in the Historia lens is
+  // framed with its 1-hop neighbours so the reader sees what it connects to;
+  // every other view frames the whole graph, as the default view does.
+  const fitFrame = useCallback(() => {
+    const g = graphRef.current;
+    const host = canvasHostRef.current;
+    if (!g || !host) return;
+    const w = weekIdxRef.current;
+    const only =
+      activeLensRef.current === "segment" && focusTopicIdx !== null
+        ? [focusTopicIdx, ...(weekLinkMapRef.current[w]?.incidentMap.get(focusTopicIdx) ?? [])]
+        : null;
+    fitClearingCorner(g, host, only);
+    recomputeLabels(w);
+  }, [focusTopicIdx, recomputeLabels]);
+  const fitFrameRef = useRef(fitFrame);
+  fitFrameRef.current = fitFrame;
 
   // Apply lens styling to graph
   const applyLensToGraph = useCallback(
@@ -835,12 +898,6 @@ export function TemporalGraph({
         } catch {
           // No-op before the first render.
         }
-        try {
-          // enableSimulation false: zoom must not start a second simulation.
-          g.zoomToPointByIndex(focusIdx, 400, 1.8, true, false);
-        } catch {
-          // ignore
-        }
       }
 
       if (opts?.reheat) reheatRef.current();
@@ -864,6 +921,7 @@ export function TemporalGraph({
         active_lens: lens,
         reheat_skipped: `links>=${REHEAT_LINK_CAP}`,
       };
+      fitFrameRef.current();
       return;
     }
 
@@ -906,6 +964,7 @@ export function TemporalGraph({
         active_lens: lens,
         reheat_skipped: "start_failed",
       };
+      fitFrameRef.current();
       return;
     }
 
@@ -939,6 +998,7 @@ export function TemporalGraph({
       const settleTimeMs = Math.round((performance.now() - t0) * 10) / 10;
       const fpsRelayout =
         Math.round((frames / Math.max(0.01, settleTimeMs / 1000)) * 10) / 10;
+      fitFrameRef.current();
       let sample: number[] = [];
       try {
         sample = readSample();
@@ -1194,8 +1254,6 @@ export function TemporalGraph({
   const weekIdxRef = useRef<number>(weekIdx);
   const applyLensRef = useRef(applyLensToGraph);
   applyLensRef.current = applyLensToGraph;
-  const recomputeLabelsRef = useRef(recomputeLabels);
-  recomputeLabelsRef.current = recomputeLabels;
 
   // The library resizes its drawing buffer on its own. The camera stays framed
   // for the old box until we pass the full config and fit the new host size.
@@ -1215,8 +1273,7 @@ export function TemporalGraph({
       if (rect.width < 2 || rect.height < 2) return;
       g.setConfig(cfg);
       applyLensRef.current(weekIdxRef.current, activeLensRef.current);
-      fitClearingCorner(g, host);
-      recomputeLabelsRef.current(weekIdxRef.current);
+      fitFrameRef.current();
     };
 
     const scheduleFit = () => {
@@ -1266,10 +1323,7 @@ export function TemporalGraph({
     const host = canvasHostRef.current;
     const g = graphRef.current;
     if (!host || !g || !graphReadyRef.current) return;
-    const frame = requestAnimationFrame(() => {
-      fitClearingCorner(g, host);
-      recomputeLabelsRef.current(weekIdxRef.current);
-    });
+    const frame = requestAnimationFrame(() => fitFrameRef.current());
     return () => cancelAnimationFrame(frame);
   }, [dockOpen]);
 
