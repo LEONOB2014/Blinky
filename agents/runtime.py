@@ -271,7 +271,8 @@ def run_specialist(model: ChatModel, turn: Turn, agent: str, question: str) -> s
 
 # --- Auditor (deterministic) ------------------------------------------------------------------
 
-_NUM = re.compile(r"(?<![\w-])-?\d+(?:[.,]\d+)?%?")
+# whole tokens only: "30X" (the client's name) is not the number 30
+_NUM = re.compile(r"(?<![\w-])-?\d+(?:[.,]\d+)?%?(?![\w])")
 
 
 _MONTHS_ES = [
