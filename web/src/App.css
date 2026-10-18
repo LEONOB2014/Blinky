@@ -1836,3 +1836,47 @@ body {
 .graph-node-label.graph-label-ai.graph-label-focused {
   color: #fde68a;
 }
+
+/* Phones: one fixed viewport leaves the graph below the fold inside a clipped pane.
+   Here the page scrolls instead: the top 10 first, then a graph stage of its own height. */
+@media (max-width: 640px) {
+  body {
+    overflow: auto;
+  }
+
+  .app-shell.workspace,
+  html,
+  #root {
+    height: auto;
+  }
+
+  .app-shell.workspace {
+    min-height: 100svh;
+    overflow: visible;
+  }
+
+  .workspace-body {
+    overflow: visible;
+  }
+
+  .workspace-rail {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .workspace-stage {
+    flex: 0 0 auto;
+    height: 92svh;
+    min-height: 520px;
+  }
+
+  .workspace-header .subtitle {
+    font-size: 0.78rem;
+  }
+
+  .chat-dock-pill {
+    position: fixed;
+    height: 44px;
+    font-size: 13px;
+  }
+}
