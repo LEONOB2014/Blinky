@@ -1625,6 +1625,54 @@ body {
   }
 }
 
+.trust-summary ul {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+}
+
+.trust-point {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.trust-point + .trust-point {
+  border-top: 1px solid var(--line);
+}
+
+.trust-mark {
+  flex: 0 0 1em;
+  color: var(--accent);
+}
+
+.trust-point-status,
+.trust-point-rule {
+  padding-left: calc(1em + var(--space-2));
+}
+
+.trust-point-rule {
+  font-weight: 600;
+}
+
+.trust-legend {
+  font-size: 12px;
+}
+
+.trust-technical {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-2);
+}
+
+.trust-technical > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: var(--space-2) 0;
+}
+
 .trust-markdown {
   max-height: 18rem;
   overflow: auto;
