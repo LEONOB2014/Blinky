@@ -70,6 +70,14 @@ def test_the_critics_have_their_own_camp(lexicon):
             {"lab:nvidia_models", "research:hugging_face"},
         ),
         ("Former OpenAI researchers launch a robotics startup", {"biz:talent_moves"}),
+        (
+            "Bancos latinoamericanos adoptan IA generativa para el crédito",
+            {"biz:ai_finance_banking"},
+        ),
+        ("La IA ayuda a agricultores de maíz en México", {"biz:ai_agriculture"}),
+        ("Startup chilena entrena un modelo de IA en quechua", {"society:indigenous_languages"}),
+        ("Pymes colombianas usan IA para vender más", {"biz:ai_smes"}),
+        ("IA para alerta temprana de inundaciones en Brasil", {"risk:climate_resilience"}),
     ],
 )
 def test_headlines_map_to_ai_topics(lexicon, text, expected):

@@ -654,3 +654,42 @@ entries:
     family: research
     stance: promoter
     patterns: ['xprize', 'x prize', 'arc prize', 'arc-agi', '\baimo\b', 'ai mathematical olympiad', '(imo|olimpiada (internacional )?de matemáticas).{0,30}\b(ai|ia|gold|oro|deepmind|openai)', 'kaggle', 'ai cyber challenge', 'darpa.{0,30}\b(ai|challenge)', '(ai|ia)\b.{0,30}\b(prize|premio|prêmio|competition|competencia|challenge|desafío|hackathon)']
+
+  # ---------------------------------------------------------------- v0.4: AI in LatAm-relevant sectors
+  # From an external review (Qwen3-235B as a LatAm news editor, 2026-10-18): applications the
+  # lexicon missed that matter to executives in the region.
+  - id: biz:ai_finance_banking
+    label_es: IA en banca, fintech e inclusión financiera
+    family: business
+    stance: neutral
+    patterns: ['(ai|ia)\b.{0,40}\b(bank|banking|banca|bancos?|fintech|payments?|pagos|credit scoring|crédito|seguros|insurance|inclusión financiera|financial inclusion)', '(bank|banking|banca|bancos?|fintech|insurers?|aseguradoras?).{0,40}\b(ai|ia|generative|generativa)\b', 'open finance', 'finanzas abiertas']
+  - id: biz:ai_agriculture
+    label_es: IA en el agro y la alimentación
+    family: business
+    stance: neutral
+    patterns: ['(ai|ia)\b.{0,40}\b(agricultor|agricultur|farming|farmers|crops?|cultivos?|agro|agrícola|agricola|ganader|livestock|food security|seguridad alimentaria)', '(agricultur|agtech|agro|farming|farmers|agricultores|cultivos?).{0,40}\b(ai|ia|machine learning)\b', 'precision agriculture', 'agricultura de precisión', 'agricultura de precisao']
+  - id: biz:ai_logistics
+    label_es: IA en logística y cadena de suministro
+    family: business
+    stance: neutral
+    patterns: ['(ai|ia)\b.{0,40}\b(logistics|logística|logistica|supply chain|cadena de suministro|cadeia de suprimentos|warehous|almacén|freight|carga|shipping|ports?|puertos?)', '(logistics|logística|supply chain|cadena de suministro|warehouse|freight).{0,40}\b(ai|ia)\b']
+  - id: policy:ai_government
+    label_es: IA en el gobierno y los servicios públicos
+    family: policy
+    stance: neutral
+    patterns: ['(government|gobierno|governo|public sector|sector público|servicios públicos|public services|ministr|municipal|alcaldía|prefeitura).{0,40}\b(uses?|adopts?|deploys?|usa|adopta|implementa|lanza|launches)\b.{0,30}\b(ai|ia)\b', 'gov ?tech', 'gobierno digital.{0,30}\b(ia|ai)', '(ai|ia)\b.{0,30}\b(en el gobierno|in government|para el estado|servicios públicos)']
+  - id: biz:ai_smes
+    label_es: IA para pymes y emprendedores
+    family: business
+    stance: promoter
+    patterns: ['(ai|ia)\b.{0,40}\b(smes?|small business(es)?|small and medium|pymes?|mipymes?|pequeñas y medianas|emprendedor|pequenas empresas)', '(smes?|small business(es)?|pymes?|mipymes?|emprendedores).{0,40}\b(ai|ia)\b']
+  - id: society:indigenous_languages
+    label_es: IA y lenguas indígenas y locales
+    family: society
+    stance: promoter
+    patterns: ['(indigenous|indígenas?|originari|nativ).{0,30}\b(languages?|lenguas?|idiomas?|línguas?)\b.{0,40}\b(ai|ia|model|modelo|llm|translat|traduc)', '\b(quechua|guaraní|guarani|náhuatl|nahuatl|aymara|mapuche|maya|wayuu)\b.{0,40}\b(ai|ia|model|modelo|translat|traduc|app)', '\b(ai|ia|model|modelo|llm)\b.{0,40}\b(quechua|guaraní|guarani|náhuatl|nahuatl|aymara|mapuche|wayuu|lenguas indígenas|indigenous languages)\b', 'low-resource languages?', 'lenguas de bajos recursos', 'latam-gpt', 'latam gpt']
+  - id: risk:climate_resilience
+    label_es: IA para clima, desastres y resiliencia
+    family: safety
+    stance: promoter
+    patterns: ['(ai|ia)\b.{0,40}\b(climate|clima|weather forecast|pronóstico del tiempo|flood|inundaci|drought|sequía|wildfire|incendios forestales|hurricane|huracán|earthquake|sismo|terremoto|early warning|alerta temprana)', '(climate|clima|flood|wildfire|incendios|disaster|desastres?).{0,40}\b(ai|ia|machine learning)\b.{0,20}\b(predict|forecast|pronóstic|detect|alert)']
