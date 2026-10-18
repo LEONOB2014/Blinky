@@ -55,3 +55,47 @@ def test_the_radar_aggregates_still_use_the_gdelt_rule_not_the_classifier():
     assert text, "bq_sql has the aggregate jobs"
     assert trust.FILTER_IN_USE == "regla_gdelt"
     assert "cascade" not in text and "is_ai_student" not in text and "classifier" not in text
+
+
+@pytest.mark.parametrize(
+    ("source", "report", "says", "not_says"),
+    [
+        (None, "backtest.md", "acierta el 29,2%", "bajo la regla del 90%"),
+        ("ai", "backtest_ai.md", "acierta el 25,6%", "29,2%"),
+    ],
+)
+def test_the_trust_answer_reads_the_backtest_of_the_active_source(
+    monkeypatch, source, report, says, not_says
+):
+    """v0.2's report by default; the AI lexicon run's under RADAR_SOURCE=ai (its secondary label,
+    since its primary is below the coverage rule)."""
+    from agents import runtime, tools
+    from radar.paths import REPO_ROOT
+
+    if source:
+        monkeypatch.setenv("RADAR_SOURCE", source)
+    else:
+        monkeypatch.delenv("RADAR_SOURCE", raising=False)
+    assert trust.backtest_report(REPO_ROOT / "reports").name == report
+    turn = runtime.Turn("t")
+    for name in ("get_backtest", "get_filter_quality"):
+        runtime._run_tool(turn, "auditor", name)
+    line = runtime.trust_line(turn)
+    assert says in line and not_says not in line
+    assert runtime.untraced_numbers(line, turn.tool_results, "") == []
+    summary = trust.trust_summary(REPO_ROOT / "reports")
+    points = {p["id"]: p["texto"] for p in summary["points"]}
+    assert says.replace("acierta el ", "acierta el ") in points["precision"]
+    assert f"reports/{report}" in summary["sources"]
+    if source == "ai":
+        assert "frente a un 25,4% de un tema al azar" in line
+        assert "no supera a la regla simple de crecimiento de menciones (27,2%)" in line
+        assert "incluso en el peor caso" not in line  # a secondary-label claim, not a bound
+        assert trust.PRIMARY_BELOW_COVERAGE in line and points["principal"]
+        assert tools.get_backtest()["fuente"] == "reports/backtest_ai.md"
+    else:
+        assert "principal" not in points
+
+
+def test_the_secondary_parser_needs_its_section():
+    assert trust.secondary_summary("# Backtest\n\nno secondary section") is None

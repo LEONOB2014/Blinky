@@ -18,6 +18,7 @@ import polars as pl
 import yaml
 from jsonschema import Draft202012Validator
 
+from agents import trust
 from agents.trust import (  # noqa: F401 - re-exported for the agents and tests
     BQ_FREE_TIB_PER_MONTH,
     BQ_PRICE_SOURCE,
@@ -883,11 +884,16 @@ def _report(name: str) -> dict[str, Any]:
 
 def get_backtest() -> dict[str, Any]:
     """The backtest report (WS4), with its headline numbers parsed for the trust line."""
-    path = REPO_ROOT / "reports" / "backtest.md"
+    path = trust.backtest_report(REPO_ROOT / "reports")  # backtest_ai.md under RADAR_SOURCE=ai
     if not path.exists():
-        return _report("backtest.md")
+        return _report(path.name)
     text = path.read_text(encoding="utf-8")
-    return {"available": True, "resumen": backtest_summary(text), "report": text[:4000]}
+    return {
+        "available": True,
+        "fuente": f"reports/{path.name}",
+        "resumen": trust.report_summary(path),
+        "report": text[:4000],
+    }
 
 
 def get_filter_quality() -> dict[str, Any]:
