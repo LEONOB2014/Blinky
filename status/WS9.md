@@ -6,7 +6,9 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 05:34 UTC-5 · branch `docs/ws9-predeploy-check` (pre-deploy check of `develop` e830a28, no deploy) · committed locally, not pushed.
+2026-10-18 06:25 UTC-5 · branch `docs/ws9-final-redeploy` (the final redeploy of `develop` 0a006f8) · committed locally, not pushed.
+
+Previous: 2026-10-18 05:34 UTC-5 · branch `docs/ws9-predeploy-check` (pre-deploy check of `develop` e830a28, no deploy) · committed locally, not pushed.
 
 Previous: 2026-10-18 05:30 UTC-5 · branch `feat/ws9-final-data` · committed locally, the orchestrator pushes.
 
@@ -15,6 +17,92 @@ Previous: 2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 r
 Previous: 2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+
+## Final redeploy of `develop` 0a006f8 (orchestrator's order, 06:15, approved)
+
+Run from `../radar-worktrees/deploy-develop`, moved to `origin/develop` 0a006f8: design redesign (PR #46),
+agent fixes (PR #47), pre-deploy check (PR #45).
+
+**Result: every check passed. 0 steps failed; nothing was fixed on the live service.**
+
+- **Dry run** (`make redeploy-all`): passed, 9.3 s, every step listed. Steps 0-6 include the new
+  3b (graph views after the static wipe). Current min-instances is 0, and it was kept.
+- **`make redeploy-all ARGS=--run`: 3 min 27 s** (measured):
+  - Cloud Run revision **`radar-api-00006-vw5`**, built with Cloud Build;
+  - static export, 7.53 MiB;
+  - 3b graph views: temporal 1,000 nodes / 44,005 edges / 13 weeks, plus 15 stories;
+  - web build;
+  - Netlify production deploy (579 files);
+  - closing `make demo-check`: **7/7**.
+- **Live checks** (measured):
+
+  | Check | Result |
+  |---|---|
+  | `make demo-check` | 7/7 (inside the run) |
+  | `make demo-check ARGS=--chat` | **8/8** (chat turn 10.2 s, 8 trace steps, 3 cards) |
+  | `/fallback/temporal.png` | **200** (312 KB) |
+  | `/data/views/temporal.json` | **200** (3.79 MB) |
+  | First API request after the deploy (`/api/freshness` in the closing check) | 2.48 s |
+
+- **The 4 questions on the live chat** (W42 #1 Marsh McLennan): **4/4 pass** (the right tools ran
+  with data; the Auditor found no unsourced number).
+
+  | # | Question | Tools (data available) | Answer |
+  |---|---|---|---|
+  | 1 | ¿Qué contenido preparo…? | `get_topic_brief`, `get_topic_evidence`, `get_topic_sources`, scores | The brief's format, angle, 92 and 65 |
+  | 2 | ¿Qué artículos respaldan…? | `get_topic_evidence`, `get_topic_sources` | A code-written evidence block: "44 artículos de 39 medios" and 5 outlets with date, language and title |
+  | 3 | ¿Cuántos medios distintos…? | `get_topic_sources` | **39** (expected 39), plus the evidence block |
+  | 4 | ¿En qué subtemas…? | scores, sources, evidence | Inversión y mercados, chips e infraestructura |
+
+  - Latency 13.6 / 12.1 / 8.9 / 8.5 s; 31,054 tokens for the 4 turns (estimate: under $0.01).
+  - Defects D1 and D2 of the pre-deploy check are **fixed live**: the outlet count is 39, and the
+    evidence is shown.
+- **Rehearsal screenshots**, headed Chrome with WebGL at 1440x900, in `lake/submission/shots/`
+  (git-ignored; the 04:52 shots of the old UI moved to `old-ui-0452/`):
+
+  | File | What it shows |
+  |---|---|
+  | `01_default.png` | Default view: top 10 and the temporal graph. First frame 0.74 s, ANGLE Metal on the M1 Pro (measured). |
+  | `02_fullscreen.png` | The in-app full screen ("Salir (Esc)") |
+  | `03_lens_momento.png` | Momento lens |
+  | `04_lens_puente.png` | Puente lens |
+  | `05_card_detail.png` | #1 card detail |
+  | `06_trust.png` | Trust panel |
+  | `07_chat_evidence.png` | A chat answer with the evidence block and "Auditor: verificado" |
+
+  The page threw no exceptions during the walk.
+
+**Remaining defects** (seen live; for the design and agents lanes; nothing changed):
+- R1: the evidence answer prints the decision line twice.
+- R2: the title dedupe misses copies that differ only by a site suffix.
+  - Example: two of the 5 Marsh McLennan W42 articles are the same story ("Wall Street muscles
+    higher…"), one with " - Boston News, Weather, Sports" appended.
+  - Fix in S14: drop a trailing " - <site>" before normalizing (about 1.1 GiB).
+- R3: D3 of the pre-deploy check is still there.
+  - The subtopics answer says "crecimiento muy rápido en Latinoamérica" (there is no es/pt
+    coverage) and adds a made-up sector story.
+  - The other three are clean of it in this run.
+- R4 (design): the chat panel overlaps the graph's right edge, clipping labels. Inside the chat
+  panel's decision card the topic name renders dark on dark. The trust panel does not close with
+  Escape (only "Ocultar confianza").
+- Fixed by the design lane, seen live: audience fit is now marked as an estimate on the card
+  ("Encaje LatAm: 65% ○").
+
+**Cold start**, `deploy/cold_start.py` on `radar-api-00006-vw5`, measured at 11:42 UTC (06:42 UTC-5)
+after **18.0 min** idle, from the maintainer's laptop:
+
+| Request | Status | Time |
+|---|---|---|
+| First request, `/api/freshness` | 200 | **5.37 s** |
+| `/api/radar` right after | 200 | 0.40 s |
+| `/api/radar`, warm | 200 | 0.18 s |
+
+- One container start was logged after the first request (cold start confirmed).
+- That is about half the 10.0 s measured on revision 00002 (01:48). The image is larger now
+  (11 lake tables, 87.6 MiB), so the difference is probably container start-up variance, not an
+  improvement (not tested).
+- min-instances stays 0. The warm-instance commands and cost are in `deploy/README.md`: about $0.018
+  per hour idle (estimate). Your decision.
 
 ## Pre-deploy check of `develop` e830a28 (orchestrator's order, 05:38; no deploy)
 
