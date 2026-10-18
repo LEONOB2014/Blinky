@@ -1143,6 +1143,304 @@ li {
   margin-bottom: 1rem;
 }
 
+/* FINDING-001: one viewport. The page does not scroll; the rail and the chat do. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+.app-shell.workspace {
+  position: relative;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.workspace-header {
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.75rem 1rem;
+  margin: 0;
+  padding: 0.55rem 0.9rem;
+  background: #ffffff;
+}
+
+.brand-block {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.workspace-header h1 {
+  font-size: 1.05rem;
+}
+
+.workspace-header .subtitle {
+  margin: 0.1rem 0 0;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-header .header-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem 0.65rem;
+  max-width: 46%;
+}
+
+.freshness-line {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.workspace .dev-banner {
+  margin: 0;
+  border-radius: 0;
+}
+
+.workspace-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.workspace-rail {
+  width: 30%;
+  min-width: 280px;
+  max-width: 440px;
+  overflow: auto;
+  border-right: 1px solid #e2e8f0;
+  background: #ffffff;
+  padding: 0.65rem 0.75rem 1.25rem;
+}
+
+.workspace-fs .workspace-rail {
+  display: none;
+}
+
+.rail-header {
+  position: sticky;
+  top: -0.65rem;
+  z-index: 2;
+  background: #ffffff;
+  padding: 0.15rem 0 0.45rem;
+}
+
+.workspace-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.workspace-stage .temporal-graph-container,
+.workspace-stage .story-graph-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  margin: 0;
+}
+
+.workspace-stage .temporal-split,
+.workspace-stage .story-split {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  grid-template-columns: 1fr;
+}
+
+.workspace-stage .temporal-movers-aside {
+  display: none;
+}
+
+.workspace-stage .temporal-canvas-wrap,
+.workspace-stage .story-canvas-wrap {
+  height: 100%;
+  min-height: 280px;
+  border: none;
+  border-radius: 0;
+}
+
+.rail-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "rank name decision"
+    "why why why";
+  gap: 0.2rem 0.45rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rail-row .rank-badge {
+  grid-area: rank;
+}
+
+.rail-name {
+  grid-area: name;
+  font-weight: 700;
+  font-size: 0.92rem;
+  min-width: 0;
+}
+
+.rail-row .decision-badge {
+  grid-area: decision;
+}
+
+.rail-why {
+  grid-area: why;
+  color: #475569;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-detail {
+  margin-top: 0.55rem;
+}
+
+.topic-card {
+  padding: 0.55rem 0.65rem;
+}
+
+.series-context-title {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.chat-dock {
+  width: min(420px, calc(100% - 1.5rem));
+}
+
+.chat-dock-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.chat-dock .floating-chat-header h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #f8fafc;
+}
+
+.trust-overlay {
+  position: absolute;
+  z-index: 40;
+  top: 4.4rem;
+  right: 0.75rem;
+  width: min(760px, calc(100% - 1.5rem));
+  max-height: calc(100svh - 5.6rem);
+  overflow: auto;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+}
+
+.stage-switch {
+  position: absolute;
+  top: 0.55rem;
+  left: 0.55rem;
+  z-index: 6;
+}
+
+.graph-lens-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  padding: 0.4rem 0.65rem 0.15rem;
+  color: #e2e8f0;
+}
+
+.lens-banner-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.7rem;
+  min-width: 0;
+}
+
+.lens-caption-text {
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+
+.lens-pills-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.workspace-stage .graph-toolbar {
+  margin: 0 0.55rem 0.35rem;
+}
+
+.trace-disclosure {
+  color: #e2e8f0;
+  font-size: 0.82rem;
+}
+
+.trace-disclosure summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+@media (max-width: 1024px) {
+  .workspace-body {
+    flex-direction: column;
+  }
+
+  .workspace-rail {
+    width: 100%;
+    max-width: none;
+    max-height: 38svh;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .workspace-header {
+    flex-wrap: wrap;
+  }
+
+  .workspace-header .header-actions {
+    max-width: none;
+  }
+
+  .workspace-header .subtitle,
+  .freshness-line {
+    white-space: normal;
+  }
+}
+
 .trust-markdown {
   max-height: 18rem;
   overflow: auto;

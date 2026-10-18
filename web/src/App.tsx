@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchFreshness,
   fetchRadar,
@@ -10,7 +10,7 @@ import { BriefBlock, EvidenceBlock, StoryIndexCards } from "./components/BriefEv
 import { StoryGraph } from "./components/StoryGraph";
 import { TemporalGraph } from "./components/TemporalGraph";
 import { TrustPanel } from "./components/TrustPanel";
-import { LENS_NAMES, type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
+import { type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
 import { placeNamedTopic, type StoryPlacement } from "./temporalNodes";
 import type {
   AgentTraceStep,
@@ -204,16 +204,65 @@ function formatWindow(w: TopicWindow): string {
   }
 }
 
+const ES_MONTHS = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+];
+
+/** Newest calendar day in the freshness payload (ISO dates only; week ids are not days). */
+function newestCalendarDay(freshness: FreshnessResponse | null): string | null {
+  if (!freshness) return null;
+  let best: string | null = null;
+  for (const value of Object.values(freshness.tables)) {
+    if (value && /^\d{4}-\d{2}-\d{2}$/.test(value) && (best === null || value > best)) {
+      best = value;
+    }
+  }
+  return best;
+}
+
+function formatDayEs(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  const monthName = ES_MONTHS[Number(month) - 1] ?? month;
+  return `${Number(day)} ${monthName} ${year}`;
+}
+
+interface CoverageSpan {
+  dt_max: string;
+  span_weeks: number;
+}
+
+/** One human freshness line. The week count comes from daily_topic's date span. */
+function freshnessLine(freshness: FreshnessResponse | null, coverage: CoverageSpan | null): string {
+  const day = newestCalendarDay(freshness);
+  const dated = day ? `Datos al ${formatDayEs(day)}` : "Datos";
+  const weeks =
+    coverage && day && coverage.dt_max === day ? `${coverage.span_weeks} semanas` : null;
+  return [dated, weeks, "solo fuentes públicas"].filter(Boolean).join(" · ");
+}
+
+const DEFAULT_TEMPORAL_VIEW: ViewCommand = {
+  view: "temporal",
+  week: null,
+  focus_topic: null,
+  highlight: [],
+  color_by: "decision",
+  caption_es: "Grafo temporal semanal (13 semanas)",
+};
+
 function getInitialViewFromUrl(): ViewCommand {
   if (typeof window === "undefined") {
-    return {
-      view: "cards",
-      week: null,
-      focus_topic: null,
-      highlight: [],
-      color_by: "decision",
-      caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
-    };
+    return DEFAULT_TEMPORAL_VIEW;
   }
   const params = new URLSearchParams(window.location.search);
   const v = params.get("view") as ViewMode | null;
@@ -232,18 +281,22 @@ function getInitialViewFromUrl(): ViewCommand {
           : `Anillo de historia de 1 salto (${topic ?? "Top #1"})`,
     };
   }
-  return {
-    view: "cards",
-    week: null,
-    focus_topic: null,
-    highlight: [],
-    color_by: "decision",
-    caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
-  };
+  if (v === "cards") {
+    return {
+      view: "cards",
+      week: wk,
+      focus_topic: topic,
+      highlight: topic ? [topic] : [],
+      color_by: "decision",
+      caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
+    };
+  }
+  return DEFAULT_TEMPORAL_VIEW;
 }
 
 export function App() {
   const [freshness, setFreshness] = useState<FreshnessResponse | null>(null);
+  const [coverage, setCoverage] = useState<CoverageSpan | null>(null);
   const [radarItems, setRadarItems] = useState<TopicScoreWeekly[]>([]);
   const [radarEmptyReason, setRadarEmptyReason] = useState<string | null>(null);
   // ISO week ("2026-W42") of the radar; empty until freshness gives the latest scored week.
@@ -262,6 +315,7 @@ export function App() {
   const [chatCards, setChatCards] = useState<DecisionCard[]>([]);
   const [traceSteps, setTraceSteps] = useState<AgentTraceStep[]>([]);
   const [activeView, setActiveView] = useState<ViewCommand>(getInitialViewFromUrl);
+  const [detailTopicId, setDetailTopicId] = useState<string | null>(null);
 
   // A shared ?view=story link still lands on the GPU story lens when the topic
   // is one of the 1,000 nodes. Later opens go through openNamedTopic.
@@ -283,14 +337,10 @@ export function App() {
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  // Split View & Fullscreen state (Addendum 2 Must #2)
-  const [splitPct, setSplitPct] = useState<number>(35);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showTrust, setShowTrust] = useState(false);
   const [isCardsDrawerOpen, setIsCardsDrawerOpen] = useState<boolean>(false);
-  const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(true);
-  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(false);
   const activeLens = lensFromCommand(
     activeView.color_by,
     "",
@@ -328,46 +378,6 @@ export function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Dragging handlers for divider
-  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDividerTouchStart = useCallback(() => {
-    setIsDragging(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isDragging) return;
-    function handleMove(clientX: number) {
-      if (!splitContainerRef.current) return;
-      const rect = splitContainerRef.current.getBoundingClientRect();
-      const rawPct = ((clientX - rect.left) / rect.width) * 100;
-      const clamped = Math.min(60, Math.max(20, rawPct));
-      setSplitPct(clamped);
-    }
-    function onMouseMove(e: MouseEvent) {
-      handleMove(e.clientX);
-    }
-    function onTouchMove(e: TouchEvent) {
-      if (e.touches.length > 0) handleMove(e.touches[0].clientX);
-    }
-    function onEnd() {
-      setIsDragging(false);
-    }
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onEnd);
-    window.addEventListener("touchmove", onTouchMove);
-    window.addEventListener("touchend", onEnd);
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onEnd);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", onEnd);
-    };
-  }, [isDragging]);
-
   useEffect(() => {
     void fetchFreshness()
       .then((f) => {
@@ -379,6 +389,16 @@ export function App() {
         console.error(err);
         setRadarWeek("latest");
       });
+    void fetch(`${import.meta.env.BASE_URL}data/coverage.json`)
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data: unknown) => {
+        if (!data || typeof data !== "object") return;
+        const row = data as { dt_max?: unknown; span_weeks?: unknown };
+        if (typeof row.dt_max === "string" && typeof row.span_weeks === "number") {
+          setCoverage({ dt_max: row.dt_max, span_weeks: row.span_weeks });
+        }
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -399,8 +419,7 @@ export function App() {
 
   function selectTopic(topicId: string) {
     setSelectedTopic(topicId);
-    // Subtopics have no 1-hop ring; org:/thm: topics do.
-    if (topicId.includes(":")) setSelectedEntity(topicId);
+    setSelectedEntity(topicId);
   }
 
   async function openNamedTopic(
@@ -415,17 +434,20 @@ export function App() {
     if (fullscreen && (cmd.view === "temporal" || cmd.view === "story")) {
       setIsFullscreen(true);
     }
+    setDetailTopicId(topicId);
     selectTopic(topicId);
   }
 
   async function applyViewCommand(cmd: ViewCommand) {
     if (cmd.view === "story" && cmd.focus_topic) {
-      await openNamedTopic(cmd.focus_topic, cmd.week, cmd.focus_topic, true);
+      await openNamedTopic(cmd.focus_topic, cmd.week, cmd.focus_topic, false);
       return;
     }
     setActiveView(cmd);
-    if (cmd.view === "temporal" || cmd.view === "story") setIsFullscreen(true);
-    if (cmd.focus_topic) selectTopic(cmd.focus_topic);
+    if (cmd.focus_topic) {
+      setDetailTopicId(cmd.focus_topic);
+      selectTopic(cmd.focus_topic);
+    }
   }
 
   const contextWeek = radarWeek && radarWeek !== "latest" ? radarWeek : undefined;
@@ -525,6 +547,7 @@ export function App() {
       setChatAnswer(res.answer_es);
       setChatCards(res.decision_cards);
       setTraceSteps(res.trace);
+      setIsFloatingChatOpen(true);
       const resolvedCmd = resolveChatViewCommand(
         trimmed,
         res.view_commands,
@@ -540,8 +563,11 @@ export function App() {
     }
   }
 
+  const detailCard =
+    radarItems.find((card) => card.topic_id === detailTopicId) ?? null;
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell workspace${isFullscreen ? " workspace-fs" : ""}`}>
       {freshness?.profile === "dev" && (
         <div className="dev-banner" role="status" data-testid="dev-banner">
           <strong>⚠️ Perfil activo: datos de desarrollo</strong> (`RADAR_PROFILE=dev` ·
@@ -550,8 +576,8 @@ export function App() {
         </div>
       )}
 
-      <header className="app-header">
-        <div>
+      <header className="app-header workspace-header">
+        <div className="brand-block">
           <h1>Radar de Señal Temprana · 30X</h1>
           <p className="subtitle">
             Qué temas de IA están subiendo antes de saturarse en español, por qué y desde
@@ -559,6 +585,16 @@ export function App() {
           </p>
         </div>
         <div className="header-actions">
+          <label className="week-picker">
+            Semana{" "}
+            <input
+              type="week"
+              aria-label="Semana ISO del radar"
+              value={radarWeek === "latest" ? "" : radarWeek}
+              max={freshness?.tables.topic_scores_weekly ?? undefined}
+              onChange={(e) => setRadarWeek(e.target.value || "latest")}
+            />
+          </label>
           <button
             type="button"
             className={showTrust ? "pill pill-active" : "pill"}
@@ -567,74 +603,57 @@ export function App() {
           >
             {showTrust ? "Ocultar confianza" : "Confianza"}
           </button>
-        <div className="freshness-box">
-          <div className="freshness-title">
-            Frescura de datos (`GET /api/freshness`) · perfil:{" "}
-            <code>{freshness?.profile ?? "..."}</code>
-          </div>
-          <div className="freshness-grid">
-            {freshness &&
-              Object.entries(freshness.tables).map(([table, dt]) => (
-                <span key={table} className="freshness-chip">
-                  <code>{table}</code>: {dt ?? "pendiente"}
-                </span>
-              ))}
-          </div>
-        </div>
+          <p className="freshness-line" data-testid="freshness-line">
+            {freshnessLine(freshness, coverage)}
+          </p>
         </div>
       </header>
 
-      {showTrust && <TrustPanel />}
+      {showTrust && (
+        <div className="trust-overlay">
+          <TrustPanel />
+        </div>
+      )}
 
-      <main className="split-view-container" ref={splitContainerRef}>
-        {/* Left column: Top 10 cards + Chat + Timeline + Context + Trace */}
-        <div className="split-left-pane" style={{ width: `${splitPct}%` }}>
-          <section className="panel" aria-labelledby="top10-heading">
-            <div className="panel-header">
-              <h2 id="top10-heading">Top 10 semanal (`GET /api/radar`)</h2>
-              <label className="week-picker">
-                Semana{" "}
-                <input
-                  type="week"
-                  aria-label="Semana ISO del radar"
-                  value={radarWeek === "latest" ? "" : radarWeek}
-                  max={freshness?.tables.topic_scores_weekly ?? undefined}
-                  onChange={(e) => setRadarWeek(e.target.value || "latest")}
-                />
-              </label>
-            </div>
+      <div className="workspace-body">
+        <aside className="workspace-rail" aria-labelledby="top10-heading">
+          <div className="panel-header rail-header">
+            <h2 id="top10-heading">Top 10 semanal</h2>
+          </div>
 
-            {radarItems.length === 0 ? (
-              <>
-              <div className="empty-state" data-testid="radar-empty-notice">
-                <p>
-                  <strong>Tabla `topic_scores_weekly` pendiente:</strong>{" "}
-                  <code>{radarEmptyReason ?? "sin filas todavía"}</code>
-                </p>
-                <p>
-                  Sin tarjetas para esta semana. Explora abajo las series diarias reales
-                  por subtema y el anillo de 1 salto:
-                </p>
-                <div className="subtopic-pills">
-                  {SUBTOPICS.map((st) => (
-                    <button
-                      key={st.id}
-                      type="button"
-                      className={
-                        selectedTopic === st.id ? "pill pill-active" : "pill"
-                      }
-                      onClick={() => selectTopic(st.id)}
-                    >
-                      {st.label_es} (<code>{st.id}</code>)
-                    </button>
-                  ))}
-                </div>
+          {radarItems.length === 0 ? (
+            <div className="empty-state" data-testid="radar-empty-notice">
+              <p>
+                <strong>Tabla `topic_scores_weekly` pendiente:</strong>{" "}
+                <code>{radarEmptyReason ?? "sin filas todavía"}</code>
+              </p>
+              <p>
+                Sin tarjetas para esta semana. Explora abajo las series diarias reales
+                por subtema y el anillo de 1 salto:
+              </p>
+              <div className="subtopic-pills">
+                {SUBTOPICS.map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    className={selectedTopic === st.id ? "pill pill-active" : "pill"}
+                    onClick={() => {
+                      setDetailTopicId(st.id);
+                      selectTopic(st.id);
+                    }}
+                  >
+                    {st.label_es} (<code>{st.id}</code>)
+                  </button>
+                ))}
               </div>
               <StoryIndexCards />
-              </>
-            ) : (
-              <div className="cards-grid">
-                {radarItems.map((card) => (
+            </div>
+          ) : (
+            <div className="cards-grid rail-list">
+              {radarItems.map((card) => {
+                const open = detailTopicId === card.topic_id;
+                const whyLine = card.why[0] ?? "";
+                return (
                   <article
                     key={card.topic_id}
                     className={
@@ -643,6 +662,157 @@ export function App() {
                         : "topic-card"
                     }
                     data-testid={`radar-card-${card.rank ?? card.topic_id}`}
+                  >
+                    <button
+                      type="button"
+                      className="rail-row"
+                      onClick={() => {
+                        setDetailTopicId(card.topic_id);
+                        void openNamedTopic(
+                          card.topic_id,
+                          card.week,
+                          topicName(card.topic_id, card.label_es),
+                          false,
+                        );
+                      }}
+                    >
+                      <span className="rank-badge">#{card.rank ?? "-"}</span>
+                      <span className="rail-name">
+                        {topicName(card.topic_id, card.label_es)}
+                      </span>
+                      <span className={`decision-badge decision-${card.decision}`}>
+                        {DECISION_LABELS[card.decision]}
+                      </span>
+                      {whyLine && <span className="rail-why">{whyLine}</span>}
+                    </button>
+                    {open && (
+                      <TopicDetail
+                        card={card}
+                        timelineLoading={timelineLoading}
+                        langTotals={langTotals}
+                        timelineByDate={timelineByDate}
+                        contextRing={contextRing}
+                        selectedTopic={selectedTopic}
+                        onSelectTopic={selectTopic}
+                      />
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {detailTopicId && !detailCard && (
+            <article className="topic-card topic-card-selected">
+              <h3>{topicName(detailTopicId)}</h3>
+              <TopicSeries
+                timelineLoading={timelineLoading}
+                langTotals={langTotals}
+                timelineByDate={timelineByDate}
+                contextRing={contextRing}
+                selectedTopic={selectedTopic}
+                onSelectTopic={selectTopic}
+              />
+            </article>
+          )}
+        </aside>
+
+        <section
+          className={
+            isFullscreen
+              ? "workspace-stage view-panel-fullscreen"
+              : "workspace-stage"
+          }
+          aria-label="Grafo"
+          data-testid="view-command-area"
+        >
+          {activeView.view === "temporal" && (
+            <TemporalGraph
+              week={activeView.week ?? contextWeek}
+              focusTopic={activeView.focus_topic}
+              highlight={activeView.highlight}
+              colorBy={activeLens}
+              captionEs={activeView.caption_es}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
+              onLensChange={selectLens}
+              onSelectTopic={(topicId) => {
+                setDetailTopicId(topicId);
+                selectTopic(topicId);
+              }}
+              onOpenStory={(topicId) => {
+                void openNamedTopic(
+                  topicId,
+                  activeView.week ?? contextWeek ?? null,
+                  topicId,
+                  false,
+                );
+              }}
+            />
+          )}
+
+          {activeView.view === "story" && (
+            <StoryGraph
+              focusTopic={activeView.focus_topic}
+              highlight={activeView.highlight}
+              colorBy={activeLens}
+              captionEs={activeView.caption_es}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
+              onLensChange={selectLens}
+              onSelectTopic={(topicId) => {
+                setDetailTopicId(topicId);
+                selectTopic(topicId);
+              }}
+            />
+          )}
+
+          {activeView.view === "cards" && (
+            <p className="muted view-cards-hint">
+              Haz clic en cualquier tarjeta del Top 10 a la izquierda para abrir su
+              historia (en el grafo temporal si el tema está entre los 1.000 nodos), o pulsa{" "}
+              <strong>Grafo temporal (GPU)</strong> / pregunta al Maestro de Medios{" "}
+              <em>«Muéstrame el grafo de la semana»</em>.
+            </p>
+          )}
+
+          {activeView.view !== "temporal" && (
+            <div className="stage-switch">
+              <button
+                type="button"
+                className="pill"
+                data-testid="view-btn-temporal"
+                onClick={() =>
+                  setActiveView((prev) => ({
+                    ...prev,
+                    view: "temporal",
+                    color_by: "decision",
+                    caption_es: "Grafo temporal semanal (13 semanas)",
+                  }))
+                }
+              >
+                Grafo temporal (GPU)
+              </button>
+            </div>
+          )}
+
+          {isFullscreen && isCardsDrawerOpen && (
+            <aside className="fullscreen-cards-drawer" aria-label="Cajón de tarjetas Top 10">
+              <div className="drawer-header">
+                <h3>Tarjetas Top 10 semanal</h3>
+                <button
+                  type="button"
+                  className="btn-fullscreen-exit"
+                  onClick={() => setIsCardsDrawerOpen(false)}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="drawer-cards-list">
+                {radarItems.map((card) => (
+                  <div
+                    key={card.topic_id}
+                    className="drawer-card-item"
                     onClick={() => {
                       void openNamedTopic(
                         card.topic_id,
@@ -650,84 +820,129 @@ export function App() {
                         topicName(card.topic_id, card.label_es),
                         false,
                       );
+                      setIsCardsDrawerOpen(false);
                     }}
                   >
-                    <div className="card-top">
+                    <div className="drawer-card-top">
                       <span className="rank-badge">#{card.rank ?? "-"}</span>
-                      <h3>
-                        {topicName(card.topic_id, card.label_es)}{" "}
-                        <code className="topic-id">{card.topic_id}</code>
-                      </h3>
                       <span className={`decision-badge decision-${card.decision}`}>
                         {DECISION_LABELS[card.decision]}
                       </span>
                     </div>
-                    <div className="chips-row">
-                      <span className="chip">Etapa: {card.stage}</span>
-                      <span className="chip chip-window">
-                        Ventana: {formatWindow(card.window)}
-                      </span>
-                      {card.emergence_pct != null && (
-                        <span className="chip">
-                          Emergencia: {card.emergence_pct.toFixed(1)} pct (medido)
-                        </span>
-                      )}
-                      {card.saturation != null && (
-                        <span className="chip">
-                          Saturación: {(card.saturation * 100).toFixed(1)}% (medido)
-                        </span>
-                      )}
-                      {card.audience_fit != null && (
-                        <span className="chip">
-                          Encaje LatAm: {(card.audience_fit * 100).toFixed(0)}% (medido)
-                        </span>
-                      )}
-                      {card.emotional_charge_pct != null && (
-                        <span className="chip">
-                          Carga emocional: {card.emotional_charge_pct.toFixed(0)} pct
-                          (medido)
-                        </span>
-                      )}
-                      {card.framing_angle && (
-                        <span className="chip">Ángulo: {card.framing_angle}</span>
-                      )}
+                    <div className="drawer-card-name">
+                      {topicName(card.topic_id, card.label_es)}
                     </div>
-                    {card.why.length > 0 && (
-                      <ul className="why-list">
-                        {card.why.map((reason, idx) => (
-                          <li key={idx}>{reason}</li>
-                        ))}
-                      </ul>
-                    )}
-                    <BriefBlock topicId={card.topic_id} week={card.week} />
-                    <EvidenceBlock topicId={card.topic_id} week={card.week} />
-                  </article>
+                    {card.why[0] && <p className="rail-why">{card.why[0]}</p>}
+                  </div>
                 ))}
               </div>
-            )}
-          </section>
+            </aside>
+          )}
 
-          <section className="panel" aria-labelledby="chat-heading">
-            <div className="panel-header">
-              <h2 id="chat-heading">Maestro de Medios (`POST /api/chat`)</h2>
-              {conversationId && (
-                <span className="badge">Sesión: {conversationId}</span>
-              )}
-            </div>
-
-            <div className="quick-prompts">
-              {QUICK_QUESTIONS.map((q) => (
+          <aside className="fullscreen-floating-chat chat-dock" aria-label="Maestro de Medios">
+            <div className="floating-chat-header">
+              <h2>Maestro de Medios</h2>
+              <div className="chat-dock-actions">
+                {isFullscreen && (
+                  <button
+                    type="button"
+                    className="pill"
+                    onClick={() => setIsCardsDrawerOpen((prev) => !prev)}
+                    aria-expanded={isCardsDrawerOpen}
+                  >
+                    {isCardsDrawerOpen ? "Ocultar top 10" : "Top 10"}
+                  </button>
+                )}
                 <button
-                  key={q}
                   type="button"
                   className="pill"
-                  onClick={() => setChatInput(q)}
+                  onClick={() => setIsFloatingChatOpen((prev) => !prev)}
+                  aria-expanded={isFloatingChatOpen}
                 >
-                  {q}
+                  {isFloatingChatOpen ? "Ocultar respuesta" : "Ver respuesta"}
                 </button>
-              ))}
+              </div>
             </div>
-
+            {isFloatingChatOpen && (
+              <div className="floating-chat-body">
+                <div className="quick-prompts">
+                  {QUICK_QUESTIONS.map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      className="pill"
+                      onClick={() => setChatInput(q)}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+                {chatError && (
+                  <div className="error-box" role="alert">
+                    <strong>Estado del runtime:</strong> {chatError}
+                  </div>
+                )}
+                {chatAnswer && (
+                  <div className="chat-answer" data-testid="chat-answer">
+                    <pre className="answer-text">{chatAnswer}</pre>
+                  </div>
+                )}
+                {chatCards.length > 0 && (
+                  <div className="decision-cards-list">
+                    <h3>Tarjetas de decisión</h3>
+                    {chatCards.map((dc) => (
+                      <div key={`${dc.topic_id}-${dc.week}`} className="decision-card">
+                        <div className="card-top">
+                          <strong>{topicName(dc.topic_id)}</strong>
+                          <span className={`decision-badge decision-${dc.decision}`}>
+                            {DECISION_LABELS[dc.decision]}
+                          </span>
+                          <span className="badge">
+                            Auditor: {dc.auditor_ok ? "verificado" : "alerta"}
+                          </span>
+                        </div>
+                        <p>{dc.justification_es}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <details className="trace-disclosure">
+                  <summary>Cómo llegó a esta respuesta</summary>
+                  {traceSteps.length === 0 ? (
+                    <p className="muted">
+                      Envía una pregunta para ver cada paso de la respuesta.
+                    </p>
+                  ) : (
+                    <div className="table-scroll">
+                      <table className="data-table" data-testid="trace-table">
+                        <thead>
+                          <tr>
+                            <th>Paso</th>
+                            <th>Agente</th>
+                            <th>Acción</th>
+                            <th>Resumen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {traceSteps.map((s) => (
+                            <tr key={s.step}>
+                              <td>{s.step}</td>
+                              <td>{s.agent}</td>
+                              <td>
+                                <span className={`action-tag action-${s.action}`}>
+                                  {s.action}
+                                </span>
+                              </td>
+                              <td className="trace-summary">{s.result_summary ?? "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </details>
+              </div>
+            )}
             <form className="chat-form" onSubmit={handleChatSubmit}>
               <input
                 type="text"
@@ -735,522 +950,191 @@ export function App() {
                 onChange={(e) => setChatInput(e.target.value)}
                 placeholder="Pregunta al Maestro de Medios en español..."
                 maxLength={2000}
+                aria-label="Pregunta al Maestro de Medios"
               />
               <button type="submit" disabled={chatLoading}>
                 {chatLoading ? "Consultando..." : "Preguntar"}
               </button>
             </form>
+          </aside>
+        </section>
+      </div>
+    </div>
+  );
+}
 
-            {chatError && (
-              <div className="error-box" role="alert">
-                <strong>Estado del runtime:</strong> {chatError}
-              </div>
-            )}
+function TopicDetail({
+  card,
+  timelineLoading,
+  langTotals,
+  timelineByDate,
+  contextRing,
+  selectedTopic,
+  onSelectTopic,
+}: {
+  card: TopicScoreWeekly;
+  timelineLoading: boolean;
+  langTotals: Record<
+    LangBucket,
+    { articles: number; latestShare: number | null; meanTone: number | null }
+  >;
+  timelineByDate: { dates: string[]; byLang: Record<LangBucket, Map<string, TopicDaily>> };
+  contextRing: TopicContext1Hop[];
+  selectedTopic: string;
+  onSelectTopic: (topicId: string) => void;
+}) {
+  return (
+    <div className="rail-detail">
+      <div className="chips-row">
+        <span className="chip">Etapa: {card.stage}</span>
+        <span className="chip chip-window">Ventana: {formatWindow(card.window)}</span>
+        {card.emergence_pct != null && (
+          <span className="chip">
+            Emergencia: {card.emergence_pct.toFixed(1)} pct (medido)
+          </span>
+        )}
+        {card.saturation != null && (
+          <span className="chip">
+            Saturación: {(card.saturation * 100).toFixed(1)}% (medido)
+          </span>
+        )}
+        {card.audience_fit != null && (
+          <span className="chip">
+            Encaje LatAm: {(card.audience_fit * 100).toFixed(0)}% (medido)
+          </span>
+        )}
+        {card.emotional_charge_pct != null && (
+          <span className="chip">
+            Carga emocional: {card.emotional_charge_pct.toFixed(0)} pct (medido)
+          </span>
+        )}
+        {card.framing_angle && <span className="chip">Ángulo: {card.framing_angle}</span>}
+      </div>
+      {card.why.length > 0 && (
+        <ul className="why-list">
+          {card.why.map((reason, idx) => (
+            <li key={idx}>{reason}</li>
+          ))}
+        </ul>
+      )}
+      <BriefBlock topicId={card.topic_id} week={card.week} />
+      <EvidenceBlock topicId={card.topic_id} week={card.week} />
+      <TopicSeries
+        timelineLoading={timelineLoading}
+        langTotals={langTotals}
+        timelineByDate={timelineByDate}
+        contextRing={contextRing}
+        selectedTopic={selectedTopic}
+        onSelectTopic={onSelectTopic}
+      />
+    </div>
+  );
+}
 
-            {chatAnswer && (
-              <div className="chat-answer" data-testid="chat-answer">
-                <pre className="answer-text">{chatAnswer}</pre>
-              </div>
-            )}
-
-            {chatCards.length > 0 && (
-              <div className="decision-cards-list">
-                <h3>Tarjetas de decisión (`decision_card`)</h3>
-                {chatCards.map((dc) => (
-                  <div key={`${dc.topic_id}-${dc.week}`} className="decision-card">
-                    <div className="card-top">
-                      <strong>{dc.topic_id}</strong>
-                      <span className={`decision-badge decision-${dc.decision}`}>
-                        {DECISION_LABELS[dc.decision]}
-                      </span>
-                      <span className="badge">
-                        Auditor: {dc.auditor_ok ? "verificado" : "alerta"}
-                      </span>
-                    </div>
-                    <p>{dc.justification_es}</p>
-                    <div className="chips-row">
-                      {dc.kpis.map((kpi, i) => (
-                        <span key={i} className="chip">
-                          {kpi.name}: <strong>{String(kpi.value)}</strong>{" "}
-                          {kpi.unit ?? ""} (
-                          {kpi.kind === "measured" ? "medido" : "estimado"} ·{" "}
-                          <code>{kpi.source}</code>)
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="panel" aria-labelledby="timeline-heading">
-            <div className="panel-header">
-              <h2 id="timeline-heading">
-                Serie diaria por idioma (`GET /api/topic/{selectedTopic}/timeline`)
-              </h2>
-              <select
-                aria-label="Seleccionar tema para la serie diaria"
-                value={selectedTopic}
-                onChange={(e) => selectTopic(e.target.value)}
-              >
-                {withSelected(
-                  SUBTOPICS.map((st) => st.id),
-                  selectedTopic,
-                ).map((id) => (
-                  <option key={id} value={id}>
-                    {topicName(id)} ({id})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {timelineLoading ? (
-              <p>Cargando serie diaria...</p>
-            ) : (
-              <>
-                <div className="lang-summary-grid">
-                  {(["eng", "spa", "por", "other"] as LangBucket[]).map((lang) => {
-                    const info = langTotals[lang];
-                    return (
-                      <div key={lang} className="lang-stat-card">
-                        <div className="lang-stat-header">
-                          <span
-                            className="lang-dot"
-                            style={{ backgroundColor: LANG_COLORS[lang] }}
-                          />
-                          <strong>{lang.toUpperCase()}</strong>
-                        </div>
-                        <div>
-                          Artículos (serie completa):{" "}
-                          <strong>{info.articles.toLocaleString()}</strong> (medido)
-                        </div>
-                        <div>
-                          Última participación:{" "}
-                          <strong>
-                            {info.latestShare !== null
-                              ? `${(info.latestShare * 100).toFixed(3)}%`
-                              : "NULL"}
-                          </strong>{" "}
-                          (medido)
-                        </div>
-                        <div>
-                          Tono medio:{" "}
-                          <strong>
-                            {info.meanTone !== null
-                              ? info.meanTone.toFixed(2)
-                              : "NULL"}
-                          </strong>{" "}
-                          (medido)
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <TimelineChart
-                  dates={timelineByDate.dates}
-                  byLang={timelineByDate.byLang}
-                />
-              </>
-            )}
-          </section>
-
-          <section className="panel" aria-labelledby="context-heading">
-            <div className="panel-header">
-              <h2 id="context-heading">
-                Anillo de contexto 1-salto (`GET /api/topic/{selectedEntity}/context`)
-              </h2>
-              <select
-                aria-label="Seleccionar entidad para contexto de 1 salto"
-                value={selectedEntity}
-                onChange={(e) => setSelectedEntity(e.target.value)}
-              >
-                {withSelected(CONTEXT_ENTITIES, selectedEntity).map((ent) => (
-                  <option key={ent} value={ent}>
-                    {topicName(ent)} ({ent})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="table-scroll">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Vecino</th>
-                    <th>Co-menciones n (medido)</th>
-                    <th>NPMI (medido)</th>
-                    <th>Semana</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contextRing.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="muted">
-                        Sin anillo para este tema en la semana elegida.
-                      </td>
-                    </tr>
-                  )}
-                  {contextRing.map((row) => (
-                    <tr key={row.neighbor}>
-                      <td>{row.rank}</td>
-                      <td>
-                        <code>{row.neighbor}</code>
-                      </td>
-                      <td>{row.n}</td>
-                      <td>{row.npmi.toFixed(4)}</td>
-                      <td>{row.wk}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="panel" aria-labelledby="trace-heading">
-            <div className="panel-header">
-              <h2 id="trace-heading">
-                Traza de agentes (`agent_trace` · {traceSteps.length} pasos)
-              </h2>
-              <span className="badge">Contrato: agent_trace</span>
-            </div>
-            {traceSteps.length === 0 ? (
-              <p className="muted">
-                Envía una pregunta en el panel del Maestro de Medios para inspeccionar
-                cada delegación, herramienta, latencia y verificación del Auditor.
-              </p>
-            ) : (
-              <div className="table-scroll">
-                <table className="data-table" data-testid="trace-table">
-                  <thead>
-                    <tr>
-                      <th>Paso</th>
-                      <th>Agente</th>
-                      <th>Acción</th>
-                      <th>Herramienta</th>
-                      <th>Latencia</th>
-                      <th>Resumen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {traceSteps.map((s) => (
-                      <tr key={s.step}>
-                        <td>{s.step}</td>
-                        <td>
-                          <code>{s.agent}</code>
-                        </td>
-                        <td>
-                          <span className={`action-tag action-${s.action}`}>
-                            {s.action}
-                          </span>
-                        </td>
-                        <td>
-                          <code>{s.tool ?? "-"}</code>
-                        </td>
-                        <td>{s.latency_ms != null ? `${s.latency_ms} ms` : "-"}</td>
-                        <td className="trace-summary">{s.result_summary ?? "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* Draggable Divider (Addendum 2 Must #2) */}
-        <div
-          className={`split-divider ${isDragging ? "is-dragging" : ""}`}
-          role="separator"
-          aria-orientation="vertical"
-          aria-valuenow={splitPct}
-          aria-label="Ajustar ancho de paneles"
-          tabIndex={0}
-          onMouseDown={handleDividerMouseDown}
-          onTouchStart={handleDividerTouchStart}
-          title="Arrastra para cambiar la proporción de paneles"
+function TopicSeries({
+  timelineLoading,
+  langTotals,
+  timelineByDate,
+  contextRing,
+  selectedTopic,
+  onSelectTopic,
+}: {
+  timelineLoading: boolean;
+  langTotals: Record<
+    LangBucket,
+    { articles: number; latestShare: number | null; meanTone: number | null }
+  >;
+  timelineByDate: { dates: string[]; byLang: Record<LangBucket, Map<string, TopicDaily>> };
+  contextRing: TopicContext1Hop[];
+  selectedTopic: string;
+  onSelectTopic: (topicId: string) => void;
+}) {
+  return (
+    <div className="topic-series">
+      <div className="panel-header">
+        <h3>Serie diaria por idioma</h3>
+        <select
+          aria-label="Seleccionar tema para la serie diaria"
+          value={selectedTopic}
+          onChange={(e) => onSelectTopic(e.target.value)}
         >
-          <div className="divider-grip" />
-        </div>
-
-        {/* Right column: Graph panel with Fullscreen & Drawer & Floating Chat */}
-        <div
-          className="split-right-pane"
-          style={{ width: `calc(${100 - splitPct}% - 12px)` }}
-        >
-          <section
-            className={
-              isFullscreen
-                ? "panel view-placeholder view-panel-fullscreen"
-                : "panel view-placeholder"
-            }
-            aria-labelledby="view-heading"
-            data-testid="view-command-area"
-          >
-            <div className="panel-header">
-              <h2 id="view-heading">
-                {isFullscreen ? "⛶ Pantalla completa · " : ""}
-                Vista controlada por agentes (`view_command`)
-              </h2>
-              <div className="view-mode-switcher">
-                <button
-                  type="button"
-                  className={
-                    activeView.view === "cards" ? "pill pill-active" : "pill"
-                  }
-                  data-testid="view-btn-cards"
-                  onClick={() =>
-                    setActiveView((prev) => ({
-                      ...prev,
-                      view: "cards",
-                      caption_es:
-                        "Vista de tarjetas activa (haz clic en una tarjeta o pide el grafo al Cartógrafo)",
-                    }))
-                  }
-                >
-                  Tarjetas
-                </button>
-                <button
-                  type="button"
-                  className={
-                    activeView.view === "temporal" ? "pill pill-active" : "pill"
-                  }
-                  data-testid="view-btn-temporal"
-                  onClick={() =>
-                    setActiveView((prev) => ({
-                      ...prev,
-                      view: "temporal",
-                      caption_es:
-                        "Grafo temporal semanal de co-menciones (13 semanas · cosmos.gl GPU)",
-                    }))
-                  }
-                >
-                  Grafo temporal (GPU)
-                </button>
-                <button
-                  type="button"
-                  className={
-                    activeView.view === "story" ? "pill pill-active" : "pill"
-                  }
-                  data-testid="view-btn-story"
-                  onClick={() => {
-                    const topic =
-                      activeView.focus_topic ??
-                      (selectedTopic.includes(":") ? selectedTopic : null);
-                    if (!topic) {
-                      setActiveView((prev) => ({
-                        ...prev,
-                        view: "story",
-                        caption_es: `Historia de 1 salto (${prev.focus_topic ?? selectedTopic})`,
-                      }));
-                      return;
-                    }
-                    void openNamedTopic(topic, activeView.week, topic, false);
-                  }}
-                >
-                  Historia 1-salto
-                </button>
-                {isFullscreen ? (
-                  <>
-                    <button
-                      type="button"
-                      className="btn-drawer-toggle"
-                      onClick={() => setIsCardsDrawerOpen((prev) => !prev)}
-                      aria-expanded={isCardsDrawerOpen}
-                    >
-                      {isCardsDrawerOpen ? "✕ Ocultar tarjetas" : "☰ Tarjetas Top 10"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-fullscreen-exit"
-                      onClick={() => {
-                        setIsFullscreen(false);
-                        setIsCardsDrawerOpen(false);
-                      }}
-                      title="Presiona Esc para salir"
-                    >
-                      ✕ Salir (Esc)
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn-fullscreen-toggle"
-                    onClick={() => setIsFullscreen(true)}
-                    title="Presiona F para pantalla completa"
-                  >
-                    ⛶ Pantalla completa (F)
-                  </button>
-                )}
-                <span className="badge">Vista activa: {activeView.view}</span>
-              </div>
-            </div>
-            <p className="view-caption">{activeView.caption_es}</p>
-            <div className="chips-row">
-              <span className="chip">
-                Modo: <code>{activeView.view}</code>
-              </span>
-              <span className="chip" data-testid="active-lens-chip">
-                Color por: <strong>{LENS_NAMES[activeLens]}</strong>
-              </span>
-              <span className="chip">
-                Semana: <code>{activeView.week ?? "última con datos"}</code>
-              </span>
-              {activeView.focus_topic && (
-                <span className="chip">
-                  Foco: <code>{activeView.focus_topic}</code>
-                </span>
-              )}
-            </div>
-
-            {activeView.view === "temporal" && (
-              <TemporalGraph
-                week={activeView.week ?? contextWeek}
-                focusTopic={activeView.focus_topic}
-                highlight={activeView.highlight}
-                colorBy={activeLens}
-                captionEs={activeView.caption_es}
-                isFullscreen={isFullscreen}
-                onLensChange={selectLens}
-                onSelectTopic={(topicId) => selectTopic(topicId)}
-                onOpenStory={(topicId) => {
-                  void openNamedTopic(
-                    topicId,
-                    activeView.week ?? contextWeek ?? null,
-                    topicId,
-                    false,
-                  );
-                }}
-              />
-            )}
-
-            {activeView.view === "story" && (
-              <StoryGraph
-                focusTopic={activeView.focus_topic}
-                highlight={activeView.highlight}
-                colorBy={activeLens}
-                captionEs={activeView.caption_es}
-                isFullscreen={isFullscreen}
-                onLensChange={selectLens}
-                onSelectTopic={(topicId) => selectTopic(topicId)}
-              />
-            )}
-
-            {activeView.view === "cards" && (
-              <p className="muted view-cards-hint">
-                Haz clic en cualquier tarjeta del Top 10 a la izquierda para abrir su
-                historia (en el grafo temporal si el tema está entre los 1.000 nodos), o pulsa{" "}
-                <strong>Grafo temporal (GPU)</strong> / pregunta al Maestro de Medios{" "}
-                <em>«Muéstrame el grafo de la semana»</em>.
-              </p>
-            )}
-
-            {/* Collapsible drawer in fullscreen */}
-            {isFullscreen && isCardsDrawerOpen && (
-              <aside className="fullscreen-cards-drawer" aria-label="Cajón de tarjetas Top 10">
-                <div className="drawer-header">
-                  <h3>Tarjetas Top 10 semanal</h3>
-                  <button
-                    type="button"
-                    className="btn-fullscreen-exit"
-                    onClick={() => setIsCardsDrawerOpen(false)}
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="drawer-cards-list">
-                  {radarItems.map((card) => (
-                    <div
-                      key={card.topic_id}
-                      className="drawer-card-item"
-                      onClick={() => {
-                        void openNamedTopic(
-                          card.topic_id,
-                          card.week,
-                          topicName(card.topic_id, card.label_es),
-                          false,
-                        );
-                        setIsCardsDrawerOpen(false);
-                      }}
-                    >
-                      <div className="drawer-card-top">
-                        <span className="rank-badge">#{card.rank ?? "-"}</span>
-                        <span className={`decision-badge decision-${card.decision}`}>
-                          {DECISION_LABELS[card.decision]}
-                        </span>
-                      </div>
-                      <div className="drawer-card-name">
-                        {topicName(card.topic_id, card.label_es)}
-                      </div>
-                      <div className="chips-row">
-                        <span className="chip">{formatWindow(card.window)}</span>
-                        {card.emergence_pct != null && (
-                          <span className="chip">
-                            Emergencia: {card.emergence_pct.toFixed(0)} pct
-                          </span>
-                        )}
-                      </div>
-                      <BriefBlock topicId={card.topic_id} week={card.week} />
-                      <EvidenceBlock topicId={card.topic_id} week={card.week} />
-                    </div>
-                  ))}
-                </div>
-              </aside>
-            )}
-
-            {/* Fullscreen Floating Chat */}
-            {isFullscreen && (
-              <aside
-                className="fullscreen-floating-chat"
-                aria-label="Chat flotante del Maestro de Medios"
-              >
-                <div className="floating-chat-header">
-                  <h4>💬 Maestro de Medios</h4>
-                  <button
-                    type="button"
-                    className="pill"
-                    onClick={() => setIsFloatingChatOpen((prev) => !prev)}
-                  >
-                    {isFloatingChatOpen ? "▼ Minimizar" : "▲ Expandir"}
-                  </button>
-                </div>
-                {isFloatingChatOpen && (
-                  <div className="floating-chat-body">
-                    <div className="quick-prompts">
-                      {QUICK_QUESTIONS.slice(0, 3).map((q) => (
-                        <button
-                          key={q}
-                          type="button"
-                          className="pill"
-                          onClick={() => setChatInput(q)}
-                        >
-                          {q}
-                        </button>
-                      ))}
-                    </div>
-                    <form className="chat-form" onSubmit={handleChatSubmit}>
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder="Pregunta en pantalla completa..."
-                        maxLength={2000}
-                      />
-                      <button type="submit" disabled={chatLoading}>
-                        {chatLoading ? "..." : "Enviar"}
-                      </button>
-                    </form>
-                    {chatAnswer && (
-                      <pre className="answer-text">{chatAnswer}</pre>
-                    )}
+          {withSelected(SUBTOPICS.map((st) => st.id), selectedTopic).map((id) => (
+            <option key={id} value={id}>
+              {topicName(id)}
+            </option>
+          ))}
+        </select>
+      </div>
+      {timelineLoading ? (
+        <p>Cargando serie diaria...</p>
+      ) : (
+        <>
+          <div className="lang-summary-grid">
+            {(["eng", "spa", "por", "other"] as LangBucket[]).map((lang) => {
+              const info = langTotals[lang];
+              return (
+                <div key={lang} className="lang-stat-card">
+                  <div className="lang-stat-header">
+                    <span className="lang-dot" style={{ backgroundColor: LANG_COLORS[lang] }} />
+                    <strong>{lang.toUpperCase()}</strong>
                   </div>
-                )}
-              </aside>
+                  <div>
+                    Artículos (serie completa): <strong>{info.articles.toLocaleString()}</strong>{" "}
+                    (medido)
+                  </div>
+                  <div>
+                    Última participación:{" "}
+                    <strong>
+                      {info.latestShare !== null
+                        ? `${(info.latestShare * 100).toFixed(3)}%`
+                        : "NULL"}
+                    </strong>{" "}
+                    (medido)
+                  </div>
+                  <div>
+                    Tono medio:{" "}
+                    <strong>{info.meanTone !== null ? info.meanTone.toFixed(2) : "NULL"}</strong>{" "}
+                    (medido)
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <TimelineChart dates={timelineByDate.dates} byLang={timelineByDate.byLang} />
+        </>
+      )}
+      <h3 className="series-context-title">Anillo de 1 salto</h3>
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Vecino</th>
+              <th>Co-menciones</th>
+              <th>NPMI</th>
+              <th>Semana</th>
+            </tr>
+          </thead>
+          <tbody>
+            {contextRing.length === 0 && (
+              <tr>
+                <td colSpan={5} className="muted">
+                  Sin anillo para este tema en la semana elegida.
+                </td>
+              </tr>
             )}
-          </section>
-        </div>
-      </main>
+            {contextRing.map((row) => (
+              <tr key={row.neighbor}>
+                <td>{row.rank}</td>
+                <td>{topicName(row.neighbor)}</td>
+                <td>{row.n}</td>
+                <td>{row.npmi.toFixed(4)}</td>
+                <td>{row.wk}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
