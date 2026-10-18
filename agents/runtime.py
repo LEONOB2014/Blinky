@@ -57,8 +57,9 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     "editor": {
         "name_es": "Editor",
         "tools": ["get_topic_brief", "get_topic_evidence", "get_topic_series", "get_context_1hop"],
-        "role": "Propones formato, dos ganchos y un guion de 30-45 s en español, apoyado solo en los "
-        "datos que consultas. Si existe el brief ya escrito del tema, parte de él.",
+        "role": "Propones formato, dos ganchos y un guion breve en español, apoyado solo en los "
+        "datos que consultas. El formato sale del brief ya escrito del tema (format_es) cuando "
+        "existe; no inventes duraciones.",
     },
     "scout": {
         "name_es": "Explorador",
@@ -330,6 +331,23 @@ def _source_dates(results: list[dict[str, Any]], extra: str) -> set[tuple[int | 
 
 
 _THOUSANDS = re.compile(r"^[1-9]\d{0,2}(?:[.,]\d{3})+$")
+# "semana 42" / "semana 42 de 2026" in an answer, and the ISO weeks ("2026-W42") the tools return
+_WEEK_SAID = re.compile(r"\bsemana\s+(\d{1,2})(?:\s+(?:de(?:l)?\s+)?(\d{4}))?\b", re.I)
+_WEEK_ISO = re.compile(r"\b(\d{4})-W(\d{2})\b")
+
+
+def _untraced_weeks(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
+    """Weeks named in the answer that no tool returned (a week without a year matches any year)."""
+    texts = [question] + [json.dumps(r["result"], default=str) for r in results]
+    weeks = {(int(y), int(w)) for t in texts for y, w in _WEEK_ISO.findall(t)}
+    bad = []
+    for m in _WEEK_SAID.finditer(answer):
+        week, year = int(m.group(1)), int(m.group(2)) if m.group(2) else None
+        if year is None and week <= 12:
+            continue  # "la semana 1": a small count, as for numbers
+        if not any(w == week and (year is None or y == year) for y, w in weeks):
+            bad.append(m.group(0))
+    return bad
 
 
 def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
@@ -342,7 +360,8 @@ def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) 
         for text, (y, m, d) in _dates(answer)
         if not any(sm == m and sd == d and (y is None or sy in (y, None)) for sy, sm, sd in dates)
     ]
-    for token in _numbers(answer):
+    bad += _untraced_weeks(answer, results, question)
+    for token in _numbers(_WEEK_SAID.sub(" ", answer)):  # a week is read whole, as a date is
         value = _as_float(token)
         if abs(value) <= 12 and value == int(value):
             continue  # small counts such as "top 10" or "2 ganchos"
@@ -1130,7 +1149,8 @@ def run_turn(
                 f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
                 "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
                 "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
-                "(formato y enfoque). Máximo 6 líneas en total."
+                "(formato y enfoque; el formato del brief si lo hay, sin duraciones en segundos ni "
+                "minutos). Máximo 6 líneas en total."
                 if decides
                 else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
                 "los informes; no agregues KPIs ni decisiones que no estén en ellos."

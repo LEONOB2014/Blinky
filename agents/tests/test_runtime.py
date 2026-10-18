@@ -306,3 +306,21 @@ def test_auditor_reads_dates_whole_and_still_catches_numbers_beside_them():
         "18 de octubre de 2025"
     ]
     assert untraced_numbers("Todo en 2026.", results, "") == []  # the year of a source date
+
+
+def test_auditor_reads_weeks_whole_and_still_catches_an_untraced_week():
+    from agents.runtime import untraced_numbers
+
+    results = [{"result": {"newest": {"topic_scores_weekly": "2026-W42"}, "billed_gb": 380.75}}]
+    ok = "Datos hasta la semana 42 de 2026 (semana 42), con 380.75 GB."
+    assert untraced_numbers(ok, results, "") == []
+    assert untraced_numbers("Datos de la semana 43 de 2026.", results, "") == ["semana 43 de 2026"]
+    assert untraced_numbers("Datos de la semana 42 de 2025.", results, "") == ["semana 42 de 2025"]
+    assert untraced_numbers("En la semana 42 hubo 9999 artículos.", results, "") == ["9999"]
+    assert untraced_numbers("Desde la semana 1.", results, "") == []  # a small count
+
+
+def test_no_role_or_instruction_gives_the_model_a_video_duration():
+    prompt = runtime.master_prompt()
+    assert "30-45" not in prompt and " s en español" not in prompt
+    assert "no inventes duraciones" in runtime.SPECIALISTS["editor"]["role"]
