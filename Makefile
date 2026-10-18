@@ -3,7 +3,9 @@
 # Reto 30X "Radar de contenido"
 # ==============================================================================
 
-.PHONY: help setup sync test test-ws lint format check worktree clean ask api-dev web-dev
+.PHONY: help setup sync test test-ws lint format check worktree clean ask api-dev web-dev \
+	deploy-push-lake deploy-serve deploy-api deploy-static deploy-web \
+	deploy-cloudrun-stage deploy-cloudrun-local deploy-cloudrun
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -52,6 +54,36 @@ api-dev: ## Run the FastAPI server on port 8000 (RADAR_PROFILE=dev by default)
 
 web-dev: ## Run the Vite dev server in web/ (bun)
 	cd web && bun run dev
+
+# ==============================================================================
+# Deploy (WS8): deploy/README.md has the full order. Paid or public steps need the maintainer.
+# ==============================================================================
+deploy-push-lake: ## Upload the API's lake tables to the Modal Volume radar-lake
+	RADAR_PROFILE=full uv run --extra deploy python deploy/push_lake.py
+
+deploy-serve: ## Temporary Modal URL for the API (no secret: /api/chat answers 503)
+	RADAR_NEBIUS_SECRET=0 uv run --extra deploy modal serve deploy/modal_app.py
+
+deploy-api: ## Deploy the API on Modal (needs the radar-nebius secret; maintainer's approval)
+	uv run --extra deploy modal deploy deploy/modal_app.py
+
+deploy-cloudrun-stage: ## Stage the Cloud Run build context in build/cloudrun/ (code + 7 lake tables)
+	RADAR_PROFILE=full uv run python deploy/cloudrun_stage.py
+
+deploy-cloudrun-local: deploy-cloudrun-stage ## Build and run the Cloud Run image locally on :18080
+	docker build -t radar-api:local build/cloudrun
+	docker run --rm -p 18080:8080 -e PORT=8080 radar-api:local
+
+deploy-cloudrun: deploy-cloudrun-stage ## Deploy the API on Cloud Run (public URL: maintainer's approval)
+	gcloud run deploy radar-api --source build/cloudrun --region $(or $(REGION),us-central1) \
+		--allow-unauthenticated --cpu 1 --memory 1Gi --min-instances 0 --max-instances 3 \
+		--set-secrets NEBIUS_API_KEY=radar-nebius-key:latest
+
+deploy-static: ## Write the static fallback to web/public/data/ from the full lake
+	RADAR_PROFILE=full uv run --extra api python deploy/export_static.py
+
+deploy-web: ## Build web/dist with API_URL (empty = static only)
+	cd web && bun install && VITE_API_BASE_URL="$(API_URL)" bun run build
 
 # ==============================================================================
 # Worktrees: make worktree BRANCH=feat/ws1-run-bq

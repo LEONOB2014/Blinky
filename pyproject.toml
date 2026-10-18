@@ -35,6 +35,9 @@ graph = ["igraph>=0.11.8", "leidenalg>=0.10.2", "graphistry>=0.34.0"]
 models = ["scikit-learn>=1.5.0", "lightgbm>=4.5.0", "shap>=0.46.0"]
 api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.32.0"]
 crosssource = ["httpx>=0.27.0", "tenacity>=9.0.0"]
+deploy = [
+    "modal>=1.0",
+]
 
 [dependency-groups]
 dev = [
@@ -95,7 +98,7 @@ ignore = [
 known-first-party = ["radar", "agents"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "agents", "pipelines", "graph", "models", "entity", "crosssource", "api"]
+testpaths = ["tests", "agents", "pipelines", "graph", "models", "entity", "crosssource", "api", "deploy"]
 addopts = "-q --tb=short"
 markers = [
     "unit: fast tests with no network or data",
