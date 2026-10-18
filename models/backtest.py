@@ -162,6 +162,13 @@ class Result:
     lead_ci: dict[str, tuple[float, float]] = field(default_factory=dict)
     coverage: dict[str, tuple[int, int]] = field(default_factory=dict)
     refused: bool = False
+    # below the coverage rule: precision on the labelled slots of each ranker's own top 10, with
+    # bounds that count its unlabelled slots as all misses (worst) or all hits (best)
+    bounded: dict[str, dict[str, Any]] = field(default_factory=dict)
+    worst_vs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # top-10 slots of weeks dropped for too few labelled topics: no hit can be scored there, so
+    # the bounds count them as unknown (a miss in the worst case, a hit in the best)
+    thin_slots: dict[str, int] = field(default_factory=dict)
     n_units: int = 0
     n_mapped_units: int = 0
     n_unmapped_rows: int = 0
@@ -181,6 +188,19 @@ def bootstrap_precision(per_week: pl.DataFrame, col: str, rng: random.Random) ->
     for _ in range(BOOTSTRAP_REPS):
         idx = [rng.randrange(n) for _ in range(n)]
         out.append(sum(hits[i] for i in idx) / sum(tot[i] for i in idx))
+    return out
+
+
+def bootstrap_ratio(per_week: pl.DataFrame, num, den, rng: random.Random) -> list[float]:
+    """Bootstrap over weeks of sum(num(row)) / sum(den(row)); num and den take a week's row."""
+    rows = list(per_week.iter_rows(named=True))
+    a, b = [num(r) for r in rows], [den(r) for r in rows]
+    n = len(rows)
+    out = []
+    for _ in range(BOOTSTRAP_REPS):
+        idx = [rng.randrange(n) for _ in range(n)]
+        d = sum(b[i] for i in idx)
+        out.append(sum(a[i] for i in idx) / d if d else 0.0)
     return out
 
 
@@ -264,13 +284,18 @@ def evaluate(
             res.excluded[week] = "overlaps the 2025-06-14..07-02 GDELT gap"
             continue
         # coverage: each ranker's top 10 before dropping unlabelled topics
+        orig: dict[str, tuple[list[str], set[str]]] = {}
         for name, col in RANKERS.items():
             top = _top(g, col)
             need[name] += top.height
             have[name] += int(top["label_growth"].is_not_null().sum())
+            labelled = set(top.filter(pl.col("label_growth").is_not_null())["unit_id"].to_list())
+            orig[name] = (top["unit_id"].to_list(), labelled)
         g = g.filter(pl.col("label_growth").is_not_null())
         if g.height < MIN_MAPPED:
             res.excluded[week] = f"{g.height} mapped units with a label (needs {MIN_MAPPED})"
+            for name, (ids, _) in orig.items():
+                res.thin_slots[name] = res.thin_slots.get(name, 0) + len(ids)
             continue
         # positives: the top quartile by label growth, decided by value only. Ties take their
         # average rank, so a tie block that straddles the cutoff is either all in or all out,
@@ -288,15 +313,18 @@ def evaluate(
             rec[f"hits_{name}"] = int(top["positive"].sum())
             rec[f"top_{name}"] = top["unit_id"].to_list()
         rec["positives"] = g.filter("positive")["unit_id"].to_list()
+        positives = set(rec["positives"])
+        for name, (ids, labelled) in orig.items():
+            rec[f"b_hits_{name}"] = len(labelled & positives)
+            rec[f"b_lab_{name}"] = len(labelled)
+            rec[f"b_slots_{name}"] = len(ids)
         rows.append(rec)
     has = {"radar_gated": gated is not None}
     has["radar_gated_nodiv"] = gated is not None and "rank_nodiv" in gated.columns
     res.coverage = {n: (have[n], need[n]) for n in RANKERS if has.get(n, True)}
-    if min_coverage is not None and any(
+    res.refused = min_coverage is not None and any(
         need_ == 0 or have_ / need_ < min_coverage for have_, need_ in res.coverage.values()
-    ):
-        res.refused = True
-        return res
+    )
     res.per_week = pl.DataFrame(rows) if rows else None
     res.weeks = [r["week"] for r in rows]
     if not rows:
@@ -304,6 +332,9 @@ def evaluate(
     pw = res.per_week
     rng = random.Random(SEED)  # noqa: S311 (a seeded bootstrap, not cryptography)
     rankers = [n for n in RANKERS if n in res.coverage]
+    if res.refused:
+        _bounded(res, pw, rankers, rng)
+        return res
     for name in rankers:
         hits, tot = int(pw[f"hits_{name}"].sum()), int(pw["k"].sum())
         entry: dict[str, Any] = {"hits": hits, "total": tot, "precision": hits / tot}
@@ -345,6 +376,73 @@ def evaluate(
             meds = [median(rng.choice(leads) for _ in leads) for _ in range(BOOTSTRAP_REPS)]
             res.lead_ci[name] = _ci(meds)
     return res
+
+
+def _bounded(res: Result, pw: pl.DataFrame, rankers: list[str], rng: random.Random) -> None:
+    """Below the coverage rule: precision on each ranker's labelled slots, and its bounds.
+
+    Each ranker keeps its own top 10 (before unlabelled topics are dropped). Labelled precision =
+    hits / labelled slots; worst case = hits / all slots (every unlabelled slot a miss); best case =
+    (hits + unlabelled slots) / all slots (every unlabelled slot a hit). A radar's advantage over a
+    baseline holds under the worst case when the radar's worst case beats the baseline's best case.
+    """
+    interval = len(pw) >= MIN_WEEKS_FOR_INTERVAL
+    for name in rankers:
+        h, lab, n = (int(pw[f"{k}_{name}"].sum()) for k in ("b_hits", "b_lab", "b_slots"))
+        n += res.thin_slots.get(name, 0)  # slots of thin weeks: unknown, never labelled
+        entry: dict[str, Any] = {
+            "hits": h,
+            "labelled": lab,
+            "slots": n,
+            "precision": h / lab if lab else None,
+            "worst": h / n if n else None,
+            "best": (h + n - lab) / n if n else None,
+        }
+        if interval and lab:
+            entry["ci"] = _ci(
+                bootstrap_ratio(pw, lambda r, m=name: r[f"b_hits_{m}"],
+                                lambda r, m=name: r[f"b_lab_{m}"], rng)
+            )  # fmt: skip
+        res.bounded[name] = entry
+    res.bounded["base_rate"] = {
+        "hits": int(pw["n_pos"].sum()),
+        "total": int(pw["n_mapped"].sum()),
+        "precision": int(pw["n_pos"].sum()) / int(pw["n_mapped"].sum()),
+    }
+    for a in [r for r in RADARS if r in rankers]:
+        for b in [x for x in BASELINES if x in rankers]:
+            ea, eb = res.bounded[a], res.bounded[b]
+            entry = {"diff": ea["worst"] - eb["best"]}
+            if interval:
+                rows = list(pw.iter_rows(named=True))
+                n = len(rows)
+                diffs = []
+                for _ in range(BOOTSTRAP_REPS):
+                    idx = [rng.randrange(n) for _ in range(n)]
+                    # thin weeks are not resampled (no labelled week to draw); their slots
+                    # are added whole: misses for the radar, hits for the baseline
+                    ta, tb = res.thin_slots.get(a, 0), res.thin_slots.get(b, 0)
+                    wa = sum(rows[i][f"b_hits_{a}"] for i in idx) / (
+                        sum(rows[i][f"b_slots_{a}"] for i in idx) + ta
+                    )
+                    bb = (
+                        sum(
+                            rows[i][f"b_hits_{b}"] + rows[i][f"b_slots_{b}"] - rows[i][f"b_lab_{b}"]
+                            for i in idx
+                        )
+                        + tb
+                    ) / (sum(rows[i][f"b_slots_{b}"] for i in idx) + tb)
+                    diffs.append(wa - bb)
+                entry["ci"] = _ci(diffs)
+            res.worst_vs[f"{a}|{b}"] = entry
+
+
+def worst_case_holds(
+    res: Result, radar: str = "radar_gated", baseline: str = "raw_count_growth"
+) -> bool:
+    """The radar's worst case beats the baseline's best case, with the interval above zero."""
+    e = res.worst_vs.get(f"{radar}|{baseline}")
+    return bool(e) and e["diff"] > 0 and e.get("ci") is not None and e["ci"][0] > 0
 
 
 # --- inputs ---------------------------------------------------------------------------------
@@ -483,14 +581,7 @@ def render_section(res: Result) -> list[str]:
         lines += ["", "Label coverage of each ranker's top 10, over evaluable weeks:", ""]
         lines += coverage_lines(res)
     if res.refused:
-        lines += [
-            "",
-            f"**Not reported:** coverage is below {_pct(MIN_COVERAGE)} for at least one ranker, "
-            "so precision@10 could move by more than "
-            f"{_pct(1 - MIN_COVERAGE)} once the missing labels arrive. Rerun "
-            "`RADAR_PROFILE=full uv run python -m models.backtest` after the next WS6 write.",
-        ]
-        return lines
+        return lines + bounded_lines(res)
     lines.append(
         f"- Evaluable weeks: {len(res.weeks)} (measured): {', '.join(res.weeks) or 'none'}."
     )
@@ -604,6 +695,84 @@ def render_section(res: Result) -> list[str]:
     return lines
 
 
+def bounded_lines(res: Result) -> list[str]:
+    """The section of a label below the coverage rule: labelled precision with its bounds."""
+    lines = [
+        "",
+        f"**Below the {_pct(MIN_COVERAGE)} coverage rule:** at least one ranker has fewer than "
+        f"{_pct(MIN_COVERAGE)} of its top-10 labels, so an unbounded precision@10 is not reported. "
+        "Below, each ranker's precision is computed on the labelled slots of its own top 10, with "
+        "bounds that count its unlabelled slots as all misses (worst case) and all hits (best "
+        "case). The bounds are hard limits; the labelled precision assumes the unlabelled slots "
+        "behave like the labelled ones, which nothing guarantees (the missing labels are pageview "
+        "series with fewer than 12 days of data in a 14-day window, mostly new or rarely viewed "
+        "articles).",
+    ]
+    if not res.bounded:
+        return [*lines, "", "No week is evaluable, so there is no precision@10."]
+    lines.append(f"- Evaluable weeks: {len(res.weeks)} (measured): {', '.join(res.weeks)}.")
+    for w, why in sorted(res.excluded.items()):
+        lines.append(f"  - {w} excluded: {why}.")
+    lines += [
+        "",
+        "### Precision@10 on labelled slots, with bounds",
+        "",
+        "| Ranker | Coverage (labelled / slots) | Precision@10 on labelled slots "
+        "| 95% bootstrap interval over weeks | Worst case (unlabelled = misses) "
+        "| Best case (unlabelled = hits) |",
+        "|---|---|---|---|---|---|",
+    ]
+    for name in [n for n in RANKERS if n in res.bounded]:
+        e = res.bounded[name]
+        ci = e.get("ci")
+        ci_s = f"{_pct(ci[0])} .. {_pct(ci[1])}" if ci else "n/a"
+        prec = f"{e['hits']}/{e['labelled']} = {_pct(e['precision'])}" if e["labelled"] else "n/a"
+        lines.append(
+            f"| {NAMES[name]} | {e['labelled']}/{e['slots']} = "
+            f"{_pct(e['labelled'] / e['slots'])} | {prec} | {ci_s} | {_pct(e['worst'])} "
+            f"| {_pct(e['best'])} |"
+        )
+    b = res.bounded["base_rate"]
+    lines.append(
+        f"| {NAMES['base_rate']} | n/a | {b['hits']}/{b['total']} = {_pct(b['precision'])} "
+        "| n/a | n/a | n/a |"
+    )
+    lines += [
+        "",
+        "All figures measured. Worst-case comparisons (each radar's worst case minus each "
+        "baseline's best case, paired bootstrap over weeks):",
+        "",
+    ]
+    for pair, e in res.worst_vs.items():
+        a, bl = pair.split("|")
+        ci = e.get("ci")
+        ci_s = f", 95% interval {_pct(ci[0])} .. {_pct(ci[1])}" if ci else ", no interval"
+        holds = e["diff"] > 0 and ci is not None and ci[0] > 0
+        lines.append(
+            f"- {NAMES[a]} (worst) minus {NAMES[bl]} (best): {_pct(e['diff'])}{ci_s}: "
+            + (
+                "the advantage **holds** under the worst case."
+                if holds
+                else "the advantage **does not hold** under the worst case."
+            )  # fmt: skip
+        )
+    if res.label == "pageviews":
+        ok = worst_case_holds(res)
+        lines += [
+            "",
+            "Hook (primary label): "
+            + (
+                "may use this result: the published radar's advantage over raw-count growth "
+                "holds even when every unlabelled slot counts against it (measured)."
+                if ok
+                else "**may not use** this result: the published radar's advantage over "
+                "raw-count growth does not hold under the worst case (measured). The page uses the "
+                "secondary label or the fallback hook."
+            ),
+        ]
+    return lines
+
+
 def render(results: Result | dict[str, Result]) -> str:
     if isinstance(results, Result):
         results = {results.label: results}
@@ -623,7 +792,11 @@ def render(results: Result | dict[str, Result]) -> str:
     ]
     if "gdelt_espt" in results and "pageviews" in results:
         p = results["pageviews"]
-        state = "not reportable yet (coverage)" if p.refused else "reported below"
+        state = (
+            f"reported below with bounds (coverage under {_pct(MIN_COVERAGE)})"
+            if p.refused
+            else "reported below"
+        )
         lines += [
             "",
             "The primary label (es+pt Wikipedia pageviews) is " + state + ". The secondary "
@@ -694,8 +867,21 @@ def main(argv: list[str] | None = None) -> int:
         for name, (have, need) in p.coverage.items():
             cov = f"{100 * have / need:.1f}%" if need else "n/a"
             print(f"  {name:18s} {have:5d}/{need:<5d} {cov}")  # noqa: T201
-        state = f"refused (< {100 * MIN_COVERAGE:.0f}%)" if p.refused else "reported"
-        print(f"{label} precision: {state}")  # noqa: T201
+        if not p.refused:
+            print(f"{label} precision: reported")  # noqa: T201
+            continue
+        print(f"{label} precision: below {100 * MIN_COVERAGE:.0f}% coverage, bounded:")  # noqa: T201
+        for name, e in p.bounded.items():
+            if name == "base_rate":
+                print(f"  base rate          {100 * e['precision']:.1f}%")  # noqa: T201
+                continue
+            lab = f"{100 * e['precision']:.1f}%" if e["precision"] is not None else "n/a"
+            print(  # noqa: T201
+                f"  {name:18s} labelled {lab}  worst {100 * e['worst']:.1f}%  "
+                f"best {100 * e['best']:.1f}%"
+            )
+        if label == "pageviews":
+            print(f"  hook may use primary: {worst_case_holds(p)}")  # noqa: T201
     text = render(results)
     if profile() == "full":
         REPORT.write_text(text, encoding="utf-8")
