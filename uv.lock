@@ -1817,6 +1817,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "polars" },
     { name = "pyarrow" },
@@ -1869,6 +1870,7 @@ requires-dist = [
     { name = "google-cloud-bigquery", marker = "extra == 'bq'", specifier = ">=3.27.0" },
     { name = "google-cloud-bigquery-storage", marker = "extra == 'bq'", specifier = ">=2.27.0" },
     { name = "graphistry", marker = "extra == 'graph'", specifier = ">=0.34.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "httpx", marker = "extra == 'crosssource'", specifier = ">=0.27.0" },
     { name = "httpx", marker = "extra == 'labels'", specifier = ">=0.27.0" },
     { name = "igraph", marker = "extra == 'graph'", specifier = ">=0.11.8" },
