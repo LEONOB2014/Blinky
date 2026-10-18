@@ -135,3 +135,26 @@ def test_other_questions_get_no_evidence_block(sources_file):
         "answer_es"
     ]
     assert "«Titular de prueba»" not in answer
+
+
+@pytest.mark.unit
+def test_an_outlet_count_question_gets_the_count_by_code_and_a_wrong_count_is_flagged(
+    sources_file,
+):
+    class WrongCount(ScriptedChat):
+        def chat(self, messages, tools_):
+            self.calls.append(messages)
+            return Reply(content="44 medios distintos cubrieron a Nvidia.", model="scripted")
+
+    answer = runtime.run_turn(
+        "¿Cuántos medios distintos cubren a Nvidia esta semana?", model=WrongCount()
+    )["answer_es"]
+    assert "Medios distintos que cubrieron a" in answer and ": 39 (en 44 artículos)." in answer
+    assert "el número de medios distintos medido es 39; no 44 medios" in answer
+    # the evidence block's "44 artículos de 39 medios" is never flagged
+    turn = runtime.Turn("t")
+    turn.tool_results.append(
+        {"tool": "get_topic_sources", "result": tools.get_topic_sources("org:nvidia", "2026-W42")}
+    )
+    assert runtime.wrong_outlet_counts("44 artículos de 39 medios; 39 medios.", turn) == []
+    assert runtime.wrong_outlet_counts("Lo cubren 44 medios.", turn) == ["44 medios"]
