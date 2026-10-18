@@ -6,36 +6,116 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 02:55 UTC-5 · Branch: `feat/ws5-graph-views` (brief `BRIEF.md`, Addenda 2 & 3 Must items complete) · committed locally; the orchestrator pushes
+2026-10-18 03:40 UTC-5 · Branch: `feat/ws5-graph-views` · Addendum 5 items 1–7 committed locally (item 8 not started). The orchestrator pushes. Counts below were recomputed from `lake/views/temporal.json` (3,794,275 bytes) after the unpruned edge-state re-export. The 02:55 figures marked **wrong** are not in that file.
+
+## Addendum 5 — corrected measurements (2026-10-18 03:40 UTC-5)
+
+Source file: `lake/views/temporal.json`, 3,794,275 bytes, 1,000 nodes (0 `per:`), 40 with `show_label`, 44,005 edges, 13 weeks `2026-W30`..`2026-W42`. Edges per week: 3,337, 3,415, 3,398, 3,357, 3,395, 3,433, 3,339, 3,238, 3,409, 3,392, 3,373, 3,456, 3,463. Last week `2026-W42` has 3,463 edges. Node types: 793 `thm`, 158 `org`, 49 `loc` *(measured)*.
+
+Re-export (`RADAR_PROFILE=full`, `/usr/bin/time -l`, one job): temporal export 4.75 s, wall 5.50 s, peak RSS 1,559,805,952 bytes (1.45 GiB), 0 swaps *(measured)*. The 02:55 line “3.74 MB, 4.90 s, peak 1,201.26 MiB” was the previous export **(wrong for this file)**.
+
+### Reheat on the fixed build (headed Chrome, 1,000 nodes, 3,463 W42 links)
+
+`graph.start(0.3)` runs with `enableSimulation` on. The loop stops when `graph.progress` is unchanged for 3 ticks of 100 ms, the simulation stops, or 2,500 ms, then `graph.pause()`. It does not call `render(0, 0)` after the reheat.
+
+| Lens | settle_time_ms | fps_relayout | sim_progress | layout_moved |
+|---|---|---|---|---|
+| bridge | 2,508.1 | 106.5 | 0.069 | 468.3 |
+| momentum | 2,501.4 | 120.3 | 0.071 | 31.5 |
+
+*(measured)*, n=1 run each. Both hit the 2,500 ms cap because progress was still about 0.07. `layout_moved` is the mean absolute move of 6 sampled points. `layout_delta` between the bridge sample and the momentum sample was 31.5, so the two lenses did not land on the same positions. Moving the week slider from W42 to W41 did not increment `reheat_count`.
+
+**Wrong before:** the 02:55 status said `fps_relayout` 120.6–120.8 and `settle_time_ms` 380.7–381.3. That settle was a 380 ms timer. `render(0, 0)` had set the simulation alpha to 0, so the layout did not run. `fps_playing` 120.2 and the week-switch times in the tables below were not re-measured on this build; do not quote them as the reheat.
+
+Screenshots (git-ignored `lake/views/`, headed Chrome, 03:27 UTC-5): `ui_lens_momentum.png` (527 kB), `ui_story_nvidia_gpu.png` (1.3 MB), `ui_story_openai_sigma.png` (497 kB).
+
+### Categorical counts, `2026-W42`, recomputed from the shipped file
+
+`edge_state` compares each pruned edge with the previous week’s edges at the same `n` / NPMI thresholds **before** top-k pruning *(measured, n=3,463)*:
+
+| state | count | share |
+|---|---|---|
+| new | 1,523 | 1,523/3,463 |
+| persisting | 1,298 | 1,298/3,463 |
+| growing | 485 | 485/3,463 |
+| fading | 157 | 157/3,463 |
+
+**Wrong before:** the 02:55 status said new 2,752 / growing 422 / persisting 243 / fading 46. The file before this re-export (same pruned edge list, previous week also pruned) was new 2,228 / persisting 915 / growing 218 / fading 102. Neither pair is the current file.
+
+`n_growth` = ln((n+1)/(n_prev+1)), n=3,463: median 0.885038, p90 4.70048, min −3.064725, max 6.818924 *(measured)*. **Wrong before:** median 3.4657, p90 5.1059. That median matched the pre-fix file; it is not this file.
+
+`cross_ring` (cruce de sector, regla por nombre): 243/3,463 edges (7.0%) *(measured)*. **Wrong before:** 468 edges, 13.5%.
+
+Sectors are the name-list rule in `graph/README.md`, not `topic_daily.segment` *(measured, n=1,000)*: `ai` 29, `it` 29, `ai_domain` 942. **Wrong before:** `ai` 90, `it` 43, `ai_domain` 867, described as taxonomy segments.
+
+`community_week` in W42: 22 distinct ids among 930 nodes that have one *(measured)*. **Wrong before:** 20 communities.
+
+Decisions in W42 (n=1,000): null 911, `no_es_tema_caliente` 43, `esperar` 38, `preparar` 8, `publicar_ahora` 0 *(measured)*. Window state: null 911, `sin_estimacion` 41, `dias_restantes` 31, `en_cualquier_momento` 15, `ya_en_espanol` 2 *(measured)*. Tone (n=944 non-null): min −5.309661, p50 −0.052378, max 5.838564; bins at ±1: neu 566, neg 223, pos 155 *(measured)*.
+
+Distributions in `_meta.property_distributions_latest_week`, checked against the arrays *(measured)*:
+
+| property | n | median | p90 | max in the arrays |
+|---|---|---|---|---|
+| edge_n | 3,463 | 80 | 761 | 15,331 |
+| edge_npmi | 3,463 | 0.485244 | 0.83239 | 1.0 |
+| node_betweenness | 930 | 0.001823 | 0.01004 | 0.111055 |
+| node_cross_ring_share | 930 | 0 | 0.207229 | 1.0 |
+| node_momentum | 968 | 0.497415 | 0.896587 | 0.998966 |
+| node_new_nbr_rate | 979 | 0.207865 | 0.322399 | 1.0 |
+| node_importance | 979 | 0.5 | 0.900818 | 1.0 |
+
+The 02:55 medians for `edge_n`, `edge_npmi`, betweenness, cross_ring_share, momentum, and new_nbr_rate match this file. The 02:55 maxima (edge_n 7,133, npmi 0.9982, betweenness 0.05432, cross_ring_share 0.7778) do **not**. All-weeks `edge_state` (n=44,005): persisting 17,567, new 18,183, growing 5,850, fading 2,405 *(measured)*.
+
+### Stories the current index names (WS8)
+
+`stories_index.json` (5,264 bytes): `n_top10` 10, `n_total_stories` 15, default `org:marsh mclennan`, week `2026-W42`. `story.json` is that default (45,805 bytes, 21 nodes, 162 edges = 20 ring spokes + 142 among). **Wrong before:** the WS8 list still named the previous top 10 (`euronext`, `adani enterprises`, `ministry of science`, `kioxia holdings`, `sterling`, `yahoo`) and called `story.json` 30.3 kB.
+
+Current top 10:
+
+| rank | topic_id | decision | file |
+|---|---|---|---|
+| 1 | `org:marsh mclennan` | preparar | `story_org_marsh_mclennan.json` (45,805 B) |
+| 2 | `org:rocket lab` | esperar | `story_org_rocket_lab.json` (34,520 B) |
+| 3 | `org:national stock exchange` | preparar | `story_org_national_stock_exchange.json` (48,115 B) |
+| 4 | `org:university college london` | preparar | `story_org_university_college_london.json` (44,226 B) |
+| 5 | `org:citigroup` | esperar | `story_org_citigroup.json` (27,651 B) |
+| 6 | `org:sandisk` | esperar | `story_org_sandisk.json` (28,471 B) |
+| 7 | `org:comcast` | preparar | `story_org_comcast.json` (26,467 B) |
+| 8 | `org:kroger` | preparar | `story_org_kroger.json` (44,166 B) |
+| 9 | `org:founders fund` | esperar | `story_org_founders_fund.json` (53,021 B) |
+| 10 | `org:sb energy` | esperar | `story_org_sb_energy.json` (33,824 B) |
+
+References in the same index, not in the top 10: `org:nvidia` rank 150, `no_es_tema_caliente`, 21 nodes / 149 edges; `org:microsoft` rank 133, `no_es_tema_caliente`; `org:google` rank 203, `no_es_tema_caliente`; `org:openai group` rank null, decision null, 6 nodes / 15 edges (not one of the 1,000 temporal nodes); `thm:TECH_AUTOMATION` rank 73, `esperar`. **Wrong before:** Nvidia was quoted as rank 177.
+
+`web/package.json` `copy-views` copies `lake/views/*.json` into `web/public/data/views` and does not delete. These six files are still in `lake/views/` and `web/public/data/views/` and are **not** in `stories_index.json`: `story_org_euronext.json`, `story_org_adani_enterprises.json`, `story_org_ministry_of_science.json`, `story_org_kioxia_holdings.json`, `story_org_sterling.json`, `story_org_yahoo.json`. WS8 should not ship them as the current top 10.
+
+Latest `cd web && bun run build` (item 6, vite 6.4.4, 1.57 s): `index-DtEE30iC.js` 291.50 kB (90.16 kB gzip), `index-rt_7rvKX.css` 14.08 kB (3.55 kB gzip). The 02:55 bundle line (`index` 286.04 kB) was an earlier build **(wrong for the current `web/dist`)**.
 
 ## Addenda 2 & 3 — Query-driven Lenses, Graph Properties, Split View & Fullscreen (2026-10-18 02:55 UTC-5)
 
+Property counts, the reheat settle, and the WS8 file list in this older write-up were replaced by the correction above. Where a number below disagrees with that section, the correction is the one to quote.
+
 ### 1. Graph properties that make the lenses speak (`graph/export_views.py`, `lake/views/temporal.json`)
 
-All Addendum 3 node and edge properties computed on the pruned graph (1,000 nodes, 13 weeks `2026-W30 .. 2026-W42`), exported to `lake/views/temporal.json` (`3.74 MB`, `4.90 s` runtime, peak RSS `1,201.26 MiB`, well below the `1.5 GB` cap *(measured)*):
+All Addendum 3 node and edge properties are on the pruned graph. The export size, runtime, and the W42 counts that used to sit in this paragraph were wrong for the current file; use the Addendum 5 correction (3,794,275 bytes, peak RSS 1,559,805,952 bytes, W42 `edge_state` 1,523 / 1,298 / 485 / 157).
 
 - **Edge properties (computed per week, `edges_weekly` scanned week-by-week)**:
   - `n` (co-mentions) and `npmi`: width = `0.5 + 2.5 * log(n)`, intensity = NPMI alpha.
   - `edge_state`: `new` (absent previous week), `growing` (n up >= 50%), `persisting`, `fading` (down >= 50%).
   - `n_growth`: `log((n + 1) / (n_prev + 1))`.
   - `cross_ring`: boolean indicating if endpoints belong to different rings.
-  - **Distribution in `2026-W42` (`n=3,463` edges)**:
-    - `edge_n`: median `80.0`, p90 `761.0`, max `7,133` *(measured)*.
-    - `edge_npmi`: median `0.4852`, p90 `0.8324`, max `0.9982` *(measured)*.
-    - `edge_n_growth`: median `3.4657`, p90 `5.1059` *(measured)*.
-    - `edge_state`: `new` 2,752, `growing` 422, `persisting` 243, `fading` 46 *(measured)*.
-    - `cross_ring`: `468` cross-ring edges (`13.5%` of W42 edges) *(measured)*.
+  - **Distribution in `2026-W42`:** the figures that were printed here (n_growth median 3.4657, edge_state 2,752/422/243/46, cross_ring 468 = 13.5%, maxima 7,133 / 0.9982) were **wrong**. Recomputed values are in the Addendum 5 correction. `edge_n` median 80 and p90 761, and `edge_npmi` median 0.485244 and p90 0.83239, still match the current file (n=3,463).
 
 - **Node properties (computed per week)**:
-  - `ring` and `domain`: taxonomy segments (`ai` 90 nodes, `it` 43 nodes, `ai_domain` 867 nodes in W42 *(measured)*).
+  - `ring` and `domain`: name-list sector, not `topic_daily.segment`. The count printed here (`ai` 90, `it` 43, `ai_domain` 867) was **wrong**. The current file has `ai` 29, `it` 29, `ai_domain` 942 (n=1,000).
   - `importance`: within-week percentile of PageRank (`[0, 1]`), default node size across lenses.
   - `betweenness`: igraph Freeman normalized $B(v) / ((V-1)(V-2)/2)$ with edge distance weights $1 / \text{npmi}$:
-    - median `0.001823`, p90 `0.01004`, max `0.05432` *(measured)*.
-  - `cross_ring_share`: share of node's edge weight connected to another ring:
-    - median `0.0000`, p90 `0.2072`, max `0.7778` *(measured)*.
+    - median `0.001823`, p90 `0.01004` still match the current file (n=930). The max `0.05432` printed here was **wrong**; the current arrays max at 0.111055.
+  - `cross_ring_share` (cruce de sector, regla por nombre):
+    - median `0`, p90 `0.207229` still match (n=930). The max `0.7778` printed here was **wrong**; the current arrays max at 1.0.
   - `momentum`: mean of within-week percentiles of `pr_rank_delta` and `deg_growth`:
     - median `0.4974`, p90 `0.8966`, top decile >= `0.8966` glowing halo *(measured)*.
-  - `community_week`: within-week Leiden clustering (seed 42, 20 communities in W42 *(measured)*).
+  - `community_week`: within-week Leiden clustering (seed 42). The “20 communities” figure was **wrong**; W42 has 22 ids among 930 nodes.
   - `new_nbr_rate`: median `0.2079`, p90 `0.3224` *(measured)*.
 
 ### 2. Split view & Full-screen graph mode (`App.tsx`, `App.css`)
@@ -61,18 +141,18 @@ All Addendum 3 node and edge properties computed on the pruned graph (1,000 node
   - `community`: node color by within-week Leiden community.
   - `tone`: diverging blue-red by tone.
   - `window`: node color by window state, GPU clustering with `setPointClusters` + `setPointClusterStrength`.
-- **Reheat re-layout (Correction 02:35)**:
-  - Reheats using `graph.start(0.35)` with gentle energy and settles in `~380 ms`, then freezes with `graph.pause()`.
+- **Reheat re-layout (Addendum 5 item 2)**:
+  - `setLinkStrength`, `setPinnedPoints` for the focus, `enableSimulation`, then `graph.start(0.3)`. The ~380 ms settle printed here was **wrong** (a timer; `render(0, 0)` had stopped the simulation). Measured settle on the fixed build is 2,508.1 ms (bridge) and 2,501.4 ms (momentum), both at the 2,500 ms cap. See the correction.
 
 ### 4. Headed Chrome measurements (Apple M1 Pro Metal GPU, full profile)
 
 | View / Action | Metric | Measured value | Notes / Denominator |
 |---|---|---|---|
 | `TemporalGraph` (GPU) | Renderer | `ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro)` | *(measured)* headed Chrome (`1440×1020`, DPR 2) |
-| `TemporalGraph` | `t_fetch_ms` / `t_parse_ms` | `12.9 ms` / `25.3 ms` | *(measured)* `3.74 MB` `temporal.json` |
+| `TemporalGraph` | `t_fetch_ms` / `t_parse_ms` | `12.9 ms` / `25.3 ms` | earlier file, not re-measured; current file is 3,794,275 bytes |
 | `TemporalGraph` | First frame (`t_first_frame_ms`) | `177.1 ms` | *(measured)* 1,000 nodes, 3,463 edges in W42 |
-| `TemporalGraph` | Re-layout FPS (`fps_relayout`) | `120.6 .. 120.8 fps` | *(measured)* during simulation reheat |
-| `TemporalGraph` | Settle time (`settle_time_ms`) | `380.7 .. 381.3 ms` | *(measured)* reheat duration before freeze |
+| `TemporalGraph` | Re-layout FPS (`fps_relayout`) | 106.5 (bridge), 120.3 (momentum) | *(measured)* fixed build; the 120.6–120.8 row was **wrong** |
+| `TemporalGraph` | Settle time (`settle_time_ms`) | 2,508.1 (bridge), 2,501.4 (momentum) | *(measured)* cap 2,500 ms hit; 380.7–381.3 ms was **wrong** |
 | `TemporalGraph` | Playing FPS (`fps_playing`) | `120.2 fps` | *(measured)* 13-week playback sweep |
 | `TemporalGraph` | Week switch time (`week_switch_ms`) | median `2.6 ms` (2.2 .. 4.3 ms) | *(measured)* week slider steps |
 | Story View #1 | Load time (`org:marsh mclennan`) | `31.2 ms` Sigma render | *(measured)* 21 nodes, 162 edges, ring colors |
@@ -101,27 +181,20 @@ All Addendum 3 node and edge properties computed on the pruned graph (1,000 node
 
 - **Temporal export (`lake/views/temporal.json`)**:
   - Scans `edges_weekly` one week at a time (`min_n=20`, `npmi > 0.1`, `max_nodes=1,000`, `top_k=5` edges by NPMI per node per week) instead of dumping all 296,657 unpruned edges.
-  - Precomputes a deterministic frozen 2D layout (`_precompute_layout`, `igraph` Fruchterman-Reingold on the pruned union graph, median-centered with p90 radial compression, scaled to `[448, 3648]` in `spaceSize=4096`), Spanish labels (`label_es`) for `thm:`/`loc:`/`org:` ids, `show_label=true` on the top 30 PageRank nodes plus ranked top-10 topics (`38` labeled nodes total *(measured)*), and `_meta.top_movers_per_week`.
-  - **Full-profile measurements (`RADAR_PROFILE=full`, 13 weeks `2026-W30 .. 2026-W42`)**:
-    - Nodes: `1,000` (`0` `per:` nodes, `38` with `show_label=true`) *(measured)*
-    - Total pruned edges across 13 weeks: `44,610` (`3,290` min .. `3,518` max edges/week; `3,518` in `2026-W42`, down from `36,243` unpruned) *(measured)*
-    - File size: `1,671,019` bytes (`1.67 MB`, down from `6.70 MB` unpruned) *(measured)*
-    - Export runtime: `2.54 s` *(measured)*
+  - Precomputes a deterministic frozen 2D layout (`_precompute_layout`, `igraph` Fruchterman-Reingold on the pruned union graph, median-centered with p90 radial compression, scaled to `[448, 3648]` in `spaceSize=4096`), Spanish labels (`label_es`) for `thm:`/`loc:`/`org:` ids, `show_label=true` on the top 30 PageRank nodes plus ranked top-10 topics. The “38 labeled” count was **wrong**; `_meta.n_labeled_nodes` and a count of `show_label` are both 40 in the current file. `_meta.top_movers_per_week` is still written.
+  - **Full-profile measurements:** the numbers that used to be in this list (38 labels, 44,610 edges, 3,518 in W42, 1,671,019 bytes, 2.54 s) were an earlier export and are **wrong** for the current file. Current file: 1,000 nodes, 40 labels, 44,005 edges, 3,463 in W42, 3,794,275 bytes. See the Addendum 5 correction.
 - **Story exports (`lake/views/story*.json`, `lake/views/stories_index.json`)**:
-  - Filters out `ranked_universe.org_deny` and `per:` entities, exports `story_<slug>.json` for all `10` ranked Top-10 topics of `2026-W42` (`org:marsh mclennan` #1 .. `org:yahoo` #10) plus `5` reference topics outside the W42 Top 10 (`org:nvidia`, `org:microsoft`, `org:google`, `org:openai group`, `thm:TECH_AUTOMATION`), `story.json` (#1 default), and `stories_index.json` (`15` stories total *(measured)*).
-  - File size (`story.json`, `#1 org:marsh mclennan`): `30,345` bytes (`30.3 kB`, `21` nodes, `162` edges) *(measured)*.
-  - Export runtime (all 15 stories + index + copy to `web/public/data/views/`): `0.20 s` *(measured)*.
-  - Peak RSS across full export (`ru_maxrss`): `1,259,749,376` bytes (`1,201.4 MiB`, below the `1.5 GB` cap) *(measured)*.
+  - The top-10 names and the 30,345-byte `story.json` size printed here were **wrong** (that list ended at `org:yahoo`). The current index’s top 10 ends at `org:sb energy`. `story.json` is 45,805 bytes, still 21 nodes and 162 edges. Peak RSS of the re-export is 1,559,805,952 bytes. See the correction for the file list. The 0.20 s story-only runtime was not re-measured on this run (the whole export wall time was 5.50 s).
 
 ### 2. `web/` components (`TemporalGraph.tsx` & `StoryGraph.tsx`)
 
 - **`TemporalGraph.tsx` (`@cosmos.gl/graph` `3.5.1` + pinned `@luma.gl/{constants,core,engine,shadertools,webgl}@9.3.6`)**:
   - Uses precomputed frozen positions (`enableSimulation: false`, `rescalePositions: false`, `fitViewOnInit: false`, `fitView(0, 0.08, false)` after `await graph.ready`) and normalized `[0, 1]` RGBA float buffers.
-  - Play/pause (`▶ Reproducir 13 semanas`), week range slider (`2026-W30 .. 2026-W42`), node color by `decision` (`publicar_ahora` green, `preparar` sky blue, `esperar` amber, `deg_growth >= +40%` teal, context slate), greedy bounding-box collision-avoided Spanish labels overlay (`spaceToScreenPosition`, `12` non-overlapping labels on screen in `2026-W42` out of `38` eligible *(measured)*), and side panel of weekly top movers (`_meta.top_movers_per_week[w]`).
+  - Play/pause (`▶ Reproducir 13 semanas`), week range slider (`2026-W30 .. 2026-W42`), node color by `decision` (`publicar_ahora` green, `preparar` sky blue, `esperar` amber, `deg_growth >= +40%` teal, context slate), greedy bounding-box collision-avoided Spanish labels overlay (`spaceToScreenPosition`). The “12 labels out of 38 eligible” count used the old label total and was **not** re-measured; the current file has 40 `show_label` nodes. The movers panel reads `_meta.top_movers_per_week[w]` and shows `deg_growth` as `exp(log) − 1`.
 - **`StoryGraph.tsx` (`sigma` `3.0.3` + `graphology` `0.26.0`)**:
   - Loads `/data/views/stories_index.json` and the matching `/data/views/story_<slug>.json`.
   - Places the focal topic in the center (`★ label_es`) and its 20 1-hop neighbors on two staggered concentric rings by rank (`1..10` inner, `11..20` outer), spoke edge width proportional to co-mentions `n`, top-10 strongest intra-ring chords, Spanish labels, scores row above the canvas, and ranked 1-hop neighbors sidebar.
-  - Displays an explicit notice banner when the requested topic is outside the `2026-W42` Top 10 (e.g., `org:nvidia` at rank `#177`, `decision: no_es_tema_caliente`).
+  - A named topic that is one of the 1,000 temporal nodes stays on the GPU story lens. `org:nvidia` is in that set (rank 150, `no_es_tema_caliente`). The “rank #177, open sigma” sentence was **wrong** for the current file. `org:openai group` is not among the 1,000, so it still opens the sigma story.
 - **Wired into `App.tsx`**:
   - Opens from `view_command` (`view: "temporal" | "story"`, `focus_topic`, `week`, `highlight`, `caption_es`), from clicking any radar card on the left, or from the view switcher buttons (`Tarjetas`, `Grafo temporal (GPU)`, `Historia 1-salto`).
 
@@ -130,12 +203,12 @@ All Addendum 3 node and edge properties computed on the pruned graph (1,000 node
 | View / Action | Metric | Measured value | Notes / Denominator |
 |---|---|---|---|
 | `TemporalGraph` (`cosmos.gl` 3.5.1) | Renderer | `ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro)` | *(measured)* headed Chrome (`1440×1020`, DPR 2) |
-| `TemporalGraph` | `t_fetch_ms` / `t_parse_ms` | `39.8 ms` / `4.5 ms` | *(measured)* `1.67 MB` `temporal.json` |
-| `TemporalGraph` | First frame (`t_first_frame_ms`) | `107.2 ms` | *(measured)* `1,000` nodes, `3,518` edges in `2026-W42` |
+| `TemporalGraph` | `t_fetch_ms` / `t_parse_ms` | `39.8 ms` / `4.5 ms` | earlier 1.67 MB file; **wrong** size for the current 3,794,275-byte file. Not re-measured. |
+| `TemporalGraph` | First frame (`t_first_frame_ms`) | `107.2 ms` | earlier session. The `3,518` W42 edge count was **wrong**; the current file has 3,463. |
 | `TemporalGraph` | FPS while playing (`fps_playing`) | `120.2 fps` | *(measured)* 13-week animation sweep (`220 ms`/week) |
 | `TemporalGraph` | Week switch time (`week_switch_ms`) | median `1.8 ms`, max `3.0 ms` | *(measured)* `n=15` week transitions |
 | Chat → `TemporalGraph` | `"Muéstrame el grafo de la semana"` | `22.2 s` LLM turn (`107.2 ms` graph render) | *(measured)* opens `TemporalGraph` + Spanish summary |
-| Chat → `StoryGraph` (`org:nvidia`) | `"¿Qué está pasando con Nvidia? Muéstramelo en el grafo"` | `9.9 s` LLM turn, `26.0 ms` Sigma render | *(measured)* `21` nodes; shows banner noting `org:nvidia` is rank `#177` (not in W42 Top 10) |
+| Chat → `StoryGraph` (`org:nvidia`) | `"¿Qué está pasando con Nvidia? Muéstramelo en el grafo"` | `9.9 s` LLM turn, `26.0 ms` Sigma render | earlier session. Rank `#177` and “opens sigma” were **wrong**: current rank is 150, and Nvidia is one of the 1,000 GPU nodes. |
 | Card click → `StoryGraph` (`#1`) | Click card `#1 org:marsh mclennan` | `33.0 ms` Sigma render | *(measured)* `21` nodes + scores row + 20 Spanish neighbors |
 
 - **Bundle size added (`cd web && bun run build`, Vite 6.4.4)**:
@@ -150,26 +223,28 @@ All Addendum 3 node and edge properties computed on the pruned graph (1,000 node
 
 ### 4. Exact files WS8 must copy for deploy (`web/public/data/views/*`)
 
-`web/public/data/` is git-ignored (`AGENTS.md` Data rule). Before running `cd web && bun run build` (or deploying `web/dist/` to Netlify), WS8 must ensure `lake/views/*.json` are generated (`RADAR_PROFILE=full uv run --extra graph python -m graph.export_views`) or copied into `web/public/data/views/` (`bun run copy-views` runs automatically in `bun run dev` and `bun run build` when `lake/views/*.json` is present):
+`web/public/data/` is git-ignored (`AGENTS.md` Data rule). The list that used to be here (1.67 MB temporal, 30.3 kB story, and `euronext` / `adani` / `ministry of science` / `kioxia` / `sterling` / `yahoo` as current top-10 files) was **wrong**. `copy-views` copies `lake/views/*.json` and does not delete those six stale files; they are still on disk and are not in `stories_index.json`. Copy the current index, not those leftovers:
 
-- `web/public/data/views/temporal.json` (`1.67 MB`)
-- `web/public/data/views/stories_index.json` (`5.3 kB`)
-- `web/public/data/views/story.json` (`30.3 kB`, default `#1` story)
+- `web/public/data/views/temporal.json` (3,794,275 bytes)
+- `web/public/data/views/stories_index.json` (5,264 bytes)
+- `web/public/data/views/story.json` (45,805 bytes, default `#1` `org:marsh mclennan`)
 - `web/public/data/views/story_org_marsh_mclennan.json`
-- `web/public/data/views/story_org_euronext.json`
-- `web/public/data/views/story_org_adani_enterprises.json`
 - `web/public/data/views/story_org_rocket_lab.json`
 - `web/public/data/views/story_org_national_stock_exchange.json`
-- `web/public/data/views/story_org_ministry_of_science.json`
-- `web/public/data/views/story_org_kioxia_holdings.json`
-- `web/public/data/views/story_org_sterling.json`
+- `web/public/data/views/story_org_university_college_london.json`
 - `web/public/data/views/story_org_citigroup.json`
-- `web/public/data/views/story_org_yahoo.json`
-- `web/public/data/views/story_org_nvidia.json`
-- `web/public/data/views/story_org_microsoft.json`
-- `web/public/data/views/story_org_google.json`
-- `web/public/data/views/story_org_openai_group.json`
-- `web/public/data/views/story_thm_tech_automation.json`
+- `web/public/data/views/story_org_sandisk.json`
+- `web/public/data/views/story_org_comcast.json`
+- `web/public/data/views/story_org_kroger.json`
+- `web/public/data/views/story_org_founders_fund.json`
+- `web/public/data/views/story_org_sb_energy.json`
+- `web/public/data/views/story_org_nvidia.json` (reference, rank 150)
+- `web/public/data/views/story_org_microsoft.json` (reference, rank 133)
+- `web/public/data/views/story_org_google.json` (reference, rank 203)
+- `web/public/data/views/story_org_openai_group.json` (reference, rank null, outside the 1,000)
+- `web/public/data/views/story_thm_tech_automation.json` (reference, rank 73)
+
+Do not treat as current: `story_org_euronext.json`, `story_org_adani_enterprises.json`, `story_org_ministry_of_science.json`, `story_org_kioxia_holdings.json`, `story_org_sterling.json`, `story_org_yahoo.json`.
 
 ---
 
@@ -241,9 +316,11 @@ not persist traces).
 
 ## Notes
 
-- WS4's W42 top 10 is led by `org:marsh mclennan`, `org:euronext`, `org:big news network` (an
-  outlet not on the deny list) and `org:scam centre`: worth a look by WS4 and the lead before the
-  demo; the API serves what the table holds.
+- An earlier note said WS4's W42 top 10 was led by `org:marsh mclennan`, `org:euronext`,
+  `org:big news network`, and `org:scam centre`. That list does **not** match the current
+  `stories_index.json` top 10 (marsh, rocket lab, national stock exchange, university college
+  london, citigroup, sandisk, comcast, kroger, founders fund, sb energy). This pass did not
+  re-read `topic_scores_weekly`, so it does not say whether the scores table still differs.
 
 ## Blocked on
 
