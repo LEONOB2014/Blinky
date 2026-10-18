@@ -88,3 +88,7 @@ Items 1-4 by **06:45**; 5-7 by **07:30**.
     ("Emergencia 92.4 ...", "Ángulo Explicador n..."), and "pct" is jargon. Let the signals wrap onto
     two lines (or show them as short chips), and write them in plain words: "Emergencia p92", "Ventana ~12 días"
     (or "Ventana sin estimar"), "Ángulo Giro". No ellipsis on any of the 10 rows at 1280 px and 1440 px.
+    Also (seen after FINDING-007, headless 1440x900): when a name wraps to two lines ("Marsh & McLennan
+    Companies", "University College de Londres") the rank badge and the decision pill stretch to the
+    row height; keep both at their natural size (`align-self: start`). All 10 rows should fit at 900 px
+    height without scrolling the rail if possible (tighter row padding).
