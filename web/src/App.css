@@ -398,3 +398,16 @@ li {
   color: #64748b;
   font-size: 0.85rem;
 }
+
+.week-picker {
+  font-size: 0.85rem;
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.topic-id {
+  font-size: 0.7rem;
+  font-weight: 400;
+  opacity: 0.7;
+}
