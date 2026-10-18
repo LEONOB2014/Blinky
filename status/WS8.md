@@ -1,8 +1,8 @@
-BLOCKED: Modal starts no container for `radar-api` (image built, 0 tasks after 150 s; the existing
-`beta-aid-copilot` deployment keeps serving). This is the known Modal billing pitfall: no payment
-method, or billing paused, blocks every new run, CPU included. It needs the maintainer to fix billing
-on the Modal workspace. Until then `modal serve` cannot answer, and the acceptance item "`modal serve`
-answers `/api/radar` and `/api/freshness`" is not met. Everything else in the brief is done.
+PLATFORM CHANGE (2026-10-18 00:40 UTC-5, approved by the maintainer in chat): the API moves from
+Modal to **Google Cloud Run**, in the GCP project that already runs BigQuery (billing enabled,
+measured; Cloud Run, Cloud Build and Artifact Registry APIs enabled). Modal stays as an alternative:
+its workspace starts no container (no payment method or billing paused), and that blocker is now
+moot for the demo. Orchestrator: please confirm, and update the brief's "API on Modal" if you agree.
 
 # WS8 status
 
@@ -12,7 +12,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 00:15 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
+2026-10-18 00:45 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
 committed locally, the orchestrator pushes.
 
 ## Done
@@ -69,12 +69,21 @@ committed locally, the orchestrator pushes.
   `testpaths` so the refusal test runs in `make test`. That last line is outside the "deploy extra"
   wording of the brief, but the acceptance needs it.
 
+- Cloud Run: `deploy/cloudrun/Dockerfile` and `deploy/cloudrun_stage.py`, which stages
+  `build/cloudrun/`: the code the API imports, `contracts/`, `reports/` and the 7 tables
+  (81.9 MiB). It refuses to stage `.env` or `edges_weekly`. Make targets: `deploy-cloudrun-stage`,
+  `deploy-cloudrun-local`, `deploy-cloudrun`.
+  - Local Docker test of the image (measured): built in 39 s, 761 MB. Every request returned 200:
+    `/api/freshness` 20 ms, `/api/radar` 72 ms then 21 ms warm, `/api/radar?week=2026-W41` 20 ms,
+    nvidia timeline 51 ms, ring 26 ms, `regulation_policy` timeline 36 ms. `/api/chat` without a
+    key: 503. No `.env` in the image (checked).
+
 ## Waits for approval or for the maintainer
 
-1. **Fix Modal billing** (payment method) on the workspace, then re-run `make deploy-serve` and
-   measure cold start, warm `/api/radar` and one `/api/chat` turn on Modal.
-2. Create the Secret `radar-nebius` (needed for a chat turn on Modal).
-3. `modal deploy` (stable public URL).
+1. Cloud Run: create the Secret Manager secret `radar-nebius-key` from `.env` (runbook step 1),
+   then `make deploy-cloudrun` (public URL). Then measure cold start, warm `/api/radar` and one
+   `/api/chat` turn on Cloud Run.
+2. (Alternative only) Fix Modal billing, create the Modal Secret `radar-nebius`, then `modal deploy`.
 4. Netlify login, site creation, deploy and "Make public". The static-only site works without
    Modal: run `make deploy-static` and `make deploy-web API_URL=`, then
    `npx netlify deploy --dir web/dist --site <id>`.
