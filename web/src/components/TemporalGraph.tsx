@@ -1354,7 +1354,7 @@ export function TemporalGraph({
               <p>
                 Este navegador no tiene aceleración gráfica activada; mostramos una imagen del grafo
               </p>
-              <img src="/data/views/temporal.png" alt="Grafo temporal semanal" />
+              <img src="/fallback/temporal.png" alt="Grafo temporal semanal" />
             </div>
           ) : (
             <>
