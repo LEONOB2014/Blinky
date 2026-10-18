@@ -14,6 +14,8 @@ Layout (``slug`` = the topic id lowercased, every non [a-z0-9] run replaced by "
     timeline/<slug>.json           GET /api/topic/<id>/timeline
     context/<slug>/<week>.json     GET /api/topic/<id>/context?week=<week>, the last 4 weeks
     context/<slug>/latest.json     GET /api/topic/<id>/context
+    evidence/*.json                the trust step offline (deploy/evidence.py): backtest and label
+                                   quality reports as JSON, BigQuery and Jev ledger totals
     evidence/topics/<slug>.json    topic_evidence_weekly (up to 5 articles per week) for the top 10
                                    of the last 4 scored weeks; titles and URLs, so never in git
 Topics: every topic in a top 10 of the last 4 weeks, the subtopics (timelines only) and the
@@ -29,6 +31,8 @@ import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+
+from evidence import write_evidence
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "web" / "public" / "data"
@@ -160,6 +164,7 @@ def export(out: Path = OUT) -> dict[str, int]:
         sizes["context"] += _write(tmp / "context" / slugs[topic] / "latest.json", get(base))
 
     sizes["other"] += _write(tmp / "freshness.json", get("/api/freshness"))
+    sizes["evidence"] = write_evidence(tmp / "evidence")
     evidence_path = gold("topic_evidence_weekly")
     if evidence_path.exists():
         evidence = topic_evidence_json(
