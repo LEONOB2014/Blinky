@@ -37,6 +37,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
             "get_topic_sources",
             "get_topic_evidence",
             "get_leaders",
+            "get_community_signal",
         ],
         "role": "Mides qué temas de IA crecen, en qué etapa están y su carga emocional, con las "
         "señales normalizadas de GDELT (participación del día, z_7d, crecimiento, tono, controversia). "
@@ -905,6 +906,69 @@ _LEADERS_Q = re.compile(
 )
 LEADERS_SHOWN = 5
 
+# The AI community sensor: "¿qué discute la comunidad IA?", "¿qué piden las aceleradoras / YC?",
+# "¿qué dicen los críticos?" -> the Signal analyst with get_community_signal (counts only)
+_CRITICS_Q = re.compile(
+    r"cr[ií]tic|se opone|se oponen|oposici[oó]n|opositor|detractor|esc[eé]ptic|contra la ia", re.I
+)
+_BUILDERS_Q = re.compile(r"aceleradora|y ?combinator|\byc\b|startups?\b|fundadores", re.I)
+_COMMUNITY_Q = re.compile(
+    # singular "comunidad": "comunidades de temas" (q13) are graph communities, not the AI community
+    r"\bcomunidad\b|investigador|papers?\b|hugging ?face|practicantes|desarrolladores|"
+    + _BUILDERS_Q.pattern
+    + "|"
+    + _CRITICS_Q.pattern,
+    re.I,
+)
+
+
+def community_category(question: str) -> str | None:
+    if _CRITICS_Q.search(question):
+        return "critics"
+    if _BUILDERS_Q.search(question):
+        return "builders"
+    return None
+
+
+def community_line(turn: Turn) -> str:
+    """ "La comunidad IA esta semana", written by code from get_community_signal's counts (never
+    titles), flagged as an unvalidated signal."""
+    out = next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_community_signal" and r["result"].get("available")
+        ),
+        None,
+    )
+    if not out:
+        return ""
+
+    def tops(rows: list[dict[str, Any]]) -> str:
+        return ", ".join(f"{r['label_es']} ({r['n_items']})" for r in rows)
+
+    cats = out["por_categoria"]
+    head = f"({out['week']}; señal no validada: no entra en el backtest)"
+    if "temas_de_postura_critica" in out:  # the critics
+        c = cats[0]
+        text = (
+            f"Los críticos de la IA esta semana {head}: {c['n_items']} publicaciones de fuentes "
+            f"críticas sobre {c['n_temas']} temas: {tops(out['top_por_categoria']['critics'])}."
+        )
+        if out["temas_de_postura_critica"]:
+            text += (
+                " Temas de la postura crítica en toda la comunidad: "
+                f"{tops(out['temas_de_postura_critica'])}."
+            )
+        return text
+    counts = "; ".join(
+        f"{c['category_es']}: {c['n_items']} publicaciones sobre {c['n_temas']} temas" for c in cats
+    )
+    lead = "; ".join(
+        f"{c['category_es']}: {tops(out['top_por_categoria'][c['category']])}" for c in cats[:3]
+    )
+    return f"La comunidad IA esta semana {head}: {counts}. Lo que más discute: {lead}."
+
 
 def leaders_block(turn: Turn) -> str:
     """The week's AI leaders by volume, written by code from get_leaders."""
@@ -964,6 +1028,11 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
         + (
             [("get_leaders", {"week": week or ctx["signals"].get("week")})]
             if _LEADERS_Q.search(question)
+            else []
+        )
+        + (
+            [("get_community_signal", {"category": community_category(question)})]
+            if _COMMUNITY_Q.search(question)
             else []
         ),
         "audience_strategist": [
@@ -1121,6 +1190,8 @@ def run_turn(
         needed = ["signal_analyst", "cartographer"]
     if entity and _EVIDENCE_Q.search(question) and "signal_analyst" not in needed:
         needed = ["signal_analyst", *needed]  # it reads the topic's articles and outlets
+    if _COMMUNITY_Q.search(question) and "signal_analyst" not in needed:
+        needed = ["signal_analyst", *needed]  # it reads the community sensor
     if not needed:  # unrecognised question: the Media Master delegates freely
         answer = _loop(
             model,
@@ -1164,10 +1235,17 @@ def run_turn(
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
         decides = "signal_analyst" in needed or "editor" in needed
         leaders = leaders_block(turn) if _LEADERS_Q.search(question) else ""
-        # a leaders question is about volume: the emergence #1's decision line would mislead
-        line = decision_line(turn, entity, question) if decides and not leaders else ""
+        community = community_line(turn) if _COMMUNITY_Q.search(question) else ""
+        # a leaders or community question is not about what to publish: no emergence decision
+        line = (
+            decision_line(turn, entity, question)
+            if decides and not leaders and not community
+            else ""
+        )
         if leaders:
             line = f"{line}\n\n{leaders}" if line else leaders
+        if community:
+            line = f"{line}\n\n{community}" if line else community
         block = evidence_block(turn) if _EVIDENCE_Q.search(question) else ""
         if block:
             line = f"{line}\n\n{block}" if line else block
@@ -1180,7 +1258,9 @@ def run_turn(
         trust = trust_line(turn) if "auditor" in needed and _TRUST_Q.search(question) else ""
         if trust:
             line = f"{line}\n\n{trust}" if line else trust
-        coverage = coverage_line(turn) if (decides or entity) and not leaders else ""
+        coverage = (
+            coverage_line(turn) if (decides or entity) and not leaders and not community else ""
+        )
         if coverage:
             line = f"{line}\n\n{coverage}" if line else coverage
         instructions = (
