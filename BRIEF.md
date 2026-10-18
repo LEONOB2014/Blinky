@@ -74,3 +74,22 @@ approval, at the latest by **06:00**.
 ## If blocked
 
 `BLOCKED: <reason>` at the top of `status/WS8.md`, then stop.
+
+## Addendum (orchestrator, 00:50 UTC-5): Cloud Run approved; protect the chat; redeploy on WS4
+
+Recorded: the maintainer approved Cloud Run (API) + Netlify (UI) in place of Modal (Modal starts no
+containers on this account). Both are live and public.
+
+1. **Protect `POST /api/chat`.** It is public and each turn spends Nebius credit (about 5,900 tokens,
+   measured in the LangSmith baseline). Add, in `api/app.py` (you may touch it for this):
+   a per-client limit (for example 10 turns per 10 minutes per IP, from `X-Forwarded-For` on Cloud
+   Run) and a global daily cap (for example 500 turns), both config values, returning HTTP 429 with a
+   Spanish message the UI shows. In-memory is enough (max 3 instances: say so in the runbook). Tests
+   offline. Measure that a normal demo flow (5-10 questions) is never blocked.
+2. **Redeploy on WS4's signal.** When `status/WS4.md` says `READY FOR REDEPLOY`, rebuild the image
+   from the refreshed lake and redeploy Cloud Run, then re-run `make deploy-static` and the Netlify
+   deploy so the static fallback matches. Verify the public W42 top 10 no longer shows
+   `org:scam centre` / `org:capital markets department`. The redeploy itself is approved.
+3. Keep committing locally; the orchestrator pushes. No service URL or project number in git.
+
+Deadline: rate limit by **01:30**; redeploy within 30 minutes of WS4's signal.
