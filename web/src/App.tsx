@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchFreshness,
   fetchRadar,
@@ -381,8 +381,13 @@ export function App() {
 
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showTrust, setShowTrust] = useState(false);
+  const trustButtonRef = useRef<HTMLButtonElement>(null);
+  const returnTrustFocus = useRef(false);
   const [isCardsDrawerOpen, setIsCardsDrawerOpen] = useState<boolean>(false);
   const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(false);
+  const [dockExpanded, setDockExpanded] = useState(false);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const focusChatOnExpand = useRef(false);
   const activeLens = lensFromCommand(
     activeView.color_by,
     "",
@@ -403,6 +408,11 @@ export function App() {
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
       if (e.key === "Escape") {
+        if (showTrust) {
+          returnTrustFocus.current = true;
+          setShowTrust(false);
+          return;
+        }
         setIsFullscreen(false);
         setIsCardsDrawerOpen(false);
       } else if (
@@ -418,7 +428,26 @@ export function App() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [showTrust]);
+
+  useEffect(() => {
+    if (!showTrust && returnTrustFocus.current) {
+      returnTrustFocus.current = false;
+      trustButtonRef.current?.focus();
+    }
+  }, [showTrust]);
+
+  useEffect(() => {
+    if (dockExpanded && focusChatOnExpand.current) {
+      focusChatOnExpand.current = false;
+      chatInputRef.current?.focus();
+    }
+  }, [dockExpanded]);
+
+  function expandDock() {
+    focusChatOnExpand.current = true;
+    setDockExpanded(true);
+  }
 
   useEffect(() => {
     void fetchFreshness()
@@ -598,6 +627,7 @@ export function App() {
       setChatAnswer(res.answer_es);
       setChatCards(res.decision_cards);
       setTraceSteps(res.trace);
+      setDockExpanded(true);
       setIsFloatingChatOpen(true);
       const resolvedCmd = resolveChatViewCommand(
         trimmed,
@@ -660,6 +690,7 @@ export function App() {
             </select>
           </label>
           <button
+            ref={trustButtonRef}
             type="button"
             className={showTrust ? "pill pill-active" : "pill"}
             data-testid="trust-toggle"
@@ -823,6 +854,7 @@ export function App() {
               colorBy={activeLens}
               captionEs={activeView.caption_es}
               isFullscreen={isFullscreen}
+              dockOpen={dockExpanded}
               onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
               onLensChange={selectLens}
               onSelectTopic={(topicId) => {
@@ -928,10 +960,18 @@ export function App() {
             </aside>
           )}
 
-          <aside className="fullscreen-floating-chat chat-dock" aria-label="Maestro de Medios">
+          {dockExpanded ? (
+          <aside
+            className="fullscreen-floating-chat chat-dock"
+            aria-label="Maestro de Medios"
+            data-testid="media-dock"
+          >
             <div className="floating-chat-header">
               <h2>Maestro de Medios</h2>
               <div className="chat-dock-actions">
+                <button type="button" className="pill" onClick={() => setDockExpanded(false)}>
+                  Cerrar
+                </button>
                 {isFullscreen && (
                   <button
                     type="button"
@@ -1034,6 +1074,7 @@ export function App() {
             )}
             <form className="chat-form" onSubmit={handleChatSubmit}>
               <input
+                ref={chatInputRef}
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
@@ -1046,6 +1087,18 @@ export function App() {
               </button>
             </form>
           </aside>
+          ) : (
+            <button
+              type="button"
+              className="chat-dock-pill"
+              data-testid="media-dock"
+              aria-expanded="false"
+              onClick={expandDock}
+              onFocus={expandDock}
+            >
+              Pregúntale al Maestro de Medios
+            </button>
+          )}
         </section>
       </div>
     </div>

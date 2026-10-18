@@ -1149,6 +1149,23 @@ li {
   color: #f8fafc;
 }
 
+/* Decision cards sit on the dark dock. The shared card inherits --ink,
+   which is dark on dark. Keep this pair inside the chat only. */
+.floating-chat-body .decision-cards-list h3,
+.floating-chat-body .decision-card,
+.floating-chat-body .decision-card strong {
+  color: #f8fafc;
+}
+
+.floating-chat-body .decision-card {
+  background: #1e293b;
+  border-color: #475569;
+}
+
+.floating-chat-body .decision-card p {
+  color: #e2e8f0;
+}
+
 .header-actions {
   display: flex;
   flex-direction: column;
@@ -1487,6 +1504,24 @@ body {
 
 .chat-dock {
   width: min(420px, calc(100% - 1.5rem));
+}
+
+.chat-dock-pill {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10000;
+  height: 48px;
+  max-width: calc(100% - 2rem);
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid #334155;
+  background: rgba(15, 23, 42, 0.93);
+  color: #f8fafc;
+  font: 600 14px/1 var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
 .chat-dock-actions {

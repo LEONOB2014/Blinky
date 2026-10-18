@@ -19,6 +19,8 @@ export interface TemporalGraphProps {
   onSelectTopic?: (topicId: string) => void;
   onOpenStory?: (topicId: string) => void;
   onLensChange?: (lens: LensMode) => void;
+  /** Retriggers the fit when the chat dock opens or collapses. */
+  dockOpen?: boolean;
 }
 
 interface LabelItem {
@@ -54,6 +56,115 @@ const REHEAT_CAP_MS = 2500;
 const REHEAT_TICK_MS = 100;
 const REHEAT_STABLE_TICKS = 3;
 const LAYOUT_SAMPLE_INDEXES = [0, 100, 250, 500, 750, 999];
+const FIT_PAD = 0.08;
+
+type ViewTransform = { k: number; x: number; y: number };
+
+function zoomApi(graph: Graph): {
+  getTransform: (positions: number[], scale?: number, padding?: number) => ViewTransform;
+} | null {
+  const zoom = (
+    graph as unknown as {
+      zoomInstance?: {
+        getTransform: (positions: number[], scale?: number, padding?: number) => ViewTransform;
+      };
+    }
+  ).zoomInstance;
+  return zoom ?? null;
+}
+
+/** How far the chat dock intrudes into the canvas, in CSS pixels. */
+function dockIntrusion(host: HTMLElement): { right: number; bottom: number } {
+  const dock = document.querySelector("[data-testid='media-dock']");
+  if (!dock) return { right: 0, bottom: 0 };
+  const h = host.getBoundingClientRect();
+  const d = dock.getBoundingClientRect();
+  const overlapW = Math.min(h.right, d.right) - Math.max(h.left, d.left);
+  const overlapH = Math.min(h.bottom, d.bottom) - Math.max(h.top, d.top);
+  if (overlapW <= 1 || overlapH <= 1) return { right: 0, bottom: 0 };
+  return {
+    right: Math.max(0, h.right - d.left) + 10,
+    bottom: Math.max(0, h.bottom - d.top) + 10,
+  };
+}
+
+function dockObstacle(host: HTMLElement): { x0: number; y0: number; x1: number; y1: number } | null {
+  const dock = document.querySelector("[data-testid='media-dock']");
+  if (!dock) return null;
+  const h = host.getBoundingClientRect();
+  const d = dock.getBoundingClientRect();
+  const box = {
+    x0: d.left - h.left,
+    y0: d.top - h.top,
+    x1: d.right - h.left,
+    y1: d.bottom - h.top,
+  };
+  if (box.x1 < 0 || box.y1 < 0 || box.x0 > h.width || box.y0 > h.height) return null;
+  return box;
+}
+
+/**
+ * fitView only pads every side by the same fraction. Place the points in the
+ * larger of the two rectangles that clear the dock: above it, or to its left.
+ */
+function fitClearingCorner(graph: Graph, host: HTMLElement): void {
+  const zoom = zoomApi(graph);
+  const positions = graph.getPointPositions();
+  if (!zoom || positions.length < 2) {
+    graph.fitView(0, FIT_PAD, false);
+    return;
+  }
+  const fitted = zoom.getTransform(positions, undefined, 0);
+  if (!Number.isFinite(fitted.k) || fitted.k <= 0) {
+    graph.fitView(0, FIT_PAD, false);
+    return;
+  }
+  graph.setViewTransform(fitted);
+
+  const width = host.getBoundingClientRect().width;
+  const height = host.getBoundingClientRect().height;
+  if (width < 2 || height < 2) return;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < positions.length; i += 2) {
+    const sx = positions[i];
+    const sy = positions[i + 1];
+    if (!Number.isFinite(sx) || !Number.isFinite(sy)) continue;
+    const screen = graph.spaceToScreenPosition([sx, sy]);
+    if (screen[0] < minX) minX = screen[0];
+    if (screen[0] > maxX) maxX = screen[0];
+    if (screen[1] < minY) minY = screen[1];
+    if (screen[1] > maxY) maxY = screen[1];
+  }
+  if (!Number.isFinite(minX) || maxX - minX < 1 || maxY - minY < 1) return;
+
+  const unitsW = (maxX - minX) / fitted.k;
+  const unitsH = (maxY - minY) / fitted.k;
+  const scaleCx = ((minX + maxX) / 2 - fitted.x) / fitted.k;
+  const scaleCy = ((minY + maxY) / 2 - fitted.y) / fitted.k;
+  const place = (safeW: number, safeH: number): ViewTransform | null => {
+    const innerW = safeW * (1 - FIT_PAD * 2);
+    const innerH = safeH * (1 - FIT_PAD * 2);
+    if (innerW < 40 || innerH < 40 || unitsW < 1 || unitsH < 1) return null;
+    const k = Math.min(innerW / unitsW, innerH / unitsH);
+    if (!Number.isFinite(k) || k <= 0) return null;
+    return {
+      k,
+      x: safeW / 2 - scaleCx * k,
+      y: safeH / 2 - scaleCy * k,
+    };
+  };
+
+  const { right, bottom } = dockIntrusion(host);
+  const above = bottom > 1 ? place(width, height - bottom) : null;
+  const beside = right > 1 ? place(width - right, height) : null;
+  const clearing = [above, beside].filter((item): item is ViewTransform => item !== null);
+  const best = clearing.length > 0 ? clearing.reduce((a, b) => (b.k > a.k ? b : a)) : place(width, height);
+  if (best) graph.setViewTransform(best);
+}
 
 /** deg_growth is a natural log. Show exp(log) − 1, as a percent or a ratio. */
 function formatDegreeGrowth(logGrowth: number): string {
@@ -88,6 +199,7 @@ export function TemporalGraph({
   onSelectTopic,
   onOpenStory,
   onLensChange,
+  dockOpen = false,
 }: TemporalGraphProps) {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Graph | null>(null);
@@ -206,17 +318,32 @@ export function TemporalGraph({
       const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
       const accepted: LabelItem[] = [];
       const maxLabels = 26;
+      const obstacle = dockObstacle(host);
 
       for (const cand of candidates) {
         if (accepted.length >= maxLabels && !cand.isFocused) break;
         const estW = Math.min(185, Math.max(54, cand.text.length * 6.4 + 14));
         const estH = 20;
+        const half = estW / 2;
+        const pad = 4;
+        if (cand.x - half < pad) cand.x = half + pad;
+        if (cand.x + half > width - pad) cand.x = width - pad - half;
+        if (cand.x - half < pad || cand.x + half > width - pad) continue;
         const box = {
-          x0: cand.x - estW / 2,
+          x0: cand.x - half,
           y0: cand.y - estH - 5,
-          x1: cand.x + estW / 2,
+          x1: cand.x + half,
           y1: cand.y + 4,
         };
+        if (
+          obstacle &&
+          box.x0 < obstacle.x1 &&
+          box.x1 > obstacle.x0 &&
+          box.y0 < obstacle.y1 &&
+          box.y1 > obstacle.y0
+        ) {
+          continue;
+        }
         let collides = false;
         for (const p of placed) {
           if (box.x0 < p.x1 && box.x1 > p.x0 && box.y0 < p.y1 && box.y1 > p.y0) {
@@ -1021,7 +1148,7 @@ export function TemporalGraph({
       if (reheatTokenRef.current === 0) {
         applyLensRef.current(initialW, activeLensRef.current);
       }
-      graph.fitView(0, 0.08, false);
+      fitClearingCorner(graph, host);
       graphReadyRef.current = true;
 
       requestAnimationFrame(() => {
@@ -1088,29 +1215,63 @@ export function TemporalGraph({
       if (rect.width < 2 || rect.height < 2) return;
       g.setConfig(cfg);
       applyLensRef.current(weekIdxRef.current, activeLensRef.current);
-      g.fitView(0, 0.08, false);
+      fitClearingCorner(g, host);
       recomputeLabelsRef.current(weekIdxRef.current);
+    };
+
+    const scheduleFit = () => {
+      if (!graphReadyRef.current) return;
+      const rect = host.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return;
+      if (
+        lastW >= 0 &&
+        Math.abs(rect.width - lastW) < 2 &&
+        Math.abs(rect.height - lastH) < 2
+      ) {
+        return;
+      }
+      lastW = rect.width;
+      lastH = rect.height;
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitToHost);
     };
 
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
-      if (!rect) return;
-      const w = rect.width;
-      const h = rect.height;
-      if (w < 2 || h < 2) return;
-      if (lastW >= 0 && Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return;
-      lastW = w;
-      lastH = h;
-      if (!graphReadyRef.current) return;
-      if (frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(fitToHost);
+      if (!rect || rect.width < 2 || rect.height < 2) return;
+      scheduleFit();
     });
     observer.observe(host);
+
+    // The first size often arrives before the graph is ready. Keep trying
+    // until a fit lands, or that size is remembered and the labels never show.
+    let tries = 0;
+    const kick = () => {
+      tries += 1;
+      scheduleFit();
+      if (lastW < 0 && tries < 180) {
+        frame = requestAnimationFrame(kick);
+      }
+    };
+    kick();
+
     return () => {
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
     };
   }, [data]);
+
+  // Opening the dock does not resize the canvas. Refit so labels clear it.
+  useEffect(() => {
+    const host = canvasHostRef.current;
+    const g = graphRef.current;
+    if (!host || !g || !graphReadyRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      fitClearingCorner(g, host);
+      recomputeLabelsRef.current(weekIdxRef.current);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [dockOpen]);
 
   useEffect(() => {
     return () => {
