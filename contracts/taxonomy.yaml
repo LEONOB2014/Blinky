@@ -10,11 +10,13 @@ rings:
     source: bq_sql/s2_monthly_insert.sql (flags), bq_sql/s4_aggregates.sql S4c
     ranked: true
   it:
-    rule: "(f_ict OR f_tech_org) AND NOT ai"
-    tech_org_list: "to be written by WS2 (f_tech_org), v1 starts from the f_org lab list plus large tech companies"
+    rule: "f_ict AND (f_tech_org OR a second distinct ICT theme) AND NOT ai"
+    tech_org_list: "S2's lab list plus its large-tech list (bq_sql/s4a_article_segment.sql)"
+    topic_id: it_all
     ranked: false
   ai_domain:
     rule: "domain theme group AND f_tech_org AND NOT ai AND NOT it"
+    topic_id: "domain:<domain id>, one row per matched domain (multi-label)"
     ranked: false
 
 # 12 AI subtopics, multi-label, assigned to ring-1 articles only (regex v1 on title + URL).
@@ -49,4 +51,26 @@ domains:
   security: {themes_prefix: [CYBER_ATTACK, SECURITY_SERVICES, SURVEILLANCE], explains: [safety_risk]}
 
 # Never ranked, never committed: person names (etype 'per'), quotations, URLs, titles.
+# Entity types that get a 1-hop context ring (graph/context.py). Persons never appear in a ring.
 ranked_entity_types: [org, thm]
+
+# The ranked unit (what topic_scores_weekly ranks, what the backtest and the editor test judge).
+# Measured on topic_daily (50 weeks, >= 20 ring-1 articles a week): about 1,900 org+thm topics a
+# week, 1,300 of them generic GKG themes (TAX_*, WB_*, ...); orgs alone median 382 a week.
+# So: every org except the deny-list, plus themes whose prefix is allow-listed. The Curator (WS2)
+# tunes both lists; a change is a contract change.
+ranked_universe:
+  min_articles_week: 20
+  org: true
+  thm_prefixes: [TECH_]
+  org_deny:
+    # wire services and outlets: they cite the news, they are not the news
+    - reuters
+    - associated press
+    - australian associated
+    - bloomberg
+    - cnn
+    - new york times
+    # GKG extraction artefacts
+    - terms of service
+    - young
