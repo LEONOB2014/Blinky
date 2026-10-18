@@ -17,7 +17,61 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 09:38 UTC-5 · branch `feat/ws1-ai-topics` (evidence for the scored AI topics) · committed locally, not pushed.
+2026-10-18 15:35 UTC-5 · branch `feat/ws0-lexicon-v04` (lexicon v0.4 re-run) · committed locally, not pushed, not deployed.
+
+Previous: 2026-10-18 09:38 UTC-5 · branch `feat/ws1-ai-topics` (evidence for the scored AI topics) · committed locally, not pushed.
+
+## Lexicon v0.4 pipeline re-run (15:35 UTC-5, branch `feat/ws0-lexicon-v04`, not deployed, not pushed)
+
+The AI lexicon at c721291 (117 entries, 7 new LatAm sectors) through the WP1 pipeline on the shared lake.
+All numbers *measured* unless marked. The lake files it replaced are kept in
+`lake/backup/pre_lexicon_v04_1445/` (scores, briefs, daily, edges, sources, evidence, ring, views).
+
+- **BigQuery, 4 jobs, 4,157,603,840 bytes billed** (logged): S15 825,229,312; S16 659,554,304; S13
+  1,451,229,184; S14 1,221,591,040. Ledger: 393.88 GB over 78 jobs, 35.8% of the 1 TiB monthly free tier.
+- **`topic_ai_daily`** 71,128 rows, 117 topics; **`edges_ai_weekly`** 139,698 rows. The 110 old topics'
+  article totals are unchanged (0 of 110 differ).
+- **W42 (2026-10-12..18) volume of the new topics** (articles, Spanish, Portuguese; rank by volume of 117):
+
+  | Topic | Articles | spa | por | Volume rank |
+  |---|---|---|---|---|
+  | `biz:ai_finance_banking` | 520 | 20 | 14 | 12 |
+  | `biz:ai_smes` | 92 | 25 | 0 | 47 |
+  | `biz:ai_logistics` | 88 | 20 | 11 | 49 |
+  | `risk:climate_resilience` | 66 | 7 | 1 | 57 |
+  | `biz:ai_agriculture` | 36 | 4 | 0 | 71 |
+  | `policy:ai_government` | 30 | 0 | 0 | 75 |
+  | `society:indigenous_languages` | 1 | 0 | 0 | 109 |
+
+- **Ring** (`graph.build --ai-only`): 17,106 `ai:` rows, 116 topics, 51 weeks.
+- **Scores**: 3,636 rows, 46 weeks, 108 ranked units (W42: 76 -> 82 ranked).
+  - W41 top 10: new `biz:ai_finance_banking` (#1, preparar) and `biz:ai_agriculture` (#4,
+    no_es_tema_caliente); out `model:voice_music`, `product:chatgpt`.
+  - W42 top 10: new `biz:ai_smes` (#1, preparar, 92 articles, emergence p96) and
+    `biz:ai_finance_banking` (#10, esperar); out `tech:open_weights`, `tech:robotics`. Everything else
+    moves down one place; `biz:talent_moves` goes from publicar_ahora to preparar.
+- **Backtest** (`reports/backtest_ai.md`), secondary label (es+pt GDELT): published radar **95/430 = 22.1%
+  [18.8, 25.6]**, was 110/430 = 25.6% [22.3, 28.8]; base rate 25.4%. Minus raw-count growth: **-5.6 points
+  [-10.0, -0.9]** (was -1.6 [-5.6, 2.3]): the radar is now worse than the simple baseline on this label.
+  Still above persistence (+10.2 [6.5, 14.2]). Primary label: 27.8% vs 27.7%, worst case still below
+  raw-count growth. The site and the v0.4 video quote 25.6%; they would need the new number.
+- **Views**: `export_views --ai` 111 nodes, 2,222 edges over 13 weeks; `check_ai_views` **PASS**.
+- **E2E matrix** (local build, headed Chrome, API with `RADAR_SOURCE=ai`): **130 / 130 cells pass**, 0 errors,
+  play Familia and Postura end at W42 at 120 fps. The 8 selections focus and label correctly but each logs 2
+  console errors: `vite preview` answers missing fallback files (leaders' evidence, community, timeline,
+  context) with 200 HTML, which the card code fails to parse. On the live site the same evidence files
+  answer 404 and the rest exist, so this is the local build's data, not the lexicon.
+- **Evidence** (S14): 2,391 rows; each new top-10 topic-week has 5 articles.
+- **Briefs** (Nebius, only the 4 topic-weeks new to the top 10): Auditor 4/4, 2 retried, 7,402 tokens
+  (*measured*), cost well under the $0.30 cap (*estimate*). The 16 kept briefs have their rank field
+  updated. **Stale:** 2 kept briefs now contradict the code's decision (W41 `research:ai_health` and W42
+  `biz:talent_moves` say publicar ahora; the code says preparar). The W42 banking hook says "casi nadie lo
+  cuenta" in Spanish with 34 es+pt of 520 articles.
+- **Gate:** `make check` passes. `make test`: 423 passed, 1 failed. Two tests tied to the data were updated
+  (lexicon size 110 -> 117; the AI trust answer now cites 22,1% and raw-count growth 27,7%). The failing
+  `graph/tests/test_ai_graph.py::test_ai_export_keeps_computed_properties_and_separates_critics` fails the
+  same way with the pre-v0.4 lexicon: it predates the ForceAtlas2 layout (063df6f) and was already broken
+  on develop. Not touched here.
 
 ## Evidence for the scored AI topics (09:38 UTC-5)
 
