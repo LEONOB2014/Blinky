@@ -277,6 +277,9 @@ def main() -> None:
     parser.add_argument("--repetitions", type=int, default=1, help="runs per question")
     parser.add_argument("--change", default="", help="what this experiment changes (metadata)")
     parser.add_argument(
+        "--questions", help="comma-separated question ids to run (default: all 25), e.g. q20,q22"
+    )
+    parser.add_argument(
         "--rescore", metavar="EXPERIMENT", help="add usefulness_v2 to an existing experiment"
     )
     args = parser.parse_args()
@@ -295,9 +298,19 @@ def main() -> None:
         _report(f"{args.rescore}.v2", _rows(results), args.repetitions)
         return
     dataset = ensure_dataset(client)
+    data: Any = dataset
+    if args.questions:
+        wanted = set(args.questions.split(","))
+        data = [
+            ex
+            for ex in client.list_examples(dataset_name=dataset)
+            if (ex.outputs or {}).get("id") in wanted
+        ]
+        if {(ex.outputs or {}).get("id") for ex in data} != wanted:
+            raise SystemExit(f"unknown question ids in --questions: {args.questions}")
     results = client.evaluate(
         target,
-        data=dataset,
+        data=data,
         evaluators=EVALUATORS,
         experiment_prefix=args.prefix,
         max_concurrency=args.concurrency,

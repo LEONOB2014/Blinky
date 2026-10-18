@@ -153,6 +153,21 @@ def test_cartographer_reads_the_leaders_ring_when_no_entity_is_named():
     assert not [s for s in turn.trace if s["tool"] == "get_context_1hop"]
 
 
+@pytest.mark.unit
+def test_auditor_reads_the_cost_ledger_only_when_asked_about_cost():
+    ctx = {"week": None, "leader": None, "entity": None, "signals": {}}
+
+    def tools_called(question):
+        turn = runtime.Turn("t")
+        runtime.gather(turn, "auditor", question, ctx)
+        return {s["tool"] for s in turn.trace if s["action"] == "tool_call"}
+
+    trust = tools_called("¿Cuánto puedo confiar en el radar? ¿Hay backtest?")
+    assert trust == {"get_backtest", "get_filter_quality"}
+    assert "get_cost_ledger" in tools_called("¿Cuánto ha costado el radar y qué tan confiable es?")
+    assert "get_cost_ledger" in tools_called("¿Cuánto se ha gastado en BigQuery?")
+
+
 @pytest.mark.parametrize(
     "question",
     [
@@ -263,3 +278,31 @@ def test_auditor_matches_shares_only_for_percentages():
     assert untraced_numbers("Usamos el 34,6% de la capa gratuita.", results, "") == []
     assert untraced_numbers("Cuesta $2.20 por semana.", results, "") == ["2.20"]
     assert untraced_numbers("Hay 220 filas.", results, "") == []
+
+
+@pytest.mark.unit
+def test_media_master_forbids_stories_beyond_the_data_like_the_briefs():
+    from agents import briefs
+
+    prompt = runtime.master_prompt()
+    assert runtime.MASTER_NO_NARRATIVE in prompt
+    assert "no el negocio de la empresa" in prompt and "está redefiniendo" in prompt
+    assert runtime.NO_NARRATIVE in briefs.SYSTEM  # one wording for both
+
+
+def test_auditor_reads_dates_whole_and_still_catches_numbers_beside_them():
+    from agents.runtime import untraced_numbers
+
+    results = [{"result": {"newest": {"daily_totals": "2026-10-18"}, "billed_gb": 380.75}}]
+    ok = "Los datos más recientes son del 18 de octubre de 2026 (2026-10-18), del 18 de octubre."
+    assert untraced_numbers(ok, results, "") == []
+    beside = "Datos al 2026-10-18, con 9999 artículos y 380.75 GB."
+    assert untraced_numbers(beside, results, "") == ["9999"]
+    assert untraced_numbers("Datos al 2026-10-19.", results, "") == ["2026-10-19"]
+    assert untraced_numbers("Datos del 19 de octubre de 2026.", results, "") == [
+        "19 de octubre de 2026"
+    ]
+    assert untraced_numbers("Datos del 18 de octubre de 2025.", results, "") == [
+        "18 de octubre de 2025"
+    ]
+    assert untraced_numbers("Todo en 2026.", results, "") == []  # the year of a source date

@@ -33,6 +33,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
             "get_topic_series",
             "get_top10",
             "get_topic_scores",
+            "get_topic_sources",
             "get_topic_evidence",
         ],
         "role": "Mides qué temas de IA crecen, en qué etapa están y su carga emocional, con las "
@@ -77,6 +78,19 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     },
 }
 
+# no story beyond the data: the same rule the Editor's briefs follow (agents/briefs.py)
+NO_NARRATIVE = (
+    "Los subtemas son categorías del radar, no el negocio de la empresa: no afirmes que el tema "
+    "'está conectado' con ellos ni inventes por qué crece; si no sabes la causa, dilo."
+)
+MASTER_NO_NARRATIVE = (
+    "No agregues causas, historias ni intenciones que los datos no muestren (por ejemplo, que una "
+    "empresa 'está redefiniendo' algo o 'se expande' a un mercado): di solo lo que muestran. "
+    + NO_NARRATIVE
+    + " En 'Qué hacer', el enfoque sale de los datos (decisión, ángulo, cifras), no de una historia "
+    "sobre la empresa."
+)
+
 RULES = (
     "Reglas: responde en español claro para ejecutivos de medios. Usa SOLO números que devuelvan las "
     "herramientas, sin inventar ni redondear de forma engañosa; si una herramienta dice que algo no "
@@ -108,7 +122,7 @@ MASTER_PROMPT = (
 
 
 def master_prompt() -> str:
-    return MASTER_PROMPT + rules()
+    return MASTER_PROMPT + rules() + " " + MASTER_NO_NARRATIVE
 
 
 @dataclass
@@ -257,8 +271,43 @@ def run_specialist(model: ChatModel, turn: Turn, agent: str, question: str) -> s
 _NUM = re.compile(r"(?<![\w-])-?\d+(?:[.,]\d+)?%?")
 
 
+_MONTHS_ES = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+]
+_DATE = re.compile(
+    r"\b(\d{4})-(\d{2})-(\d{2})\b"
+    rf"|\b(\d{{1,2}}) de ({'|'.join(_MONTHS_ES)})(?: de(?:l)? (\d{{4}}))?\b",
+    re.I,
+)
+
+
+def _dates(text: str) -> list[tuple[str, tuple[int | None, int, int]]]:
+    """Dates in a text, ISO ("2026-10-18") or Spanish ("18 de octubre de 2026", year optional)."""
+    out = []
+    for m in _DATE.finditer(text):
+        if m.group(1):
+            out.append((m.group(0), (int(m.group(1)), int(m.group(2)), int(m.group(3)))))
+        else:
+            month = _MONTHS_ES.index(m.group(5).lower()) + 1
+            year = int(m.group(6)) if m.group(6) else None
+            out.append((m.group(0), (year, month, int(m.group(4)))))
+    return out
+
+
 def _numbers(text: str) -> list[str]:
-    return [m.group(0) for m in _NUM.finditer(text)]
+    """Numbers outside dates: a date is read whole (see _dates), never as loose parts."""
+    return [m.group(0) for m in _NUM.finditer(_DATE.sub(" ", text))]
 
 
 def _as_float(token: str) -> float:
@@ -268,14 +317,27 @@ def _as_float(token: str) -> float:
 def _source_numbers(results: list[dict[str, Any]], extra: str) -> list[float]:
     found = [_as_float(t) for t in _numbers(extra)]
     for r in results:
-        found += [_as_float(t) for t in _numbers(json.dumps(r["result"], default=str))]
+        text = json.dumps(r["result"], default=str)
+        found += [_as_float(t) for t in _numbers(text)]
+        found += [float(d[0]) for _, d in _dates(text) if d[0]]  # a source date's year ("en 2026")
     return found
+
+
+def _source_dates(results: list[dict[str, Any]], extra: str) -> set[tuple[int | None, int, int]]:
+    texts = [extra] + [json.dumps(r["result"], default=str) for r in results]
+    return {d for t in texts for _, d in _dates(t)}
 
 
 def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
     """Numbers in the answer that match no tool result (allowing rounding and % of a share)."""
     sources = _source_numbers(results, question)
-    bad = []
+    dates = _source_dates(results, question)
+    # a date is traced when the same day appears in the data (a date without a year matches any year)
+    bad = [
+        text
+        for text, (y, m, d) in _dates(answer)
+        if not any(sm == m and sd == d and (y is None or sy in (y, None)) for sy, sm, sd in dates)
+    ]
     for token in _numbers(answer):
         value = _as_float(token)
         if abs(value) <= 12 and value == int(value):
@@ -350,6 +412,9 @@ def cards_from_scores(turn: Turn) -> list[dict[str, Any]]:
     return cards
 
 
+# a question about money: the Scout answers it, and only then does the Auditor read the cost ledger
+_COST_Q = re.compile(r"cost[oóa]|costad|cuesta|gast|factur", re.I)
+
 ROUTES = [
     (
         re.compile(r"grafo|graf|red |muestr|mu[eé]stra|visual|vista|conect|vecin|comunidad", re.I),
@@ -364,7 +429,7 @@ ROUTES = [
         "audience_strategist",
     ),
     (re.compile(r"contenido|guion|gancho|post|formato|escrib|brief", re.I), "editor"),
-    (re.compile(r"cost[oóa]|costad|cuesta|gast|factur|fresc|actualiz|fuente", re.I), "scout"),
+    (re.compile(rf"{_COST_Q.pattern}|fresc|actualiz|fuente", re.I), "scout"),
     (re.compile(r"conf[ií]a|backtest|precisi|evidencia|calidad", re.I), "auditor"),
 ]
 
@@ -475,6 +540,35 @@ def decision_line(turn: Turn, entity: str | None, question: str) -> str:
     return "Decisión del radar: " + "; ".join(parts) + "."
 
 
+_EVIDENCE_Q = re.compile(r"\bart[ií]culos?\b|\bevidencias?\b|\bfuentes?\b|\bmedios\b", re.I)
+LANG_ES = {"spa": "español", "eng": "inglés", "por": "portugués"}
+
+
+def evidence_block(turn: Turn) -> str:
+    """The articles behind a named topic, written by code from get_topic_evidence (and the week's
+    outlet count from get_topic_sources), so an evidence question lists them verbatim."""
+    found = {r["tool"]: r["result"] for r in turn.tool_results if r["result"].get("available")}
+    evidence, sources = found.get("get_topic_evidence"), found.get("get_topic_sources")
+    if not evidence:
+        return ""
+    scored = [
+        row
+        for r in turn.tool_results
+        if r["tool"] in {"get_top10", "get_topic_scores"} and r["result"].get("available")
+        for row in r["result"].get("rows") or []
+        if row.get("topic_id") == evidence["topic_id"]
+    ]
+    name = topic_name(scored[0] if scored else {"topic_id": evidence["topic_id"]})
+    head = f"Artículos que respaldan a {name} ({evidence['week']})"
+    if sources:
+        head += f": {sources['n_articulos']} artículos de {sources['n_medios']} medios esa semana"
+    lines = [
+        f"- {a['source']}, {a['dt']}, {LANG_ES.get(a['lang_bucket'], 'otro idioma')}: «{a['title']}»"
+        for a in evidence["articles"]
+    ]
+    return head + "; estos son los más representativos:\n" + "\n".join(lines)
+
+
 _WORD = re.compile(r"[\wáéíóúñü&.-]+", re.I)
 _NON_NAME = re.compile(r"[^\w&.-]+")
 
@@ -575,6 +669,7 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     calls: list[tuple[str, dict[str, Any]]] = {
         "signal_analyst": [("get_topic_series", {"topic": entity or leader or "ai_all"})]
         + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else [])
+        + ([("get_topic_sources", {"topic_id": entity, "week": week})] if entity else [])
         + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
@@ -593,7 +688,10 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
         + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
         "scout": [("get_freshness", {}), ("get_cost_ledger", {})],
         "curator": [("get_segment_mix", {"week": week}), ("get_filter_quality", {})],
-        "auditor": [("get_backtest", {}), ("get_filter_quality", {}), ("get_cost_ledger", {})],
+        # the cost ledger only when asked about cost: given it unasked, the model recast it as
+        # an invented weekly cost ("$2.20 por semana", q22 in grounding-gaps)
+        "auditor": [("get_backtest", {}), ("get_filter_quality", {})]
+        + ([("get_cost_ledger", {})] if _COST_Q.search(question) else []),
     }[agent]
     results = (
         [ctx["signals"]] if agent in {"signal_analyst", "audience_strategist", "editor"} else []
@@ -723,6 +821,8 @@ def run_turn(
     needed = route(question)
     if entity and not needed:  # "¿Qué pasa con X?": its scores and its connections
         needed = ["signal_analyst", "cartographer"]
+    if entity and _EVIDENCE_Q.search(question) and "signal_analyst" not in needed:
+        needed = ["signal_analyst", *needed]  # it reads the topic's articles and outlets
     if not needed:  # unrecognised question: the Media Master delegates freely
         answer = _loop(
             model,
@@ -766,6 +866,9 @@ def run_turn(
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
         decides = "signal_analyst" in needed or "editor" in needed
         line = decision_line(turn, entity, question) if decides else ""
+        block = evidence_block(turn) if _EVIDENCE_Q.search(question) else ""
+        if block:
+            line = f"{line}\n\n{block}" if line else block
         instructions = (
             f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
             "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
@@ -774,6 +877,7 @@ def run_turn(
             if decides
             else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
             "los informes; no agregues KPIs ni decisiones que no estén en ellos."
+            + (f" El sistema ya lista los artículos: «{block}». No los repitas." if block else "")
         )
         reply = model.chat(
             [

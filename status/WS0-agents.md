@@ -4,7 +4,114 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 05:05 UTC-5 · grounding gaps closed (fix/ws0-grounding-gaps) · committed locally; the orchestrator pushes.
+2026-10-18 06:10 UTC-5 · pre-deploy defects D1-D3 (fix/agents-trust-cost): D1, D2 and the Auditor's date false positive fixed; D3 not fully · committed locally; the orchestrator lands it.
+
+## Pre-deploy defects D1-D3 fixed (06:10 UTC-5, branch `fix/agents-trust-cost`, committed locally; the orchestrator lands it)
+
+From claude-work's pre-deploy check of `develop` e830a28 (`status/WS9.md`, PR #45):
+
+- **D1, outlet count.**
+  - New `get_topic_sources(topic_id, week)` over `topic_sources_weekly`: `n_articulos`, `n_medios`
+    (distinct outlets) and the top source shares. It is in the Signal analyst's plan for named
+    topics and in `contracts/agents.yaml`.
+  - `get_topic_evidence`'s counts are renamed `articulos_mostrados` / `medios_entre_mostrados`, so
+    the 5 articles shown are no longer a second `n_medios`.
+- **D2, evidence written by code.** A question about artículos / evidencia / fuentes / medios of a
+  named topic gets a block after the decision line: "N artículos de M medios esa semana", then
+  outlet, date, language and title of each `get_topic_evidence` row. Never the URL.
+- **D3, no stories.** The Media Master's prompt forbids causes, stories or intentions beyond the
+  data, and says subtopics are categories, not the company's business. It shares the briefs'
+  wording (`NO_NARRATIVE`, used by both).
+- **Tests:** 5 new (tool, plan, block present and absent, prompt rule). `make test` 259 passed;
+  `make check` clean.
+
+**Eval:** predeploy-fixes, 25 x 3 at fea4dd2, all *measured*. Brackets are the min-max of the three
+repetition means.
+
+| Experiment | grounding | usefulness_v2 | usefulness v1 | decisions / routing / entities | tokens/turn |
+|---|---|---|---|---|---|
+| final-develop (7634781) | 0.973 [0.92-1.00] | 0.567 [0.51-0.60] | 0.457 [0.43-0.48] | 0.987 each (1 DNS-lost run) | 5,824 [5,531-5,980] |
+| predeploy-fixes (fea4dd2) | 0.947 [0.88-1.00] | 0.547 [0.51-0.58] | 0.480 [0.45-0.52] | 1.000 each | 6,148 [6,141-6,154] |
+
+- **Grounding** overlaps the baseline's range: 4 of 75 runs failed, against 2 of 75. None comes
+  from D1-D3.
+  - **q21 x2** ("¿qué tan frescos?"): "18 de octubre de 2026" is a correct date, but the Auditor's
+    `_numbers` reads "2026-10-18" as only "2026", so the day is flagged. Before PR #42 it passed by
+    matching 0.18 through the /100 rule. This is an Auditor false positive; the fix is to split ISO
+    dates in `_numbers`.
+  - **q10 and q12**: invented co-mention and nPMI thresholds ("más de 50", "0.85") on the graph
+    route, which this change does not touch. The ring thresholds from PR #42 reduce this but do not
+    stop it.
+- **usefulness_v2** overlaps the baseline's range. q20 rose (0.67 -> 1.00, the cost fix of PR #42);
+  q21 fell (1.00 -> 0.50, the two flagged runs).
+- **Tokens** rose by 324 per turn (beyond the range): the sources tool's output and the longer
+  Media Master prompt.
+
+**Auditor date fix** (06:12, 17cf402):
+- **Change:** `_numbers` no longer splits dates into loose numbers. A date in the answer (ISO, or
+  "18 de octubre", year optional) is traced when the same day appears in the tool data; a
+  different date is flagged, and numbers beside a date are still checked. A unit test covers
+  "2026-10-18" next to an untraced 9999.
+- **Result,** iso-dates-q21 (q21 x 3, *measured*):
+  - grounding 3/3 = 1.000 [1.00-1.00], was 1/3 in predeploy-fixes;
+  - usefulness_v2 0.583 [0.50-0.75], was 0.50;
+  - every run says "18 de octubre de 2026" and passes.
+- **Left as is:** q21 still volunteers the cost, because the Scout reads the ledger for freshness
+  by design. One run calls Jev's $0.0443 "costo total de procesamiento".
+- **Spend:** 5,620 agent tokens (*measured*); under $0.01 (*estimate*).
+
+**claude-work's 4 questions, run by hand** (full lake, tracing off, read against the tool results):
+
+| # | Question | Before (claude-work) | After |
+|---|---|---|---|
+| 1 | ¿Qué contenido preparo esta semana sobre Marsh McLennan? | pass | pass on data (Preparar, 92, carrusel from the brief); D3 not fully: "su enfoque en inversión y tecnología" still reads the subtopics as the business |
+| 2 | ¿Qué artículos respaldan a Marsh McLennan, el tema número 1 de esta semana? | fail: no article named | **pass**: block with 44 articles / 39 outlets and 5 outlet-date-language-title rows. The model repeats the decision line once below it (seen before this change) |
+| 3 | ¿Cuántos medios distintos cubren a Marsh McLennan esta semana? | fail: "44 medios" | **pass on the fact**: "39 medios distintos". D3 fails: "No es por IA, sino por su rol en inversiones estratégicas en infraestructura de chips" is invented |
+| 4 | ¿En qué subtemas de IA cae Marsh McLennan esta semana? | pass | **partial**: "temas de financiamiento y tecnología de chips" (the right subtopics, loosely named). D3 fails: "cómo el sector asegurador está invirtiendo en tecnología de chips" is invented, and "crecimiento muy rápido en Latinoamérica" is wrong |
+
+- Auditor 4/4 with no veto; tokens 31,065 for the 4 turns (*measured*).
+- **D1 and D2 are fixed. D3 is not:** the prompt rule alone does not stop Qwen3-30B from writing a
+  story in "Qué hacer".
+- **Next for D3:** a code check like the briefs' overclaim list ("está redefiniendo", "invierte
+  en", "su rol en", subtopic names next to the company), or a "Qué hacer" written from the brief's
+  angle field.
+- **Data note:** the five evidence articles for Marsh McLennan are generic Wall Street / AI-stock
+  pieces. That is how WS1d's evidence selection matched the topic, not an agent fault.
+
+**Nebius spend** for this follow-up, *estimate*:
+- agent tokens 492,173 (*measured*: 461,108 eval + 31,065 by hand, Qwen3-30B);
+- judge tokens not recorded, roughly 75 runs x 2 judges x ~4k on Qwen3-235B;
+- about $0.21 at assumed list rates, about $0.27 with the 06:00 trust runs; under the $0.60 cap.
+
+## Trust route reads the cost ledger only for cost questions (05:35 UTC-5, branch `fix/agents-trust-cost`, committed locally; the orchestrator lands it)
+
+- `agents/runtime.py`: the Auditor's plan calls `get_cost_ledger` only when the question matches
+  `_COST_Q`, the cost words of the Scout route, now a shared regex.
+- Runtime test for both cases: a trust question reads only the backtest and the filter quality; a
+  cost question also reads the ledger.
+- `run_evals.py --questions q20,q22,q23` runs a subset of the frozen dataset.
+- Before = `develop` e830a28 (includes the % fix of PR #42); after = e5eb9d5. Same questions, 3 runs
+  each, all *measured*; brackets are the min-max of the three repetition means.
+
+  | Experiment | grounding | usefulness v1 | usefulness_v2 | decisions / routing / entities | tokens/turn |
+  |---|---|---|---|---|---|
+  | trust-cost-before (n=9) | 0.778 [0.67-1.00] | 0.306 [0.17-0.50] | 0.528 [0.50-0.58] | 1.00 / 1.00 / 1.00 | 4,414 |
+  | trust-cost-after (n=9) | **1.000** [1.00-1.00] | 0.250 [0.08-0.50] | 0.528 [0.50-0.58] | 1.00 / 1.00 / 1.00 | 4,294 |
+
+- Per question (grounding, before -> after):
+  - q22 (trust): 1/3 -> 3/3. Before, two runs invented a total cost ("$2.21"), and the Auditor now
+    catches it after PR #42. After, no q22 run cites the BigQuery or Jev cost.
+  - q20 (cost): 3/3 -> 3/3. It still gets the ledger and cites the real figures.
+  - q23 (filter): 3/3 -> 3/3.
+- **Usefulness:** v2 is unchanged and v1 moves within its range; n = 9 is too small to read more
+  into it.
+- **Left as is:** "$1.47", the labelling round's cost from `reports/label_quality.md`, still appears
+  in q22 and q23 answers. The number is real and grounded, but one q22 run calls it "el costo del
+  backtest". That is a wrong label on a real number, not an invented one.
+- **Nebius spend** for both runs, *estimate*:
+  - agent tokens 78,373 (*measured*, Qwen3-30B);
+  - judge tokens not recorded, roughly 18 runs x 2 judges x ~4k on Qwen3-235B;
+  - about $0.06 at Nebius list prices, under the $0.30 cap.
 
 ## Grounding gaps closed (05:05 UTC-5, branch `fix/ws0-grounding-gaps`, committed locally; the orchestrator pushes)
 
