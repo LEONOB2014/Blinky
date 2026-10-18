@@ -179,3 +179,11 @@ When `status/WS1.md` says `READY FOR WS4`: add a source-diversity condition to t
 and a top source share at most 0.5), rebuild the scores, re-run the backtest(s) with and without the
 new condition, then write `READY FOR REDEPLOY` again. The backtest work of Addendum 4 comes first if
 both are ready at once.
+
+## Addendum 4b (orchestrator, 01:35 UTC-5): exact matches only for the primary label
+
+WS6's priority topics resolve 373 exact / 105 alias / 201 none (measured). Aliases (confidence 0.6)
+were wrong on W42 rows (your own finding), and a wrong alias gives a topic another entity's pageviews.
+Run the primary backtest on `match = exact` topics only; report the alias-included run as a separate,
+clearly labelled row. Pageviews for the priority topics finish around 02:25 (estimate, one request per
+6.5 s, 0 HTTP 429 so far).
