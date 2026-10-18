@@ -560,6 +560,49 @@ def _no_persons(lf: pl.LazyFrame) -> pl.LazyFrame:
     )
 
 
+def _total_bucket(edges: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
+    """Keep the ``all`` language total. ``edges_ai_weekly`` also stores eng/spa/por/other."""
+    lf = edges.lazy()
+    if "lang_bucket" in lf.collect_schema().names():
+        lf = lf.filter(pl.col("lang_bucket") == "all")
+    return lf
+
+
+def _neighbors_from_edges(
+    edges: pl.LazyFrame | pl.DataFrame,
+    topic_id: str,
+    monday: date,
+    *,
+    min_n: int = 3,
+    min_npmi: float = 0.1,
+    k: int = 20,
+) -> pl.DataFrame:
+    """Top-k co-mentions when ``topic_context_1hop`` has no ``ai:`` rows yet."""
+    nbrs = (
+        _total_bucket(edges)
+        .filter(
+            (pl.col("wk") == monday)
+            & ((pl.col("x") == topic_id) | (pl.col("y") == topic_id))
+            & (pl.col("n") >= min_n)
+            & pl.col("npmi").is_not_null()
+            & (pl.col("npmi") > min_npmi)
+        )
+        .select(
+            pl.when(pl.col("x") == topic_id)
+            .then(pl.col("y"))
+            .otherwise(pl.col("x"))
+            .alias("neighbor"),
+            "n",
+            "npmi",
+        )
+        .collect()
+        .sort(["npmi", "n", "neighbor"], descending=[True, True, False])
+        .head(k)
+        .with_row_index("rank", offset=1)
+    )
+    return nbrs.select("neighbor", "rank", "n", "npmi")
+
+
 def _format_org_name(raw: str) -> str:
     cleaned = raw.strip()
     if cleaned.lower() == "openai group":
@@ -897,7 +940,7 @@ def export_temporal(
     min_npmi: float = MIN_NPMI,
     top_k: int = TOP_K,
 ) -> dict[str, Any]:
-    edges_lf, node_metrics_lf = edges.lazy(), node_metrics.lazy()
+    edges_lf, node_metrics_lf = _total_bucket(edges), node_metrics.lazy()
     weeks = span_weeks(edges_lf, span)
     widx = {w: i for i, w in enumerate(weeks)}
 
@@ -1440,6 +1483,8 @@ def export_story(
         .select(sel_ring_cols)
         .collect()
     )
+    if nbrs.is_empty() and topic_id.startswith("ai:"):
+        nbrs = _neighbors_from_edges(edges, topic_id, monday)
     members = [topic_id, *nbrs["neighbor"].to_list()]
     among = (
         _no_persons(edges.lazy())
@@ -1669,8 +1714,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--scores",
-        default="topic_scores_weekly",
-        help="gold scores table",
+        default=None,
+        help="gold scores table (topic_ai_scores_weekly with --ai)",
     )
     parser.add_argument(
         "--ai",
@@ -1690,7 +1735,8 @@ def main(argv: list[str] | None = None) -> int:
     edges_path = paths.gold(edges_name)
     if not edges_path.exists():
         raise SystemExit(f"missing lake table {edges_name}")
-    edges = pl.scan_parquet(edges_path)
+    edges = _total_bucket(pl.scan_parquet(edges_path))
+    scores_name = args.scores or ("topic_ai_scores_weekly" if args.ai else "topic_scores_weekly")
     metrics_path = paths.gold("node_metrics_weekly")
     metrics = pl.scan_parquet(metrics_path) if metrics_path.exists() else _EMPTY_METRICS
     ring_path = paths.gold("topic_context_1hop")
@@ -1708,7 +1754,7 @@ def main(argv: list[str] | None = None) -> int:
             }
         )
     )
-    scores_path = paths.gold(args.scores)
+    scores_path = paths.gold(scores_name)
     scores = pl.scan_parquet(scores_path) if scores_path.exists() else None
     td_path = paths.gold(topics_name)
     topic_daily = pl.scan_parquet(td_path) if td_path.exists() else None
@@ -1737,7 +1783,7 @@ def main(argv: list[str] | None = None) -> int:
         if topic is None and top10_rows:
             topic = str(top10_rows[0]["topic_id"])
     if topic is None or week is None:
-        raise SystemExit("no topic_scores_weekly: pass --topic and --week")
+        raise SystemExit(f"no {scores_name}: pass --topic and --week")
 
     t2 = time.perf_counter()
     monday = week_monday(week)

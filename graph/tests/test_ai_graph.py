@@ -9,7 +9,15 @@ import pytest
 pytest.importorskip("igraph")
 pytest.importorskip("leidenalg")
 
-from graph.export_views import SPACE_PAD, SPACE_SIZE, _seat_critics, export_temporal, load_lexicon
+from graph.export_views import (
+    FAMILY_PALETTE,
+    SPACE_PAD,
+    SPACE_SIZE,
+    _neighbors_from_edges,
+    _seat_critics,
+    export_temporal,
+    load_lexicon,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -174,3 +182,57 @@ def test_ai_export_keeps_computed_properties_and_separates_critics(tmp_path: Pat
     mixed_ids = {n["id"] for n in mixed["nodes"]}
     assert "org:giant" in mixed_ids
     assert mixed["_meta"]["default_color_by"] == "decision"
+
+
+def test_language_buckets_do_not_double_count():
+    """``edges_ai_weekly`` stores eng/spa/por/other plus the ``all`` total."""
+    edges = pl.DataFrame(
+        {
+            "wk": [W1, W1, W2, W2],
+            "lang_bucket": ["all", "eng", "all", "eng"],
+            "x": [OPENAI, OPENAI, OPENAI, OPENAI],
+            "y": [GPT, GPT, GPT, GPT],
+            "n": [30, 30, 30, 30],
+            "npmi": [0.4, 0.4, 0.4, 0.4],
+        }
+    )
+    out = export_temporal(
+        edges,
+        _empty_metrics(),
+        ai_only=True,
+        max_nodes=10,
+        min_n=1,
+        min_npmi=0.05,
+        top_k=5,
+    )
+    assert out["edges"]["n"] == [30, 30]
+    assert out["_meta"]["n_edges"] == 2
+
+
+def test_shipped_lexicon_families_have_colours():
+    lex = load_lexicon()
+    assert len(lex) == 110
+    assert set(lex) >= {"ai:lab:openai", "ai:policy:eu_ai_act", "ai:critic:pause_ai"}
+    families = {entry["family"] for entry in lex.values()}
+    assert families <= set(FAMILY_PALETTE)
+    for entry in lex.values():
+        assert entry["family_es"] == FAMILY_PALETTE[entry["family"]][1]
+        assert entry["stance"] in {"promoter", "critic", "neutral"}
+    critics = [topic for topic, entry in lex.items() if entry["stance"] == "critic"]
+    assert len(critics) >= 15
+
+
+def test_story_neighbors_come_from_ai_edges_when_the_ring_is_empty():
+    edges = pl.DataFrame(
+        {
+            "wk": [W1, W1, W1],
+            "lang_bucket": ["all", "eng", "all"],
+            "x": [OPENAI, OPENAI, OPENAI],
+            "y": [GPT, GPT, ACT],
+            "n": [12, 99, 4],
+            "npmi": [0.2, 0.9, 0.5],
+        }
+    )
+    nbrs = _neighbors_from_edges(edges, OPENAI, W1)
+    assert nbrs["neighbor"].to_list() == [ACT, GPT]
+    assert nbrs["n"].to_list() == [4, 12]

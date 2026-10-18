@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 09:05 UTC-5 · `feat/ws3-ai-graph` (WP3 AI graph: family colour, Postura) · committed locally; the orchestrator pushes
+2026-10-18 09:12 UTC-5 · `feat/ws3-ai-graph` (real AI lexicon export) · committed locally; the orchestrator pushes
 
 ## Done
 
@@ -108,15 +108,13 @@ layout covers the sweep for now.
 
 ## In progress
 
-- WP3 code is on `feat/ws3-ai-graph` (local commit; not pushed). The AI tables
-  `edges_ai_weekly` and `topic_ai_daily` are not in the lake yet, so this branch
-  does not write a new `temporal.json`. Run later with
-  `uv run --extra graph python -m graph.export_views --ai`.
+- Nothing. `origin/develop` is merged (lexicon PR #66 and the community sensor
+  PR #67). The AI graph export below is committed locally; the orchestrator pushes.
 
 ## Blocked on
 
-- Nothing in this branch. The lexicon file is not on `feat/ws3-ai-graph`; the
-  coverage list below is a read of the copy on `feat/ws0-ai-lexicon`.
+- Nothing. `topic_context_1hop` has no `ai:` rows (measured, 0). Stories take
+  their ring from `edges_ai_weekly` until that table is rebuilt.
 
 ## Notes for the lead
 
@@ -257,3 +255,19 @@ Gaps an editor would still miss:
 
 Family ids in that yaml are `techniques`, `business`, `safety`, `opposition` and
 `society` (35 of 110 entries: 11 + 8 + 6 + 5 + 5). The graph palette uses those ids.
+
+### Real export (measured, 2026-10-18 09:12 UTC-5)
+
+`RADAR_PROFILE=full uv run --extra graph python -m graph.export_views --ai`
+on this Mac. `edges_ai_weekly` has a language row and an `all` total (one pair,
+Anthropic–cyber, week 2026-10-12: eng 2 + spa 3 + por 1 + other 2 = all 8). The
+export keeps `all` only, and reads `topic_ai_scores_weekly`.
+
+Result: 84 nodes, all `ai:` and all in the lexicon; 811 edges over 13 weeks
+(2026-07-20 .. 2026-10-12); 0.50 s. 16 critics sit on the left (max x 1200.5,
+min other x 1344.0), including pause, regulation, copyright, jobs and existential
+risk. Latest week rank 1 is Alianzas y adquisiciones en IA (`esperar`). The
+2026-W42 story of that topic has 7 neighbours taken from the edges. The EU AI Act
+has no co-mention with n ≥ 20 inside these 13 weeks (its two such edges are both
+2026-01-26, n = 59 and 61), so it is not in this graph. JSON is in `lake/views/`
+and `web/public/data/views/` (git-ignored). The UI was not opened in a browser.
