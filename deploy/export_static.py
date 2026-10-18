@@ -14,6 +14,8 @@ Layout (``slug`` = the topic id lowercased, every non [a-z0-9] run replaced by "
     timeline/<slug>.json           GET /api/topic/<id>/timeline
     context/<slug>/<week>.json     GET /api/topic/<id>/context?week=<week>, the last 4 weeks
     context/<slug>/latest.json     GET /api/topic/<id>/context
+    evidence/*.json                the trust step offline (deploy/evidence.py): backtest and label
+                                   quality reports as JSON, BigQuery and Jev ledger totals
 Topics: every topic in a top 10 of the last 4 weeks, the subtopics (timelines only) and the
 entities the UI offers by default.
 """
@@ -26,6 +28,8 @@ import shutil
 import sys
 from pathlib import Path
 from urllib.parse import quote
+
+from evidence import write_evidence
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "web" / "public" / "data"
@@ -89,7 +93,7 @@ def export(out: Path = OUT) -> dict[str, int]:
 
     tmp = out.with_name(out.name + ".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
-    sizes = {"radar": 0, "timeline": 0, "context": 0, "other": 0}
+    sizes = {"radar": 0, "timeline": 0, "context": 0, "other": 0, "evidence": 0}
 
     ranked: list[str] = []
     for week in weeks:
@@ -123,6 +127,7 @@ def export(out: Path = OUT) -> dict[str, int]:
         sizes["context"] += _write(tmp / "context" / slugs[topic] / "latest.json", get(base))
 
     sizes["other"] += _write(tmp / "freshness.json", get("/api/freshness"))
+    sizes["evidence"] = write_evidence(tmp / "evidence")
     index = {
         "generated_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "profile": "full",

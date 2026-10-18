@@ -1,6 +1,6 @@
 # Historias de muestra (showcase)
 
-Generado por `scripts/showcase_stories.py` el 2026-10-18 06:09 UTC desde el lake completo (`topic_scores_weekly` hasta 2026-W42, `daily_topic` hasta 2026-10-18). Semana puntuada: **2026-W42**. Todas las cifras salen de las herramientas de los agentes (`agents/tools.py`); se regenera cada vez que WS4 recalcula.
+Generado por `scripts/showcase_stories.py` el 2026-10-18 06:41 UTC desde el lake completo (`topic_scores_weekly` hasta 2026-W42, `daily_topic` hasta 2026-10-18). Semana puntuada: **2026-W42**. Todas las cifras salen de las herramientas de los agentes (`agents/tools.py`); se regenera cada vez que WS4 recalcula.
 
 Reglas (calculadas por código, no a mano):
 
@@ -13,17 +13,17 @@ Reglas (calculadas por código, no a mano):
 | Puesto | Tema | Etapa | Decisión | Artículos semana | Concentración | Onset EN | Onset ES/PT | Historia |
 |---|---|---|---|---|---|---|---|---|
 | 1 | `org:marsh mclennan` | semilla | preparar | 44 | 66% | 2026-W42 | — | sí |
-| 2 | `org:euronext` | emergente | preparar | 149 | 97% ⚠ | 2026-W31 | — |  |
-| 3 | `org:adani enterprises` | emergente | esperar | 51 | 90% ⚠ | 2026-W35 | — |  |
-| 4 | `org:rocket lab` | emergente | esperar | 23 | 13% | 2026-W31 | — | sí |
-| 5 | `org:national stock exchange` | emergente | preparar | 24 | 62% | 2026-W33 | — | sí |
-| 6 | `org:ministry of science` | emergente | preparar | 82 | 93% ⚠ | 2026-W31 | 2026-W34 |  |
-| 7 | `org:kioxia holdings` | emergente | esperar | 72 | 96% ⚠ | 2026-W31 | — |  |
-| 8 | `org:sterling` | emergente | esperar | 158 | 92% ⚠ | 2026-W31 | — |  |
-| 9 | `org:citigroup` | emergente | esperar | 149 | 57% | 2026-W31 | 2026-W39 |  |
-| 10 | `org:yahoo` | emergente | esperar | 177 | 61% | 2026-W31 | — |  |
+| 2 | `org:rocket lab` | emergente | esperar | 23 | 13% | 2026-W31 | — | sí |
+| 3 | `org:national stock exchange` | emergente | preparar | 24 | 62% | 2026-W33 | — | sí |
+| 4 | `org:university college london` | emergente | preparar | 23 | 57% | 2026-W31 | — |  |
+| 5 | `org:citigroup` | emergente | esperar | 149 | 57% | 2026-W31 | 2026-W39 |  |
+| 6 | `org:sandisk` | emergente | esperar | 107 | 14% | 2026-W31 | — |  |
+| 7 | `org:comcast` | emergente | preparar | 52 | 40% | 2026-W31 | — |  |
+| 8 | `org:kroger` | emergente | preparar | 201 | 93% ⚠ | 2026-W31 | — |  |
+| 9 | `org:founders fund` | emergente | esperar | 20 | 60% | 2026-W37 | — |  |
+| 10 | `org:sb energy` | emergente | esperar | 28 | 29% | 2026-W31 | — |  |
 
-Lectura honesta (medido): 5 de 10 temas tienen una semana sostenida por un solo patrón de co-mención (⚠); 2 de 10 muestran onset en español/portugués en 12 semanas. Donde no hay onset en español, la ventana del chip es la estimación del modelo (desfase típico medido sobre otros temas), no una observación de este tema.
+Lectura honesta (medido): 1 de 10 temas tienen una semana sostenida por un solo patrón de co-mención (⚠); 1 de 10 muestran onset en español/portugués en 12 semanas. Donde no hay onset en español, la ventana del chip es la estimación del modelo (desfase típico medido sobre otros temas), no una observación de este tema.
 
 ## 1. Marsh & McLennan Companies (`org:marsh mclennan`), puesto #1
 
@@ -61,7 +61,7 @@ Lectura honesta (medido): 5 de 10 temas tienen una semana sostenida por un solo 
 
 **Qué podría publicar 30X:** Pieza con ángulo «Explicador neutral» sobre Marsh & McLennan Companies dentro de «Inversión y mercados», explicada por su contexto (WB_1649_UNEMPLOYMENT_BENEFITS, WB_752_CONTRIBUTORY_BENEFITS, UNGP_SUPPORT_FOR_PEOPLE_WHO_CANT_WORK), antes de que el tema llegue al español (sugerencia editorial, no es una medición).
 
-## 2. Rocket Lab (`org:rocket lab`), puesto #4
+## 2. Rocket Lab (`org:rocket lab`), puesto #2
 
 - **Etapa y decisión:** emergente, **esperar** (prioridad 0.42; emergencia percentil 72, medido).
 - **Subtemas:** Inversión y mercados, Energía y clima, Chips e infraestructura, Salud y ciencia, Regulación y política, Modelos y LLMs, Creatividad y medios.
@@ -98,7 +98,7 @@ Lectura honesta (medido): 5 de 10 temas tienen una semana sostenida por un solo 
 
 **Qué podría publicar 30X:** Pieza con ángulo «Giro» sobre Rocket Lab dentro de «Inversión y mercados», explicada por su contexto (penske automotive, penske corp, mitsui), antes de que el tema llegue al español (sugerencia editorial, no es una medición).
 
-## 3. national stock exchange (`org:national stock exchange`), puesto #5
+## 3. national stock exchange (`org:national stock exchange`), puesto #3
 
 - **Etapa y decisión:** emergente, **preparar** (prioridad 0.40; emergencia percentil 90, medido).
 - **Subtemas:** Energía y clima, Agentes de IA, Adopción empresarial, Seguridad y riesgos, Inversión y mercados.
