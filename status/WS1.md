@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` · PR not opened yet (draft once the push is approved)
+2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` · draft PR #7
 
 ## Done
 
@@ -44,7 +44,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## In progress
 
-- Waiting for approval to push the branch and open the draft PR against `develop`.
+- Draft PR #7 against `develop` (https://github.com/LEONOB2014/Blinky/pull/7). It will be marked ready only with your approval.
 
 ## Blocked on
 

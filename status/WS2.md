@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` (WS1 + WS2 brief) · PR not opened yet
+2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` (WS1 + WS2 brief) · draft PR #7
 
 ## Done
 
