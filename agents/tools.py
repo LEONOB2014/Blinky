@@ -348,6 +348,28 @@ def get_topic_evidence(topic_id: str, week: str | None = None) -> dict[str, Any]
 # --- Cartographer -----------------------------------------------------------------------------
 
 
+# The 1-hop ring's thresholds (graph/context.py, graph/metrics.py), restated so the model cites the
+# real ones instead of inventing a cut-off; test_tools checks they still match graph/.
+RING_MIN_N = 3
+RING_MIN_NPMI = 0.1  # strict: NPMI > 0.1
+RING_TOP_K = 20
+RING_HUB_SHARE = 0.01
+
+
+def ring_criteria(shown: int) -> dict[str, Any]:
+    """How the ring was built, in the words and numbers the answer may cite."""
+    return {
+        "n_minimo_coapariciones": RING_MIN_N,
+        "npmi_mayor_que": RING_MIN_NPMI,
+        "hubs": f"excluidos: el {RING_HUB_SHARE:.0%} de los nodos con más conexiones esa semana",
+        "personas": "excluidas",
+        "top_por_tema": RING_TOP_K,
+        "mostrados": shown,
+        "orden": "npmi de mayor a menor",
+        "nota": "no hay otro umbral: cualquier vecino listado ya pasó estos filtros",
+    }
+
+
 def get_context_1hop(entity: str, week: str | None = None, k: int = 10) -> dict[str, Any]:
     """Neighbours that explain an entity: WS3's 1-hop ring, or the raw weekly edges until it exists."""
     entity = resolve_topic(entity)
@@ -365,6 +387,7 @@ def get_context_1hop(entity: str, week: str | None = None, k: int = 10) -> dict[
             "source": "topic_context_1hop",
             "entity": entity,
             "week": label,
+            "criterios": ring_criteria(k),
             "rows": rows,
         }
     edges = _table("edges_weekly")
@@ -385,6 +408,7 @@ def get_context_1hop(entity: str, week: str | None = None, k: int = 10) -> dict[
         "available": True,
         "source": "edges_weekly (sin restringir a artículos de IA todavía)",
         "week": label,
+        "criterios": ring_criteria(k) | {"top_por_tema": None},
         "rows": rows,
     }
 
@@ -463,17 +487,58 @@ def get_freshness() -> dict[str, Any]:
     return {"available": True, "profile": profile(), "newest": out}
 
 
+# BigQuery on-demand compute: first 1 TiB per month free, then USD 6.25 per TiB (checked
+# 2026-10-18 at https://cloud.google.com/bigquery/pricing).
+BQ_FREE_TIB_PER_MONTH = 1
+BQ_USD_PER_TIB = 6.25
+BQ_PRICE_SOURCE = "cloud.google.com/bigquery/pricing (on-demand, consultado el 2026-10-18)"
+TIB = 2**40
+
+
 def get_cost_ledger() -> dict[str, Any]:
-    """BigQuery bytes billed so far, from reports/bq_ledger.csv (measured)."""
+    """What the radar has cost: BigQuery bytes billed (measured) with the free tier and the USD it
+    implies (estimate), plus Jev's USD from its own ledger (measured)."""
     path = REPO_ROOT / "reports" / "bq_ledger.csv"
     with path.open(encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
     billed = sum(int(r["billed_bytes"] or 0) for r in rows)
+    month = max((r["ts_utc"][:7] for r in rows), default=None)
+    month_billed = sum(int(r["billed_bytes"] or 0) for r in rows if r["ts_utc"][:7] == month)
+    over_free = max(0.0, month_billed / TIB - BQ_FREE_TIB_PER_MONTH)
     return {
         "available": True,
-        "jobs": len(rows),
-        "billed_gb": round(billed / 1e9, 2),
-        "free_tier_share": round(billed / 1e12, 4),
+        "bigquery": {
+            "medido": "bytes facturados según reports/bq_ledger.csv",
+            "jobs": len(rows),
+            "billed_gb": round(billed / 1e9, 2),
+            "billed_tib": round(billed / TIB, 4),
+            "mes": month,
+            "billed_tib_mes": round(month_billed / TIB, 4),
+            "cuota_gratuita_tib_mes": BQ_FREE_TIB_PER_MONTH,
+            "cuota_gratuita_usada": round(month_billed / TIB / BQ_FREE_TIB_PER_MONTH, 4),
+            "estimado": "costo en USD calculado con el precio público, no una factura",
+            "precio_usd_por_tib": BQ_USD_PER_TIB,
+            "fuente_precio": BQ_PRICE_SOURCE,
+            "costo_usd_con_cuota_gratuita": round(over_free * BQ_USD_PER_TIB, 2),
+            "costo_usd_sin_cuota_gratuita": round(billed / TIB * BQ_USD_PER_TIB, 2),
+            "nota": "la cuota gratuita es por cuenta de facturación; si otros proyectos de la cuenta "
+            "ya la usaron este mes, el costo real se acerca al de sin cuota",
+        },
+        "jev": _jev_ledger(),
+    }
+
+
+def _jev_ledger() -> dict[str, Any]:
+    path = REPO_ROOT / "reports" / "jev_ledger.csv"
+    if not path.exists():
+        return {"available": False, "reason": "reports/jev_ledger.csv todavía no existe"}
+    with path.open(encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    return {
+        "available": True,
+        "medido": "suma de cost_usd en reports/jev_ledger.csv",
+        "llamadas": len(rows),
+        "costo_usd": round(sum(float(r["cost_usd"] or 0) for r in rows), 4),
     }
 
 
