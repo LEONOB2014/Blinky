@@ -41,8 +41,11 @@
         "tone",
         "arousal",
         "community",
-        "segment"
-      ]
+        "segment",
+        "decision",
+        "window"
+      ],
+      "description": "the lens: decision (the radar's decision per topic), segment (ring: ai / it / ai_domain), tone, arousal, community, window (the window chip's state)"
     },
     "filter": {
       "type": "object",
