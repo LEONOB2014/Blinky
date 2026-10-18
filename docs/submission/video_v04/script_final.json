@@ -1,0 +1,46 @@
+[
+ {
+  "id": "b01",
+  "text": "Hola, soy Andrés Leonardo Becerra López, ingeniero de IA del Equipo Blinky. Veníamos listos para la Blinka Task… y el reto resultó ser otro: el Radar de Contenido de 30X. ¿No te lo esperabas? Nosotros tampoco. Así que construimos un radar."
+ },
+ {
+  "id": "b02",
+  "text": "Un scraping pagado cuesta miles de dólares al año y responde solo la mitad de la pregunta. Nuestra idea: los temas de IA no nacen en LinkedIn. Primero aparecen en papers, GitHub, Hacker News y X; luego en las noticias, en GDELT; después en Google Trends y Wikipedia, primero en inglés y más tarde en español. Solo al final llegan a LinkedIn e Instagram. Si observas las capas de arriba y mides cuánto ha viajado cada tema, sabes lo que está por llegar, no lo que ya llegó. Y nunca hacemos scraping de LinkedIn: solo canales autorizados, como la analítica propia de 30X."
+ },
+ {
+  "id": "b03",
+  "text": "GDELT es un dato abierto que monitorea las noticias del mundo y extrae, de cada artículo, personas, organizaciones, temas y su tono. Se actualiza cada quince minutos, en sesenta y cinco idiomas. Aquí clasificamos más de cuatro millones de artículos de IA en cincuenta y una semanas, en BigQuery y sin costo. Su valor: el tono de cada noticia, qué temas aparecen juntos, y cuándo un tema explota en inglés y todavía no llega al español."
+ },
+ {
+  "id": "b04",
+  "text": "Esta es la app, en vivo. Despegando es el top diez: los temas de IA que suben más rápido que su propia historia. Un clic abre la ficha: la etapa, cuántos días faltan para que llegue al español, el ángulo para contarlo y una decisión calculada por código. Y la lente Historia dibuja su anillo de un salto: sus vecinos más fuertes y los artículos que lo respaldan."
+ },
+ {
+  "id": "b05",
+  "text": "Al lado, Lo más grande: los gigantes de la semana por volumen. Nvidia, con cuatro mil setecientos dieciocho artículos; OpenAI, con dos mil seiscientos noventa y uno; luego Microsoft IA, Google IA y Anthropic. Lo que despega y lo que domina: dos preguntas distintas."
+ },
+ {
+  "id": "b06",
+  "text": "El grafo recorre trece semanas: ciento cinco temas de IA unidos por co-menciones, con una medida de asociación llamada NPMI. El tamaño es la importancia, con PageRank; el color, la familia; y el algoritmo de Leiden encuentra siete comunidades. Así el radar sigue cómo se conectan las noticias, semana a semana."
+ },
+ {
+  "id": "b07",
+  "text": "Cada lente responde una pregunta. Emoción lee el tono que GDELT mide en cada artículo; Postura separa a promotores y críticos; Momento, Puente y Novedad muestran aceleración, puentes entre sectores y conexiones nuevas. Y el radar convierte ese tono en un ángulo: alerta, oportunidad, debate, giro o explicador. Es decir: qué publicar, y desde qué perspectiva, para conectar con su audiencia y ganar seguidores."
+ },
+ {
+  "id": "b08",
+  "text": "Y se le puede preguntar. El Maestro de Medios coordina ocho agentes: el código escribe los hechos, el modelo los explica y un auditor revisa cada número. En nuestra evaluación, el noventa y seis por ciento de las respuestas solo cita cifras que existen. Aquí le pregunto qué es lo más grande esta semana, y responde con los líderes, el porqué y qué hacer."
+ },
+ {
+  "id": "b09",
+  "text": "Y es honesto sobre la confianza: el backtest dice que el ranking es relevante, pero todavía no supera al azar en sus etiquetas. Es una señal temprana, no una garantía."
+ },
+ {
+  "id": "b10",
+  "text": "Y está listo para implementarse: desplegado en Cloud Run y Netlify, con pruebas en cada cambio, ciento treinta de ciento treinta verificaciones del navegador superadas y trazas en LangSmith. El costo: BigQuery dentro del nivel gratuito, unos trece dólares al mes de servidor y una décima de centavo por respuesta, frente a miles de dólares al año en scraping."
+ },
+ {
+  "id": "b11",
+  "text": "Proponemos un piloto de cuatro semanas con el equipo de medios de 30X: ustedes leen el radar cada semana y comparten la analítica de sus publicaciones, y el radar aprende qué le funciona a su audiencia. Radar de Señal Temprana, Equipo Blinky. Soy Andrés Leonardo Becerra López, ingeniero de IA. Mi LinkedIn y la app están en pantalla."
+ }
+]
