@@ -131,11 +131,3 @@ def test_out_of_scope_questions_get_an_honest_answer_without_the_llm():
     assert model.calls == []
     assert runtime.out_of_scope("Escribe un gancho para un post de LinkedIn") is None
     assert runtime.out_of_scope("¿Qué debería publicar 30X esta semana?") is None
-
-
-@pytest.mark.unit
-def test_specialists_are_asked_for_short_plain_notes():
-    model = ScriptedChat("Por qué: crece.")
-    runtime.run_turn("¿Qué tema sube esta semana?", model=model)
-    specialist = [m for m in model.calls if not m[0]["content"].startswith("Eres el Maestro")]
-    assert specialist and all(runtime.NOTE_STYLE in m[0]["content"] for m in specialist)

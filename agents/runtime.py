@@ -429,14 +429,6 @@ PLAIN = (
 )
 
 
-# Specialists' notes feed the Media Master: short and plain, so it does not copy jargon or dumps.
-NOTE_STYLE = (
-    "Interpreta SOLO los datos que te doy, en 1 o 2 frases en español llano para un ejecutivo, "
-    "con los 2 o 3 números que importan para la pregunta (copia los campos 'resumen_es' si "
-    "existen). Sin nombres de campos ni identificadores (z_7d, npmi, 'org:…'), sin listas."
-)
-
-
 def topic_name(row: dict[str, Any]) -> str:
     """How an executive reads a topic: its Spanish label, else the name without the 'org:' prefix."""
     tid = row.get("topic_id") or ""
@@ -607,7 +599,7 @@ def interpret(
     spec = SPECIALISTS[agent]
     system = (
         f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {rules()} "
-        + NOTE_STYLE
+        "Interpreta SOLO los datos que te doy, en 2 a 4 líneas, citando sus números."
     )
     payload = json.dumps(data, ensure_ascii=False, default=str)[:12000]
     reply = model.chat(
