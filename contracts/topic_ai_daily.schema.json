@@ -1,0 +1,71 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/LEONOB2014/Blinky/contracts/topic_ai_daily.schema.json",
+ "title": "Day x AI-lexicon topic x language: the series of the AI radar (same columns as topic_daily)",
+ "description": "BigQuery radar.topic_ai_daily (bq_sql/s15_topic_ai_daily.sql, generated from contracts/ai_lexicon.yaml by pipelines/ingest/gen_ai_sql.py) -> lake/gold/topic_ai_daily.parquet",
+ "type": "object",
+ "x-owner": "WS1",
+ "x-mock": "pending-dev-slice",
+ "properties": {
+  "topic_id": {
+   "type": "string",
+   "pattern": "^ai:[a-z]+:",
+   "description": "'ai:<lexicon id>', e.g. 'ai:lab:openai'; persons are never entries"
+  },
+  "dt": {
+   "type": "string",
+   "format": "date"
+  },
+  "lang_bucket": {
+   "type": "string",
+   "enum": [
+    "eng",
+    "spa",
+    "por",
+    "other"
+   ]
+  },
+  "segment": {
+   "const": "ai"
+  },
+  "n_articles": {
+   "type": "integer",
+   "minimum": 0,
+   "description": "ring-1 articles whose title + URL matches an entry pattern or whose GDELT orgs include an entry alias"
+  },
+  "share_of_day": {
+   "type": [
+    "number",
+    "null"
+   ],
+   "description": "n_articles / daily_totals.n_all"
+  },
+  "mean_tone": {
+   "type": [
+    "number",
+    "null"
+   ],
+   "description": ""
+  },
+  "mean_polarity": {
+   "type": [
+    "number",
+    "null"
+   ],
+   "description": ""
+  },
+  "is_missing": {
+   "type": "boolean"
+  }
+ },
+ "required": [
+  "topic_id",
+  "dt",
+  "lang_bucket",
+  "segment",
+  "n_articles",
+  "share_of_day",
+  "is_missing"
+ ],
+ "additionalProperties": false
+}

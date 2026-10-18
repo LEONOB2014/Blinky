@@ -1,0 +1,77 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/LEONOB2014/Blinky/contracts/edges_ai_weekly.schema.json",
+ "title": "Weekly co-mention edge between two AI-lexicon topics, per language bucket, with NPMI",
+ "description": "BigQuery radar.edges_ai_weekly (bq_sql/s16_edges_ai_weekly.sql, generated from contracts/ai_lexicon.yaml) -> lake/gold/edges_ai_weekly.parquet. Counts are articles within the week and lang_bucket; 'all' is every language.",
+ "type": "object",
+ "x-owner": "WS1 (built), WS3 (read)",
+ "x-mock": "pending-dev-slice",
+ "properties": {
+  "wk": {
+   "type": "string",
+   "format": "date"
+  },
+  "lang_bucket": {
+   "type": "string",
+   "enum": [
+    "all",
+    "eng",
+    "spa",
+    "por",
+    "other"
+   ]
+  },
+  "x": {
+   "type": "string",
+   "pattern": "^ai:[a-z]+:",
+   "description": "'ai:<lexicon id>', x < y"
+  },
+  "y": {
+   "type": "string",
+   "pattern": "^ai:[a-z]+:"
+  },
+  "n": {
+   "type": "integer",
+   "minimum": 3
+  },
+  "n_src": {
+   "type": "integer",
+   "minimum": 0,
+   "description": "distinct sources"
+  },
+  "nx": {
+   "type": "integer",
+   "minimum": 0,
+   "description": "articles with x that week and bucket"
+  },
+  "ny": {
+   "type": "integer",
+   "minimum": 0,
+   "description": "articles with y that week and bucket"
+  },
+  "n_docs": {
+   "type": "integer",
+   "minimum": 0,
+   "description": "ring-1 articles with any lexicon topic that week and bucket"
+  },
+  "npmi": {
+   "type": [
+    "number",
+    "null"
+   ],
+   "description": "normalized PMI, -1..1"
+  }
+ },
+ "required": [
+  "wk",
+  "lang_bucket",
+  "x",
+  "y",
+  "n",
+  "nx",
+  "ny",
+  "n_docs",
+  "npmi"
+ ],
+ "additionalProperties": false
+}
