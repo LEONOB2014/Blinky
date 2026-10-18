@@ -12,6 +12,72 @@ READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.par
 with the syndication guard in the eligibility gate (16,904 rows, 46 weeks, 4,911 topics, 0 contract
 violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060 rows, 1,916 exact).
 
+## WP2: scores and backtest on the AI lexicon (09:05 UTC-5, branch `feat/ws4-ai-ranking`, claude-cacho; committed locally, the orchestrator pushes)
+
+**Pipeline**
+- `--source ai` on `models.build_scores` and `models.backtest` (`models/source.py`). The default
+  GDELT run is unchanged: rebuilding `topic_scores_weekly` gives the same 16,904 rows, every column
+  equal (*measured*).
+- **Outputs:** `topic_ai_scores_weekly`, `reports/backtest_ai.md` and `topic_ai_briefs_weekly`.
+  v0.2's tables and report are untouched.
+- **Ranked universe:** every `ai:` topic with at least 1 article in the week; no 20-article floor.
+- **Eligibility gate:** holds by construction.
+- **Syndication guard:** kept. At 09:00 there were no `ai:` rows in `topic_sources_weekly` (S13 not
+  yet run on them), so it does not penalise any AI topic yet.
+- **Window and fit:** the lexicon family replaces WS1's subtopic mapping. The `business` family is
+  the fit share (hand-set, *estimate*).
+- **`new_nbr_rate`:** from `edges_ai_weekly` with WS3's rule (4-week look-back, n >= 3, the "all"
+  language bucket).
+- **Pageview label:** `crosssource/lexicon_pageviews.py` (WS6 fetcher, 6.5 s per request) ->
+  `wiki_pageviews_ai_daily`: 18,764 rows, 53 of 58 pages answered (*measured*).
+  - Only 29 of 110 lexicon entries have an es or pt title, so the primary label ranks at most 29
+    topics a week.
+  - The table needs a contract: the existing one requires a QID.
+
+**Scores:** 4,740 rows, 110 topics, 46 scored weeks (51 weeks of data minus the 5 warm-up weeks).
+
+**Top 10:** all 20 entries are AI topics (10/10 each week; the gate needs >= 8/10).
+- **W41:** Rondas y valuaciones de IA; IA multimodal; IA en medios, cine y creatividad; Fichajes y
+  spin-offs en los laboratorios; Pesos abiertos y open source; Adopción de IA en empresas;
+  Deepfakes y desinformación; Modelos del mundo; Nuevos laboratorios; IA en salud y medicina.
+- **W42:** Alianzas y adquisiciones en IA; Google DeepMind; Bolsa y acciones de IA; Fichajes y
+  spin-offs; Protestas y rechazo social a la IA; Sesgos y discriminación algorítmica; ByteDance
+  (Doubao, Seed); Rondas y valuaciones de IA; Tencent Hunyuan; Artistas y creadores contra la IA.
+- **Watch:** with no floor, four of the twenty rank on tiny counts. IA multimodal (4 articles that
+  week), Modelos del mundo (3), ByteDance (9) and Sesgos (10) rank on noisy percentiles.
+- **Floor of 20, tried and not adopted:** it replaces them with ChatGPT, Voz y música, Ajuste fino
+  and Robótica. Primary precision is 27.7% against 28.1% without it. It is the orchestrator's call.
+
+**Backtest** (*measured*, 43 evaluable weeks; brackets are 95% bootstrap intervals over weeks):
+
+| Label | AI radar | Raw-count growth | Persistence | Base rate | v0.2 radar (same label) |
+|---|---|---|---|---|---|
+| Primary: es+pt pageviews, on labelled slots | 28.1% [24.5-31.7]; worst 24.8%, best 36.6%; coverage 88.2% | 25.9% [22.5-29.4] | 21.2% [17.7-24.9] | 26.8% | 29.2% [24.4-34.0] vs 25.4% |
+| Secondary: es+pt GDELT growth | 25.6% [22.6-28.6] | 21.2% [17.7-24.4] | 14.2% [10.9-17.7] | 25.0% | 13.3% [9.5-17.2] vs 6.7% |
+
+- **Primary:** below the 90% coverage rule, so the report gives bounds. The worst-case advantage
+  holds over neither baseline (raw-count growth -10.9 points [-14.5, -7.5]; persistence +1.8 [-3.2,
+  6.8]). The hook may not use it. On 29 mapped topics, a top 10 is a third of the field, so the test
+  is weak.
+- **Secondary:** it beats both baselines on paired intervals (+4.4 [0.2, 8.4] over raw-count growth,
+  +11.4 [7.2, 15.6] over persistence; median lead 2 weeks). But it sits at the base rate (25.6% vs
+  25.0%).
+- **Against v0.2:** v0.2 was about 2x its base rate on this label, the AI run about 1.0x. The base
+  rates differ (6.7% vs 25.0%) because 110 topics have far fewer weeks tied at zero growth than
+  4,945 do.
+- **Reading:** the AI radar ranks AI topics, but neither label shows it beating chance. It is not
+  better evidence than v0.2.
+
+**Briefs:** 20 for the W41-W42 top 10 under `RADAR_SOURCE=ai`. Auditor 20/20, 2 retried, 23,966
+tokens, 86 s (*measured*), about $0.01 (*estimate*).
+- **Known limit:** some briefs still frame a story the data does not support. Google DeepMind says
+  "casi nadie lo cuenta en español" while citing 18 of 68 articles in es/pt; "Modelos del mundo"
+  invents a story from 3 articles.
+
+**Eval questions (v1):** none names an old W41/W42 top-10 org. q06-q11 name Nvidia, OpenAI,
+Microsoft, Samsung, Google and TSMC, but expect GDELT ids (`org:nvidia`, `org:openai inc`…). Once
+the agents resolve to `ai:` topics they need `radar-agents-v2`. Not changed.
+
 ## Primary backtest, reported with bounds (orchestrator decision, 03:40 UTC-5)
 
 `models/backtest.py` now reports a label below the 90% coverage rule instead of withholding it:
