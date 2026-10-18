@@ -1084,7 +1084,7 @@ function TopicDetail({
           <span className="chip">Saturación: {(card.saturation * 100).toFixed(1)}% ●</span>
         )}
         {card.audience_fit != null && (
-          <span className="chip">Encaje LatAm: {(card.audience_fit * 100).toFixed(0)}% ●</span>
+          <span className="chip">Encaje LatAm: {(card.audience_fit * 100).toFixed(0)}% ○</span>
         )}
         {card.emotional_charge_pct != null && (
           <span className="chip">

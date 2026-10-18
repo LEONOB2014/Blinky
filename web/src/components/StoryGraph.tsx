@@ -587,7 +587,7 @@ export function StoryGraph({
           )}
           {scores?.audience_fit != null && (
             <span className="chip">
-              Encaje LatAm: <strong>{(scores.audience_fit * 100).toFixed(0)}%</strong>
+              Encaje LatAm: <strong>{(scores.audience_fit * 100).toFixed(0)}%</strong> ○
             </span>
           )}
           {scores?.window?.state && (
