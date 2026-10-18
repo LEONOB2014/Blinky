@@ -693,6 +693,8 @@ def trust_line(turn: Turn) -> str:
     )
     if beats := trust.beats_sentence(summary):
         text += f" {beats}"
+    if summary.get("etiqueta_principal_bajo_cobertura"):
+        text += f" {trust.PRIMARY_BELOW_COVERAGE}"
     if (found.get("get_filter_quality") or {}).get("etiquetas_humanas_pendientes"):
         text += f" {trust.HUMAN_LABELS_PENDING}"
     return f"{text} {trust.EARLY_SIGNAL}"

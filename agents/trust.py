@@ -7,6 +7,7 @@ Every number is parsed from reports/ as written; nothing is restated by hand.
 """
 
 import csv
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -73,6 +74,93 @@ def backtest_summary(text: str) -> dict[str, Any] | None:
         "supera_crecimiento_en_peor_caso": holds(RAW_GROWTH),
         "supera_persistencia_en_peor_caso": holds(PERSISTENCE),
     }
+
+
+def backtest_report(reports: Path) -> Path:
+    """The backtest the trust answer reads: the AI lexicon run's report under RADAR_SOURCE=ai (when
+    it exists), else v0.2's GDELT report."""
+    ai = reports / "backtest_ai.md"
+    if os.environ.get("RADAR_SOURCE") == "ai" and ai.exists():
+        return ai
+    return reports / "backtest.md"
+
+
+def secondary_summary(text: str) -> dict[str, Any] | None:
+    """The published radar against its baselines on the secondary label (es+pt GDELT article
+    growth), parsed from the report's "Secondary label" section; whether the primary label is
+    below the coverage rule. None when the section is missing."""
+    start = text.find("## Secondary label")
+    if start < 0:
+        return None
+    section = text[start:]
+
+    def row(prefix: str) -> list[str] | None:
+        for line in section.splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if (
+                cells
+                and cells[0].startswith(prefix)
+                and len(cells) >= 4
+                and "/" in cells[1]
+                and re.search(_PCT, cells[2])
+            ):
+                return cells
+        return None
+
+    def ranker(prefix: str) -> dict[str, Any] | None:
+        cells = row(prefix)
+        if not cells:
+            return None
+        ci = re.findall(_PCT, cells[3])
+        return {
+            "precision_pct": float(re.search(_PCT, cells[2]).group(1)),
+            "ic95_pct": [float(ci[0]), float(ci[1])] if len(ci) == 2 else None,
+        }
+
+    def beats(baseline: str) -> bool | None:
+        for line in section.splitlines():
+            if line.startswith(f"- {PUBLISHED} minus {baseline}"):
+                lo = re.search(r"interval (-?\d+(?:\.\d+)?)%", line)
+                return bool(lo) and float(lo.group(1)) > 0
+        return None
+
+    # the precision table, not the coverage table above it (its rows end in "100.0% (measured)")
+    table = section.find("### Precision@10")
+    if table >= 0:
+        section = section[table:]
+    published, raw, persistence = ranker(PUBLISHED), ranker(RAW_GROWTH), ranker(PERSISTENCE)
+    base = row("Base rate")
+    if not (published and published["ic95_pct"] and raw and persistence and base):
+        return None
+    weeks = re.search(r"Evaluable weeks: (\d+)", text)
+    primary = text[: text.find("## Secondary label")]
+    return {
+        "etiqueta": "el tema sube en artículos en español y portugués (GDELT)",
+        "semanas_evaluadas": int(weeks.group(1)) if weeks else None,
+        "radar_publicado": published,
+        "tasa_base_pct": float(re.search(_PCT, base[2]).group(1)),
+        "crecimiento_de_menciones": raw,
+        "persistencia": persistence,
+        "supera_crecimiento_en_peor_caso": beats(RAW_GROWTH),
+        "supera_persistencia_en_peor_caso": beats(PERSISTENCE),
+        "en_peor_caso": False,
+        "etiqueta_principal_bajo_cobertura": "Below the 90.0% coverage rule" in primary,
+    }
+
+
+def report_summary(path: Path) -> dict[str, Any] | None:
+    """The headline the trust answer states: the AI report's secondary label (its primary falls
+    below the coverage rule), else v0.2's primary label."""
+    text = path.read_text(encoding="utf-8")
+    if path.name == "backtest_ai.md":
+        return secondary_summary(text)
+    return backtest_summary(text)
+
+
+PRIMARY_BELOW_COVERAGE = (
+    "En la etiqueta principal (páginas vistas de Wikipedia en español y portugués) la cobertura "
+    "queda bajo la regla del 90%: solo se reportan cotas."
+)
 
 
 # BigQuery on-demand compute: first 1 TiB per month free, then USD 6.25 per TiB (checked
@@ -202,7 +290,8 @@ def beats_sentence(summary: dict[str, Any]) -> str:
     no = [k for k, v in beats.items() if v is False]
     if yes:
         tail = f"; no supera a {' ni a '.join(no)}." if no else "."
-        return f"Supera a {' y a '.join(yes)} incluso en el peor caso{tail}"
+        worst = " incluso en el peor caso" if summary.get("en_peor_caso", True) else ""
+        return f"Supera a {' y a '.join(yes)}{worst}{tail}"
     return f"No supera a {' ni a '.join(no)}." if no else ""
 
 
@@ -215,8 +304,8 @@ def trust_summary(reports: Path) -> dict[str, Any]:
     estimate, from the same parsers as the chat's trust line. Missing reports are left out."""
     points: list[dict[str, str]] = []
     sources: list[str] = []
-    bt_path, lq_path = reports / "backtest.md", reports / "label_quality.md"
-    bt = backtest_summary(bt_path.read_text(encoding="utf-8")) if bt_path.exists() else None
+    bt_path, lq_path = backtest_report(reports), reports / "label_quality.md"
+    bt = report_summary(bt_path) if bt_path.exists() else None
     if bt:
         weeks = f"{bt['semanas_evaluadas']} semanas de " if bt.get("semanas_evaluadas") else ""
         points.append(
@@ -228,7 +317,9 @@ def trust_summary(reports: Path) -> dict[str, Any]:
             }
         )
         points.append({"id": "baselines", "texto": beats_sentence(bt), "kind": "measured"})
-        sources.append("reports/backtest.md")
+        if bt.get("etiqueta_principal_bajo_cobertura"):
+            points.append({"id": "principal", "texto": PRIMARY_BELOW_COVERAGE, "kind": "measured"})
+        sources.append(f"reports/{bt_path.name}")
     filt = filter_summary(lq_path.read_text(encoding="utf-8")) if lq_path.exists() else None
     if filt:
         rule, cls = filt["regla_gdelt"], filt["clasificador"]

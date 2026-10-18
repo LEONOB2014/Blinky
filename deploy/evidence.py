@@ -23,7 +23,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from agents.trust import trust_summary
+from agents.trust import backtest_report, trust_summary
 
 REPO = Path(__file__).resolve().parents[1]
 REPORTS = REPO / "reports"
@@ -117,7 +117,8 @@ def write_evidence(out: Path = OUT, reports: Path = REPORTS) -> int:
     """Write the evidence JSON files; return the bytes written."""
     out.mkdir(parents=True, exist_ok=True)
     files = {
-        "backtest.json": report_json("backtest.md", reports),
+        # the AI lexicon run's report under RADAR_SOURCE=ai, as the trust summary reads it
+        "backtest.json": report_json(backtest_report(reports).name, reports),
         "label_quality.json": report_json("label_quality.md", reports),
         "ledgers.json": ledgers(reports),
         "trust_summary.json": trust_summary(reports),
