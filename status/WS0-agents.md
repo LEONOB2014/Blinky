@@ -26,10 +26,16 @@ The last grounding gap: on the graph route the model invented thresholds ("más 
 - **Auditor:** every number in both lines is traced. A test checks this, and that an invented
   "0.85" beside the line is still caught.
 - **Tests:** 4 new. `make test` 264 passed, `make check` clean, contract tests pass.
-- **Deploy note:** the Cloud Run image stages only `lake/gold/*.parquet`
-  (`deploy/cloudrun_stage.py`), not `lake/views/`. On the live service `get_graph_facts` returns
-  "no disponible" and the weekly question falls back to the leader's ring line. Staging
-  `views/temporal.json` is a deploy change, not made here.
+- **Deploy gap closed** (06:30):
+  - `deploy/cloudrun_stage.py` now also stages `lake/views/temporal.json`, and only that view file.
+  - The image reads it at `$RADAR_LAKE/views/temporal.json` = `/app/lake/views/temporal.json`, the
+    staged path. Checked by running `get_graph_facts` against a real staged context: 930 nodes and
+    3463 edges for W42.
+  - The stage refuses if the file is missing or has a `per:` node; the current file has none and no
+    URLs.
+  - Staged size, *measured*: temporal.json 3.6 MiB; the whole context 91.6 MiB.
+  - 2 tests in `deploy/tests/test_cloudrun_stage.py`.
+  - Not deployed; the orchestrator redeploys after landing.
 
 **Results** against PR #47's full eval (predeploy-fixes, fea4dd2), all *measured*. Brackets are the
 min-max of the three repetition means.

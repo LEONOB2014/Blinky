@@ -1,6 +1,7 @@
 # The radar API (api/app.py) for Google Cloud Run. Built from the staged context that
-# deploy/cloudrun_stage.py writes: the code the API imports, contracts/, reports/ and the 7 lake
-# tables under lake/gold/. Never .env: the Nebius key comes from Secret Manager at run time.
+# deploy/cloudrun_stage.py writes: the code the API imports, contracts/, reports/, the lake tables
+# under lake/gold/ and lake/views/temporal.json (the graph-facts metadata). Never .env: the Nebius
+# key comes from Secret Manager at run time.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
