@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/topic_briefs_weekly.schema.json",
+  "title": "The Spanish adaptation brief of one ranked topic in one week",
+  "description": "Written ahead of time by the Editor agent from tool data only, checked by the Auditor, for the latest weeks' top 10 -> lake/gold/topic_briefs_weekly.parquet. The UI shows it on the card; the chat can cite it. Every number in the text must come from numbers_cited.",
+  "type": "object",
+  "x-owner": "WS0",
+  "x-mock": "pending-first-agent-run",
+  "properties": {
+    "week": {"type": "string", "pattern": "^\\d{4}-W\\d{2}$"},
+    "topic_id": {"type": "string"},
+    "rank": {"type": "integer", "minimum": 1},
+    "label_es": {"type": "string"},
+    "decision": {"enum": ["publicar_ahora", "preparar", "esperar", "no_es_tema_caliente"]},
+    "headline_es": {"type": "string", "maxLength": 110, "description": "one line an editor could use as a working title"},
+    "what_happened_es": {"type": "string", "description": "2-3 sentences: what the data shows this week"},
+    "why_latam_es": {"type": "string", "description": "why it matters to LatAm executives"},
+    "angle_es": {"type": "string", "description": "the framing angle, from the scores' framing_angle"},
+    "hook_es": {"type": "string", "maxLength": 220, "description": "an opening line for a LinkedIn post"},
+    "format_es": {"type": "string", "description": "suggested format (carrusel, video corto, post de texto, newsletter...) and why"},
+    "numbers_cited": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "value": {"type": ["number", "string"]},
+          "kind": {"enum": ["measured", "estimate"]},
+          "source": {"type": "string", "description": "the tool or table it came from"}
+        },
+        "required": ["name", "value", "kind", "source"],
+        "additionalProperties": false
+      }
+    },
+    "auditor_ok": {"type": "boolean", "description": "true when every number in the text is in numbers_cited and no uncomputed decision appears"},
+    "untraced_numbers": {"type": "array", "items": {"type": "string"}},
+    "model": {"type": "string"},
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "required": ["week", "topic_id", "rank", "label_es", "decision", "headline_es", "what_happened_es", "why_latam_es", "angle_es", "hook_es", "format_es", "numbers_cited", "auditor_ok", "untraced_numbers", "model", "generated_at"],
+  "additionalProperties": false
+}
