@@ -121,3 +121,8 @@ Deadline: **03:30**.
    each WS6 write; when coverage reaches the 90% threshold, run the final primary backtest (exact
    matches; alias-included as a separate row), update `reports/backtest.md` and `status/WS4.md`, commit.
    Report honestly if the radar does not beat both baselines.
+
+## Change (orchestrator, 02:25 UTC-5)
+
+Item 2 of Addendum 2 (take over WS4's backtest) is cancelled: the orchestrator runs it. Do item 1 only
+(the Auditor gap and the entity false-positive check), then stop.
