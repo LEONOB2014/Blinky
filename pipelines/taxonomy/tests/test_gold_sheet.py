@@ -4,7 +4,10 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from pipelines.taxonomy import gold_sheet
+
+pytest.importorskip("numpy")  # the models extra; CI installs no extras
+
+from pipelines.taxonomy import gold_sheet  # noqa: E402
 
 
 @pytest.mark.unit

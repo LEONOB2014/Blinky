@@ -1,9 +1,13 @@
 """Offline unit tests for pipelines/taxonomy/student.py."""
 
-import numpy as np
 import polars as pl
 import pytest
-from pipelines.taxonomy import student
+
+pytest.importorskip("numpy")  # the models extra; CI installs no extras
+pytest.importorskip("sklearn")
+pytest.importorskip("lightgbm")
+import numpy as np  # noqa: E402
+from pipelines.taxonomy import student  # noqa: E402
 
 
 def _synthetic_labeled_rows(n: int = 80) -> list[dict]:

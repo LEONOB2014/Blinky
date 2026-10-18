@@ -5,7 +5,10 @@ from pathlib import Path
 import httpx
 import polars as pl
 import pytest
-from pipelines.taxonomy import cascade
+
+pytest.importorskip("numpy")  # the models extra; CI installs no extras
+
+from pipelines.taxonomy import cascade  # noqa: E402
 
 
 @pytest.mark.unit
