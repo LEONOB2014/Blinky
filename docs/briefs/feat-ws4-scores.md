@@ -165,3 +165,17 @@ top 10), writing `wiki_pageviews_daily` every 50 articles, done by about 04:00.
 4. Memory is short until ~03:00 (Google Drive copy): stay under ~1.5 GB peak, one heavy job at a time.
 
 Deadlines: secondary-label backtest by **02:30**; primary backtest within 30 minutes of WS6's last write.
+
+## Addendum 5 (orchestrator, 01:25 UTC-5): a syndication guard in the gate
+
+WS9's diagnostic (measured, 2026-W42): 5 of the top 10 are single-pattern weeks, >= 90% of their
+articles share one co-mention pattern (Euronext 145 of 149 articles, one syndicated feed). WS1 (claude-work) is
+building `topic_sources_weekly` (n_sources, top_source_share, top3_source_share, pattern share; contract
+on `feat/ws1-topic-sources`), lake file by 02:30, with the W42 values and the distributions in
+`status/WS1.md`.
+
+When `status/WS1.md` says `READY FOR WS4`: add a source-diversity condition to the eligibility gate
+(thresholds chosen from WS1's distributions and stated as estimates, for example at least 5 sources
+and a top source share at most 0.5), rebuild the scores, re-run the backtest(s) with and without the
+new condition, then write `READY FOR REDEPLOY` again. The backtest work of Addendum 4 comes first if
+both are ready at once.
