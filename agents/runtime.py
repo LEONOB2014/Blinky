@@ -57,8 +57,9 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     "editor": {
         "name_es": "Editor",
         "tools": ["get_topic_brief", "get_topic_evidence", "get_topic_series", "get_context_1hop"],
-        "role": "Propones formato, dos ganchos y un guion de 30-45 s en español, apoyado solo en los "
-        "datos que consultas. Si existe el brief ya escrito del tema, parte de él.",
+        "role": "Propones formato, dos ganchos y un guion breve en español, apoyado solo en los "
+        "datos que consultas. El formato sale del brief ya escrito del tema cuando existe; no "
+        "inventes duraciones.",
     },
     "scout": {
         "name_es": "Explorador",
@@ -330,6 +331,23 @@ def _source_dates(results: list[dict[str, Any]], extra: str) -> set[tuple[int | 
 
 
 _THOUSANDS = re.compile(r"^[1-9]\d{0,2}(?:[.,]\d{3})+$")
+# "semana 42" / "semana 42 de 2026" in an answer, and the ISO weeks ("2026-W42") the tools return
+_WEEK_SAID = re.compile(r"\bsemana\s+(\d{1,2})(?:\s+(?:de(?:l)?\s+)?(\d{4}))?\b", re.I)
+_WEEK_ISO = re.compile(r"\b(\d{4})-W(\d{2})\b")
+
+
+def _untraced_weeks(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
+    """Weeks named in the answer that no tool returned (a week without a year matches any year)."""
+    texts = [question] + [json.dumps(r["result"], default=str) for r in results]
+    weeks = {(int(y), int(w)) for t in texts for y, w in _WEEK_ISO.findall(t)}
+    bad = []
+    for m in _WEEK_SAID.finditer(answer):
+        week, year = int(m.group(1)), int(m.group(2)) if m.group(2) else None
+        if year is None and week <= 12:
+            continue  # "la semana 1": a small count, as for numbers
+        if not any(w == week and (year is None or y == year) for y, w in weeks):
+            bad.append(m.group(0))
+    return bad
 
 
 def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
@@ -342,7 +360,8 @@ def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) 
         for text, (y, m, d) in _dates(answer)
         if not any(sm == m and sd == d and (y is None or sy in (y, None)) for sy, sm, sd in dates)
     ]
-    for token in _numbers(answer):
+    bad += _untraced_weeks(answer, results, question)
+    for token in _numbers(_WEEK_SAID.sub(" ", answer)):  # a week is read whole, as a date is
         value = _as_float(token)
         if abs(value) <= 12 and value == int(value):
             continue  # small counts such as "top 10" or "2 ganchos"
@@ -636,6 +655,76 @@ def wrong_outlet_counts(answer: str, turn: Turn) -> list[str]:
         if int(re.sub(r"[.,]", "", m.group(1))) != src["n_medios"]:
             bad.append(m.group(0))
     return bad
+
+
+_TRUST_Q = re.compile(r"conf[ií]a|confiable|fiable|backtest|precisi|acierta|creer", re.I)
+# unconditional trust: "puedes confiar", "es confiable", "alta precisión"; a hedge right after
+# ("con cautela", "solo para", "pero") or a "no" right before makes it a calibrated statement
+_TRUST_CLAIM = re.compile(
+    r"(?:puedes|puede|se puede|pueden) confiar|conf[ií]a(?:r)? (?:plenamente|totalmente|en el radar)|"
+    r"(?:es|son|resulta) (?:muy |altamente |totalmente |bastante )?(?:confiable|fiable|precis[oa]|"
+    r"exact[oa]|sólid[oa]|robust[oa])|alta (?:precisi[oó]n|confiabilidad|fiabilidad)|"
+    r"(?:muy|altamente|totalmente) (?:confiable|fiable|precis[oa])",
+    re.I,
+)
+_TRUST_HEDGE = re.compile(
+    r"con (?:cautela|moderaci[oó]n|reservas|cuidado)|solo|s[oó]lo|parcialmente|siempre que|"
+    r"pero|aunque|como se[nñ]al|no (?:supera|es mejor)",
+    re.I,
+)
+
+
+def _pct(x: float) -> str:
+    return f"{x:.1f}".replace(".", ",") + "%"
+
+
+def trust_line(turn: Turn) -> str:
+    """How far to trust the radar, written by code from get_backtest's parsed headline."""
+    found = {r["tool"]: r["result"] for r in turn.tool_results if r["result"].get("available")}
+    summary = (found.get("get_backtest") or {}).get("resumen")
+    if not summary:
+        return ""
+    radar, raw = summary["radar_publicado"], summary["crecimiento_de_menciones"]
+    lo, hi = radar["ic95_pct"]
+    weeks = (
+        f" de {summary['semanas_evaluadas']} semanas" if summary.get("semanas_evaluadas") else ""
+    )
+    beats = {
+        "la persistencia (repetir lo que ya subió)": summary["supera_persistencia_en_peor_caso"],
+        f"la regla simple de crecimiento de menciones ({_pct(raw['precision_pct'])})": summary[
+            "supera_crecimiento_en_peor_caso"
+        ],
+    }
+    yes = [k for k, v in beats.items() if v]
+    no = [k for k, v in beats.items() if v is False]
+    text = (
+        f"Qué tan confiable es el radar (backtest{weeks}; acierto = {summary['etiqueta']}): su "
+        f"top 10 publicado acierta el {_pct(radar['precision_pct'])} de las veces (intervalo del "
+        f"95%: {_pct(lo)} a {_pct(hi)}), frente a un {_pct(summary['tasa_base_pct'])} de un tema "
+        f"al azar."
+    )
+    if yes:
+        text += f" Supera a {' y a '.join(yes)} incluso en el peor caso"
+        text += f"; no supera a {' ni a '.join(no)}." if no else "."
+    elif no:
+        text += f" No supera a {' ni a '.join(no)}."
+    if (found.get("get_filter_quality") or {}).get("etiquetas_humanas_pendientes"):
+        text += " Las etiquetas humanas del filtro de noticias aún están pendientes."
+    return text + " Úsalo como señal temprana, no como garantía."
+
+
+def trust_claims(answer: str, turn: Turn) -> list[str]:
+    """Unconditional trust phrases on the trust route (where get_backtest ran)."""
+    if not any(r["tool"] == "get_backtest" for r in turn.tool_results):
+        return []
+    claims = []
+    for m in _TRUST_CLAIM.finditer(answer):
+        before = answer[max(0, m.start() - 12) : m.start()].lower()
+        after = answer[m.end() : m.end() + 40]
+        if re.search(r"\bno\b|\bni\b", before) or _TRUST_HEDGE.search(after):
+            continue
+        claims.append(m.group(0))
+    return claims
 
 
 def coverage_line(turn: Turn) -> str:
@@ -1049,6 +1138,9 @@ def run_turn(
         count = outlet_count_line(turn) if _OUTLET_COUNT_Q.search(question) else ""
         if count:
             line = f"{line}\n\n{count}" if line else count
+        trust = trust_line(turn) if "auditor" in needed and _TRUST_Q.search(question) else ""
+        if trust:
+            line = f"{line}\n\n{trust}" if line else trust
         coverage = coverage_line(turn) if decides or entity else ""
         if coverage:
             line = f"{line}\n\n{coverage}" if line else coverage
@@ -1057,7 +1149,8 @@ def run_turn(
                 f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
                 "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
                 "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
-                "(formato y enfoque). Máximo 6 líneas en total."
+                "(formato y enfoque; el formato del brief si lo hay, sin duraciones en segundos ni "
+                "minutos). Máximo 6 líneas en total."
                 if decides
                 else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
                 "los informes; no agregues KPIs ni decisiones que no estén en ellos."
@@ -1071,6 +1164,13 @@ def run_turn(
                 f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
                 "menciones otros umbrales, mínimos de co-menciones ni valores de NPMI."
                 if facts
+                else ""
+            )
+            + (
+                f" El sistema ya escribe qué tan confiable es el radar: «{trust}». No lo repitas. "
+                "No digas que se puede confiar sin condiciones ('puedes confiar', 'es confiable', "
+                "'alta precisión'): la confianza es la que dice esa línea."
+                if trust
                 else ""
             )
             + (
@@ -1169,6 +1269,17 @@ def _audit(
             "\n\n⚠️ El Auditor: los datos no muestran artículos de este tema en español ni en "
             "portugués esta semana; lo que se diga de su crecimiento o presencia en Latinoamérica "
             "no tiene respaldo."
+        )
+    if claims := trust_claims(answer, turn):
+        turn.log(
+            "auditor",
+            "veto",
+            result_summary=f"confianza sin condiciones que el backtest no respalda: {', '.join(claims)}",
+        )
+        answer += (
+            "\n\n⚠️ El Auditor: el backtest no respalda una confianza sin condiciones ("
+            + ", ".join(f"«{c}»" for c in claims)
+            + "); la confiabilidad medida es la de la línea de arriba."
         )
     if wrong := wrong_outlet_counts(answer, turn):
         turn.log(
