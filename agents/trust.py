@@ -130,6 +130,10 @@ def _jev_ledger(reports: Path) -> dict[str, Any]:
 
 
 _GDELT_RULE = "gdelt_ring1_rule"
+# The filter that feeds the radar today: the GDELT ring-1 rule in bq_sql/s4_aggregates.sql. The
+# trained cascade (pipelines/taxonomy/) is validated but not in the aggregates; a test fails if
+# bq_sql starts reading it, so this sentence cannot go stale silently.
+FILTER_IN_USE = "regla_gdelt"
 _CASCADE = "cascade"
 _CELL = r"`(\d\.\d+)` \(`\[(\d\.\d+), (\d\.\d+)\]`"
 
@@ -230,15 +234,18 @@ def trust_summary(reports: Path) -> dict[str, Any]:
         rule, cls = filt["regla_gdelt"], filt["clasificador"]
         ref = "un panel de modelos" if filt["etiquetas_humanas_pendientes"] else "etiquetas humanas"
         text = (
-            f"Filtro de noticias de IA, en {filt['n']} noticias revisadas contra {ref}: la regla de "
-            f"GDELT tiene precisión {_dec(rule['precision'])} ({_dec(rule['precision_ic95'][0])} a "
-            f"{_dec(rule['precision_ic95'][1])}) y exhaustividad {_dec(rule['exhaustividad'])} "
-            f"({_dec(rule['exhaustividad_ic95'][0])} a {_dec(rule['exhaustividad_ic95'][1])})"
+            f"Filtro de noticias de IA, en {filt['n']} noticias revisadas contra {ref}: el radar "
+            f"usa hoy la regla de GDELT, con precisión {_dec(rule['precision'])} "
+            f"({_dec(rule['precision_ic95'][0])} a {_dec(rule['precision_ic95'][1])}) y "
+            f"exhaustividad {_dec(rule['exhaustividad'])} ({_dec(rule['exhaustividad_ic95'][0])} a "
+            f"{_dec(rule['exhaustividad_ic95'][1])})"
         )
         if cls:
+            # the classifier is validated but not wired into bq_sql's aggregates (FILTER_IN_USE)
             text += (
-                f"; el clasificador entrenado, precisión {_dec(cls['precision'])} y exhaustividad "
-                f"{_dec(cls['exhaustividad'])}"
+                f"; el clasificador entrenado (precisión {_dec(cls['precision'])}, exhaustividad "
+                f"{_dec(cls['exhaustividad'])}) está validado contra {ref.replace('un ', 'el ', 1)} "
+                "pero aún no alimenta el radar"
             )
         points.append({"id": "filtro", "texto": text + ".", "kind": "measured"})
         if filt["etiquetas_humanas_pendientes"]:

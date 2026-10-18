@@ -36,8 +36,22 @@ def test_missing_reports_leave_their_points_out(tmp_path):
     out = trust.trust_summary(tmp_path)
     ids = [p["id"] for p in out["points"]]
     assert ids == ["filtro", "etiquetas", "senal"]  # no backtest, no ledgers: nothing invented
+    text = out["points"][0]["texto"]
+    assert "el radar usa hoy la regla de GDELT, con precisión 0,75 (0,66 a 0,82)" in text
+    assert "y exhaustividad 0,97 (0,90 a 0,99)" in text and "contra un panel de modelos" in text
     assert (
-        "precisión 0,75 (0,66 a 0,82) y exhaustividad 0,97 (0,90 a 0,99)"
-        in out["points"][0]["texto"]
+        "el clasificador entrenado (precisión 0,94, exhaustividad 0,95) está validado contra "
+        "el panel de modelos pero aún no alimenta el radar." in text
     )
-    assert "contra un panel de modelos" in out["points"][0]["texto"]
+
+
+@pytest.mark.unit
+def test_the_radar_aggregates_still_use_the_gdelt_rule_not_the_classifier():
+    """Guards the summary's "aún no alimenta el radar": bq_sql must not read the cascade."""
+    from pathlib import Path
+
+    sql = Path(__file__).resolve().parents[2] / "bq_sql"
+    text = " ".join(p.read_text(encoding="utf-8").lower() for p in sql.glob("*.sql"))
+    assert text, "bq_sql has the aggregate jobs"
+    assert trust.FILTER_IN_USE == "regla_gdelt"
+    assert "cascade" not in text and "is_ai_student" not in text and "classifier" not in text
