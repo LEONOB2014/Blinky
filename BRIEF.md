@@ -100,3 +100,34 @@ report by **05:00**; editor sheet by **08:30**.
 - Backtest: as soon as WS6 lands `topic_wikidata` + `wiki_pageviews_daily` (Grok is still resolving;
   ETA in `status/WS6.md`). Run it on mapped topics only and report the coverage (mapped / ranked).
 - New deadlines: topic scores in the lake by **01:30**; backtest by **05:00**; editor sheet by 08:30.
+
+## Addendum 3 (orchestrator, 23:10 UTC-5): a top 10 an executive recognises, decisions that follow the rank
+
+Measured on 2026-W42 (436 ranked topics): the top 15 is mostly GKG org fragments or topics that jump
+from zero (`org:a group`, `org:national anti`, `org:technological development area`,
+`org:scam centre`, `org:marsh mclennan` from near zero). Restricting to topics with articles in >= 6 of
+the prior 8 weeks and >= 200 articles in them keeps 189 of 436 and gives Kioxia, Citigroup, SanDisk,
+TSMC, Samsung, the Federal Reserve (measured). And the decisions do not follow the rank: the 14
+`publicar_ahora` sit at ranks 33-159, while rank 18 (Kioxia) is `no_es_tema_caliente`.
+
+1. **Eligibility gate for the ranked list** (one documented rule, in the thresholds table): a topic is
+   eligible for the top 10 when it is an established entity (articles in >= 6 of the prior 8 weeks and
+   >= 200 articles in them; estimate thresholds, say so) **or** resolves to a Wikidata item
+   (`topic_wikidata`, `match` exact or alias) once WS6 writes it. Non-eligible emerging topics go to a
+   separate "semillas a vigilar" list (same table, `stage = semilla`, ranked after the eligible ones), so
+   early signals are kept but never headline the top 10. No contract change: express it through `rank`
+   and `why`.
+2. **Decision coherence.** Explain in `models/README.md` why low-priority topics get `publicar_ahora`
+   and high-priority ones `no_es_tema_caliente`; if it is a bug (for example the decision reading
+   saturation or stage from a different grain than priority), fix it; if it is the table's intent, make
+   the table require a minimum priority percentile for `publicar_ahora` and `preparar`. A test on the
+   W42 rows: no `publicar_ahora` below a `no_es_tema_caliente` in priority without a stated reason.
+3. **Aliases.** `org:taiwan semiconductor` and `org:taiwan semiconductor manufacturing company` both
+   rank. When two topics resolve to the same Wikidata QID, keep the one with more articles and list the
+   other in `why`. Until WS6's table covers them, leave them.
+4. **Deny-list:** the orchestrator adds `big news network` and `big new network` to `org_deny` (PR to
+   follow). Kroger-chain stores stay: they are real companies; the gate decides.
+5. Rebuild the full profile, report the new W42 top 10 (topic, stage, decision, window) and the
+   decision counts in `status/WS4.md`. Commit locally; the push waits for the maintainer.
+
+Deadline: **00:30**. The backtest (05:00) then measures the gate: report precision@10 with and without it.
