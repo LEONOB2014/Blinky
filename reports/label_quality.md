@@ -133,3 +133,22 @@ teacher panel labels within each confidence bin `|p_student - 0.5|`:
 - **Student Alone**: `0.5399` (measured)
 - **Jev Alone**: `0.4728` (measured)
 - **GDELT Regex v1**: `0.1134` (measured)
+
+## Orchestrator review (2026-10-18 00:30 UTC-5)
+
+- **Reference.** Every number above is measured against the teacher panel's labels, not human
+  labels, until the maintainer's 300 gold labels replace the reference column. The panel scores
+  1.0000 against itself on the gold rows by construction.
+- **Jev routing is not shown to help.** The routed bin `|p-0.5| in [0.20, 0.30)` holds 10
+  validation rows: Jev 9/10 against the student's 7/10, paired interval `[+0.00, +0.50]`, whose
+  lower bound touches zero. The thresholds `[0.20, 0.80]` also send the two lower bins to Jev (25
+  rows, the 3.12% share), not only the bin named as routed. The validation F1 gain (0.9632 ->
+  0.9667) sits inside overlapping intervals. Read it as: the student is confident on 95% of
+  articles; for the rest the data cannot yet say whether Jev is better. Keeping Jev for them is a
+  design choice at $0.0014 per 1,000 articles (measured), not a measured improvement.
+- **What is measured and large:** against the same reference, the GDELT ring-1 rule's precision is
+  0.75 and the student's 0.94; subtopic agreement is 0.11 for the regex rules and 0.54 for the
+  student. Filter recall among tech-themed news is 0.76 with a wide interval `[0.60, 1.00]`
+  (n_acc = 97, n_rej = 188 labelled rows).
+- **Licences re-checked** on the Hugging Face model cards: Qwen3-235B-A22B-Instruct-2507
+  Apache-2.0, DeepSeek-V4-Pro MIT (the table's DeepSeek link points to the organisation page).
