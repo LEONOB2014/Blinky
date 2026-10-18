@@ -182,6 +182,15 @@ def _inputs(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None,
 # doping agency, org:us department -> Veterans Affairs), so an alias alone does not open the gate;
 # aliases still merge topics that share a QID, and give no Spanish label.
 GATE_SPAN, GATE_WEEKS, GATE_ARTICLES = 8, 6, 200
+
+# Syndication guard (Addendum 5; hand-set from WS1's distributions over 17,154 ranked topic-weeks,
+# estimate): a topic headlines only when its week is source-diverse. At least MIN_SOURCES
+# sources (p10 is 12), the largest source at most MAX_TOP_SOURCE_SHARE of its articles (p90 is
+# 0.34; drops one-outlet weeks such as org:yahoo at 0.60), and its most common co-mention pattern
+# under MAX_PATTERN_SHARE of its articles (24.7% of topic-weeks are at or above 0.9; that drops
+# the single-pattern syndicated bursts, for example org:euronext, 145 of 149 articles alike).
+# A topic-week with no row in topic_sources_weekly is not penalised.
+MIN_SOURCES, MAX_TOP_SOURCE_SHARE, MAX_PATTERN_SHARE = 5, 0.5, 0.9
 GATE_MATCH = ("exact",)
 WIKIDATA_MATCH = ("exact", "alias")  # for the same-QID dedupe
 
@@ -220,9 +229,43 @@ def history(own: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def gate(scored: pl.DataFrame, own: pl.DataFrame) -> pl.DataFrame:
-    """Applies the eligibility gate and the Wikidata alias dedupe, and re-ranks each week."""
+def sources() -> pl.DataFrame | None:
+    """WS1's `topic_sources_weekly` keyed by unit and ISO week, or None when absent."""
+    path = gold("topic_sources_weekly")
+    if not path.exists():
+        return None
+    t = pl.read_parquet(path)
+    wk = pl.col("week").str.to_date() if t.schema["week"] == pl.String else pl.col("week")
+    return t.select(
+        pl.col("topic_id").alias("unit_id"),
+        wk.dt.strftime("%G-W%V").alias("week"),
+        "n_sources",
+        "top_source_share",
+        "top_theme_pattern_share",
+    )
+
+
+def gate(scored: pl.DataFrame, own: pl.DataFrame, diversity: bool = True) -> pl.DataFrame:
+    """Applies the eligibility gate and the Wikidata alias dedupe, and re-ranks each week.
+
+    `diversity=False` leaves out the syndication guard (the backtest measures it on its own).
+    """
     s = scored.join(history(own), on=["unit_id", "week"], how="left")
+    src = sources() if diversity else None
+    if src is not None:
+        s = s.join(src, on=["unit_id", "week"], how="left")
+        diverse = (
+            (pl.col("n_sources").fill_null(MIN_SOURCES) >= MIN_SOURCES)
+            & (pl.col("top_source_share").fill_null(0) <= MAX_TOP_SOURCE_SHARE)
+            & (pl.col("top_theme_pattern_share").fill_null(0) < MAX_PATTERN_SHARE)
+        )
+    else:
+        s = s.with_columns(
+            pl.lit(None, pl.Int64).alias("n_sources"),
+            pl.lit(None, pl.Float64).alias("top_source_share"),
+            pl.lit(None, pl.Float64).alias("top_theme_pattern_share"),
+        )
+        diverse = pl.lit(True)
     wd = _wikidata()
     if wd is not None:
         q = wd.filter(pl.col("match").is_in(WIKIDATA_MATCH), pl.col("qid").is_not_null())
@@ -237,8 +280,9 @@ def gate(scored: pl.DataFrame, own: pl.DataFrame) -> pl.DataFrame:
         pl.col("articles_prior").fill_null(0) >= GATE_ARTICLES
     )
     s = s.with_columns(
-        (established | pl.col("match").is_in(GATE_MATCH).fill_null(False)).alias("headline_ok"),
-    )
+        (established | pl.col("match").is_in(GATE_MATCH).fill_null(False)).alias("known"),
+        diverse.alias("diverse"),
+    ).with_columns((pl.col("known") & pl.col("diverse")).alias("headline_ok"))
     # same QID in the same week: keep the topic with more articles, name the others in its why
     s = s.with_columns(
         pl.col("n7raw").rank("ordinal", descending=True).over("week", "qid").alias("qid_rank")
@@ -252,12 +296,30 @@ def gate(scored: pl.DataFrame, own: pl.DataFrame) -> pl.DataFrame:
     s = s.with_columns(
         pl.when(pl.col("headline_ok"))
         .then(pl.lit(None, pl.String))
-        .otherwise(
+        .when(~pl.col("known"))
+        .then(
             pl.format(
                 "{} de {} semanas previas con artículos y {} artículos en ellas; sin Wikidata",
                 pl.col("weeks_active_prior").fill_null(0),
                 pl.lit(GATE_SPAN),
                 pl.col("articles_prior").fill_null(0),
+            )
+        )
+        .when(pl.col("n_sources").fill_null(MIN_SOURCES) < MIN_SOURCES)
+        .then(pl.format("cobertura poco diversa: solo {} fuentes esta semana", pl.col("n_sources")))
+        .when(pl.col("top_source_share").fill_null(0) > MAX_TOP_SOURCE_SHARE)
+        .then(
+            pl.format(
+                "cobertura poco diversa: una sola fuente aporta el {}% de los artículos",
+                (100 * pl.col("top_source_share")).round(0).cast(pl.Int64),
+            )
+        )
+        .otherwise(
+            pl.format(
+                "cobertura poco diversa: el {}% de los artículos repite el mismo patrón de "
+                "menciones ({} fuentes), señal de una nota sindicada",
+                (100 * pl.col("top_theme_pattern_share")).round(0).cast(pl.Int64),
+                pl.col("n_sources"),
             )
         )
         .alias("seed_reason"),

@@ -1,5 +1,57 @@
 # WS4 status
 
+READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.parquet` was rebuilt
+with the syndication guard in the eligibility gate (16,904 rows, 46 weeks, 4,911 topics, 0 contract
+violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060 rows, 1,916 exact).
+
+## Addendum 5: the syndication guard (01:36 UTC-5)
+
+- Guard (hand-set from WS1's distributions over 17,154 ranked topic-weeks, estimate): a topic can
+  headline only when it has >= 5 sources (p10 is 12), its largest source gives <= 0.5 of the
+  articles (p90 is 0.34), and its most common co-mention pattern covers < 0.9 of the articles
+  (24.7% of topic-weeks are at or above 0.9). A topic that fails goes to "semillas a vigilar",
+  and its `why` names the condition.
+- W42: 223 of 426 ranked topics may headline; 57 are held for low source diversity. The 6 WS9
+  flags rank 224-241 (measured): `org:euronext` (97% one pattern), `org:adani enterprises`,
+  `org:ministry of science`, `org:kioxia holdings`, `org:sterling`, and `org:yahoo` (one source
+  gives 60%).
+
+| Rank | Topic | Label | Stage | Decision | Window |
+|---|---|---|---|---|---|
+| 1 | `org:marsh mclennan` | Marsh & McLennan Companies | semilla | preparar | sin_estimacion |
+| 2 | `org:rocket lab` | Rocket Lab | emergente | esperar | dias_restantes (12 d) |
+| 3 | `org:national stock exchange` | national stock exchange | emergente | preparar | dias_restantes (5 d) |
+| 4 | `org:university college london` | University College de Londres | emergente | preparar | dias_restantes (6 d) |
+| 5 | `org:citigroup` | Citigroup | emergente | esperar | dias_restantes (6 d) |
+| 6 | `org:sandisk` | SanDisk | emergente | esperar | dias_restantes (14 d) |
+| 7 | `org:comcast` | Comcast | emergente | preparar | dias_restantes (8 d) |
+| 8 | `org:kroger` | Kroger | emergente | preparar | sin_estimacion |
+| 9 | `org:founders fund` | Founders Fund | emergente | esperar | dias_restantes (8 d) |
+| 10 | `org:sb energy` | sb energy | emergente | esperar | sin_estimacion |
+
+- W42 decisions: 0 publicar_ahora, 50 preparar, 166 esperar, 210 no_es_tema_caliente. All
+  weeks: 40 / 1,936 / 6,319 / 8,609 (measured).
+- **Backtest, secondary label** (es+pt GDELT growth, 43 weeks, measured; precision@10):
+
+  | Ranker | Precision@10 | 95% interval |
+  |---|---|---|
+  | Published radar (gate + guard) | 13.3% | 9.5..17.2 |
+  | Gate, no guard | 7.4% | 5.1..10.2 |
+  | No gate | 7.2% | 4.9..9.5 |
+  | Persistence | 12.8% | 9.1..17.0 |
+  | Raw-count growth | 0.2% | 0.0..0.7 |
+  | Base rate | 6.7% | |
+
+  - The guard adds +5.8 points (paired interval 2.8..9.1).
+  - The published radar beats raw-count growth (+13.0) and ties persistence (+0.5, −3.7..4.9).
+  - Lead time: median 3.0 weeks (2.0..4.0) over 47 flagged positives.
+  - Caveat in the report: the guard was designed after seeing W42; its thresholds come from
+    WS1's distributions, not from the label.
+- **Backtest, primary label** (pageviews, 01:34 write): coverage 60/440 (13.6%) for the published
+  radar, so precision is withheld. The missing-topic list for WS6 still stands (below).
+- Editor sheet regenerated from the guarded top 10: 10 + 10 items, no overlap.
+- Memory (measured): build 1.15 GB, backtest 1.31 GB peak.
+
 ## Addendum 4 (01:21 UTC-5): secondary backtest done; primary waits on labels
 
 - **Action needed (orchestrator / WS6):** the primary backtest needs 590 topics: each week's
@@ -29,7 +81,7 @@
 - **Memory:** the scores now build in topic chunks. Measured peaks: build 1.08 GB (was 2.4 GB),
   backtest 1.34 GB, with POLARS_MAX_THREADS=4.
 
-Earlier: READY FOR REDEPLOY (00:52, Addendum 3, now live as Cloud Run revision 00003).
+Earlier: READY FOR REDEPLOY at 00:52 (Addendum 3, live as Cloud Run revision 00003).
 
 ## New W42 top 10 (measured; `rank` 1-10 of 430 ranked topics)
 
@@ -75,7 +127,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 01:21 UTC-5 · branch `feat/ws4-scores` · draft PR #6 (into `develop`); local commits not pushed
+2026-10-18 01:36 UTC-5 · branch `feat/ws4-scores` · draft PR #6 (into `develop`); local commits not pushed
 
 ## Done
 

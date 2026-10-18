@@ -79,14 +79,16 @@ MIN_COVERAGE = 0.90
 
 RANKERS = {
     "radar_gated": "gated_score",
+    "radar_gated_nodiv": "gated_nodiv_score",
     "radar": "priority",
     "raw_count_growth": "raw_growth",
     "persistence": "past_growth",
 }
-RADARS = ("radar_gated", "radar")
+RADARS = ("radar_gated", "radar_gated_nodiv", "radar")
 BASELINES = ("raw_count_growth", "persistence")
 NAMES = {
-    "radar_gated": "Radar, with the eligibility gate (published)",
+    "radar_gated": "Radar, with the eligibility gate and the syndication guard (published)",
+    "radar_gated_nodiv": "Radar, with the eligibility gate, without the syndication guard",
     "radar": "Radar, without the gate (Priority alone)",
     "raw_count_growth": "Baseline: raw-count growth",
     "persistence": "Baseline: persistence (the label's own last 2 weeks)",
@@ -235,10 +237,18 @@ def evaluate(
         .join(gt, on=["unit_id", "asof"], how="left")
     )
     if gated is not None:
-        g_rank = gated.select("unit_id", "week", (-pl.col("rank")).alias("gated_score"))
-        u = u.join(g_rank, on=["unit_id", "week"], how="left")
+        cols = [(-pl.col("rank")).alias("gated_score")]
+        cols.append(
+            (-pl.col("rank_nodiv")).alias("gated_nodiv_score")
+            if "rank_nodiv" in gated.columns
+            else pl.lit(None, pl.Int64).alias("gated_nodiv_score")
+        )
+        u = u.join(gated.select("unit_id", "week", *cols), on=["unit_id", "week"], how="left")
     else:
-        u = u.with_columns(pl.lit(None, pl.Int64).alias("gated_score"))
+        u = u.with_columns(
+            pl.lit(None, pl.Int64).alias("gated_score"),
+            pl.lit(None, pl.Int64).alias("gated_nodiv_score"),
+        )
     rows = []
     need = dict.fromkeys(RANKERS, 0)
     have = dict.fromkeys(RANKERS, 0)
@@ -277,9 +287,9 @@ def evaluate(
             rec[f"top_{name}"] = top["unit_id"].to_list()
         rec["positives"] = g.filter("positive")["unit_id"].to_list()
         rows.append(rec)
-    res.coverage = {
-        n: (have[n], need[n]) for n in RANKERS if gated is not None or n != "radar_gated"
-    }
+    has = {"radar_gated": gated is not None}
+    has["radar_gated_nodiv"] = gated is not None and "rank_nodiv" in gated.columns
+    res.coverage = {n: (have[n], need[n]) for n in RANKERS if has.get(n, True)}
     if min_coverage is not None and any(
         need_ == 0 or have_ / need_ < min_coverage for have_, need_ in res.coverage.values()
     ):
@@ -306,6 +316,8 @@ def evaluate(
     pairs = [(a, b) for a in RADARS if a in rankers for b in BASELINES]
     if "radar_gated" in rankers:
         pairs.append(("radar_gated", "radar"))
+    if "radar_gated_nodiv" in rankers:
+        pairs.append(("radar_gated", "radar_gated_nodiv"))
     for a, b in pairs:
         d = (res.pooled[a]["hits"] - res.pooled[b]["hits"]) / res.pooled[a]["total"]
         entry = {"diff": d}
@@ -342,9 +354,12 @@ def scored_units() -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, pl.DataFra
     s, own, _ = build_scores.scored_units(unit)
     gated = None
     if unit == "topic":
-        gated = build_scores.gate(s.filter(pl.col("rank").is_not_null()), own).select(
-            "unit_id", "week", "rank"
+        ranked = s.filter(pl.col("rank").is_not_null())
+        full = build_scores.gate(ranked, own).select("unit_id", "week", "rank")
+        nodiv = build_scores.gate(ranked, own, diversity=False).select(
+            "unit_id", "week", pl.col("rank").alias("rank_nodiv")
         )
+        gated = full.join(nodiv, on=["unit_id", "week"], how="full", coalesce=True)
     allg = own.filter(pl.col("group") == "all").sort("unit_id", "dt")
     allg = allg.with_columns(
         ((pl.col("n_7d") + 1) / (pl.col("n_7d").shift(7).over("unit_id") + 1))
@@ -566,13 +581,15 @@ def render_section(res: Result) -> list[str]:
         "",
         "### Per week",
         "",
-        "| Week | Labelled | Positives | Radar (gated) | Radar | Raw-count growth | Persistence |",
-        "|---|---|---|---|---|---|---|",
+        "| Week | Labelled | Positives | Radar (published) | Radar (gate, no guard) "
+        "| Radar (no gate) | Raw-count growth | Persistence |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for r in pw.iter_rows(named=True):
         lines.append(
             f"| {r['week']} | {r['n_mapped']} | {r['n_pos']} | {r['hits_radar_gated']}/10 "
-            f"| {r['hits_radar']}/10 | {r['hits_raw_count_growth']}/10 "
+            f"| {r['hits_radar_gated_nodiv']}/10 | {r['hits_radar']}/10 "
+            f"| {r['hits_raw_count_growth']}/10 "
             f"| {r['hits_persistence']}/10 |"
         )
     return lines
@@ -589,7 +606,10 @@ def render(results: Result | dict[str, Result]) -> str:
         "profile. Every number below is **measured** on the lake unless marked otherwise. "
         "Protocol: `docs/designs/radar-build-plan.md` (Evaluation, Backtest) and the module "
         "docstring. The score weights and thresholds are hand-set (estimate), not fitted to "
-        "either label. Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build "
+        "either label. The syndication guard (Addendum 5) was added after WS9 saw syndicated "
+        "topics in the 2026-W42 top 10; its thresholds come from WS1's source distributions, "
+        "not from either label, but its design is not blind to the data. "
+        "Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build "
         "(no lake table maps gkg_id to topics yet); the backtest does not use them.",
     ]
     if "gdelt_espt" in results and "pageviews" in results:
