@@ -39,6 +39,14 @@ gcloud secrets add-iam-policy-binding radar-nebius-key \
   --member="serviceAccount:$(gcloud projects describe $P --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
   --role=roles/secretmanager.secretAccessor
 
+# 1b. The LangSmith key (traces and readers' thumbs up/down, POST /api/feedback); same pattern
+grep '^LANGSMITH_API_KEY=' .env | cut -d= -f2- | tr -d '\r\n"' | \
+  gcloud secrets create radar-langsmith-key --data-file=- --replication-policy=automatic
+gcloud secrets add-iam-policy-binding radar-langsmith-key \
+  --member="serviceAccount:$(gcloud projects describe $P --format='value(projectNumber)')-compute@developer.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor
+# make deploy-cloudrun mounts both secrets and sets LANGSMITH_TRACING=true, LANGSMITH_PROJECT=radar-agents
+
 # 2. Test the image locally (Docker), then deploy (public URL: approval)
 make deploy-cloudrun-local            # http://127.0.0.1:18080/api/freshness
 make deploy-cloudrun                  # prints https://radar-api-<hash>-uc.a.run.app
@@ -68,6 +76,57 @@ make deploy-serve                     # temporary URL; make deploy-api for a sta
 
 `make deploy-serve` (Modal) runs without the Secret (`RADAR_NEBIUS_SECRET=0`): the read endpoints
 answer and `/api/chat` returns 503, as the API does locally without a key.
+
+## Cold starts and a warm instance for the demo (maintainer's decision)
+
+Cloud Run scales `radar-api` to zero after about 15 minutes without requests, so the first visitor
+afterwards waits for a container to start. Measured cold start: see `status/WS9.md`
+(`uv run python deploy/cold_start.py --chat` waits for idle and repeats the measurement).
+
+To keep one instance warm, and to stop it again afterwards:
+
+```bash
+P=$(grep '^GCP_PROJECT_ID=' .env | cut -d= -f2)
+gcloud run services update radar-api --region us-central1 --project "$P" --min-instances=1   # on
+gcloud run services update radar-api --region us-central1 --project "$P" --min-instances=0   # off
+gcloud run services describe radar-api --region us-central1 --project "$P" \
+  --format='value(spec.template.metadata.annotations."autoscaling.knative.dev/minScale")'     # check
+```
+
+Each update creates a new revision of the same image; it does not rebuild anything.
+`make redeploy-all` (and `make deploy-cloudrun MIN_INSTANCES=…`) keeps the current setting, so a
+redeploy does not switch the warm instance off.
+
+**Cost (estimate)** comes from Cloud Run's published pricing (https://cloud.google.com/run/pricing,
+"Services (Requests-based billing)", Tier 1 / us-central1, default USD, read 2026-10-18).
+
+| Rate | Price |
+|---|---|
+| CPU, idle minimum instance | $0.0000025 per vCPU-second |
+| Memory, idle minimum instance | $0.0000025 per GiB-second |
+| CPU, active | $0.000024 per vCPU-second |
+| Memory, active | $0.0000025 per GiB-second |
+
+With this service's 1 vCPU and 1 GiB:
+
+| Instance state | Cost per hour (estimate) |
+|---|---|
+| Idle warm instance | (0.0000025 + 0.0000025) × 3,600 ≈ **$0.018** |
+| Serving requests | (0.000024 + 0.0000025) × 3,600 ≈ $0.095 |
+
+The monthly free tier (180,000 vCPU-seconds and 360,000 GiB-seconds of request-based billing,
+per billing account) may cover these hours entirely (estimate: it depends on other usage on the
+account).
+
+**When to use it:**
+
+| Window | Turn on | Turn off | Cost (estimate, idle) |
+|---|---|---|---|
+| Rehearsal and submission, Sun 2026-10-18 | 09:00 UTC-5 | 12:30 UTC-5 | ≈ $0.06 |
+| The 30X demo, Tue 2026-10-20 | 30 min before | right after | ≈ $0.02-0.04 |
+
+Outside those windows leave it at 0. The static fallback still serves every panel except the chat
+if the API is slow to wake.
 
 ## Notes
 

@@ -105,3 +105,24 @@ cover both directions), the routing fixes. Your two notes become the next steps:
 The merged agents reach the public site only after a Cloud Run redeploy: the orchestrator arranges it.
 
 Deadline: **03:30**.
+
+## Addendum 2 (orchestrator, 01:50 UTC-5): close the Auditor gap, then carry WS4's backtest
+
+1. **Auditor gap** (your note): veto decision words unless the turn emits a decision card for that
+   topic (q22 said "No se recomienda publicar ahora" with no card). Code change in `agents/runtime.py`
+   `_audit`, offline tests both ways. Add a false-positive check to `entity_resolved` (an entity
+   resolved when the question names none, or a different one, scores 0). One 3-repetition experiment
+   (v2 judge) to confirm decision faithfulness returns to 1.00 without hurting usefulness. Commit on
+   this branch.
+2. **Then take over WS4's backtest** (claude-extend is out of tokens after its current step): when
+   `status/WS4.md` on `feat/ws4-scores` has its HANDOFF section and that worktree has no running
+   process, continue there. WS6 (Grok) is fetching the 336 missing topics' pageviews (exact by 03:15,
+   all by 03:45). Rerun `RADAR_PROFILE=full POLARS_MAX_THREADS=4 uv run python -m models.backtest` at
+   each WS6 write; when coverage reaches the 90% threshold, run the final primary backtest (exact
+   matches; alias-included as a separate row), update `reports/backtest.md` and `status/WS4.md`, commit.
+   Report honestly if the radar does not beat both baselines.
+
+## Change (orchestrator, 02:25 UTC-5)
+
+Item 2 of Addendum 2 (take over WS4's backtest) is cancelled: the orchestrator runs it. Do item 1 only
+(the Auditor gap and the entity false-positive check), then stop.

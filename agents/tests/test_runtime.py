@@ -181,3 +181,76 @@ def test_social_metrics_and_opinions_are_refused(question):
     from agents.runtime import out_of_scope
 
     assert out_of_scope(question) is not None
+
+
+@pytest.mark.unit
+def test_entity_resolution_needs_whole_words(monkeypatch):
+    nodes = frozenset({"org:a co", "org:principal group", "org:linkedin", "org:nvidia",
+                       "org:openai inc", "org:microsoft", "org:samsung", "org:google",
+                       "org:taiwan semiconductor"})  # fmt: skip
+    monkeypatch.setattr(runtime.tools, "graph_nodes", lambda week=None: nodes)
+    monkeypatch.setattr(
+        runtime.tools,
+        "resolve_topic",
+        lambda name: {
+            "principal": "org:principal group",
+            "openai": "org:openai inc",
+            "linkedin": "org:linkedin",
+        }.get(name.lower(), name),  # fmt: skip
+    )
+    from agents.evals.run_evals import load_questions
+
+    for q in load_questions()["questions"]:
+        assert runtime._entity_in_question(q["question"], None) == q.get("entity"), q["id"]
+
+
+@pytest.mark.unit
+def test_auditor_keeps_a_decision_only_when_a_card_shows_it():
+    turn = _turn_with(_ROWS)  # the scores hold decisions, as on the full lake
+    answer = "Sin backtest no se puede confiar. No se recomienda publicar ahora."
+    out, bad, vetoed = runtime._audit(turn, answer, "¿Cuánto puedo confiar?", [])
+    assert vetoed and "publicar ahora" not in out.lower() and "decisión pendiente" in out
+    card = {"topic_id": "chips_infra", "decision": "publicar_ahora"}
+    out, _, vetoed = runtime._audit(_turn_with(_ROWS), "Publicar ahora — Chips.", "q", [card])
+    assert not vetoed and out == "Publicar ahora — Chips."
+    other = {"topic_id": "org:x", "decision": "preparar"}
+    out, _, vetoed = runtime._audit(_turn_with(_ROWS), "Publicar ahora — Chips.", "q", [other])
+    assert vetoed and "decisión pendiente" in out
+
+
+@pytest.mark.unit
+def test_the_route_records_the_resolved_entity():
+    response = runtime.run_turn(
+        "¿Qué tema sube esta semana?", model=ScriptedChat("Por qué: crece.")
+    )
+    step = next(s for s in response["trace"] if s["action"] == "delegate")
+    assert step["agent"] == "media_master" and step["arguments"] == {"entity": None}
+
+
+@pytest.mark.parametrize(
+    ("question", "entity", "lens"),
+    [
+        ("Muéstrame el grafo de la semana", None, "decision"),
+        ("¿Qué pasa con Nvidia? Muéstramelo en el grafo", "org:nvidia", "segment"),
+        ("¿Cómo está el tono de las noticias de IA?", None, "tone"),
+        ("¿Qué temas están a punto de llegar al español?", None, "window"),
+        ("¿Qué temas conectan la IA con el clima?", None, "bridge"),
+        ("¿Qué tema está ganando más fuerza?", None, "momentum"),
+        ("¿Qué conexiones nuevas aparecieron esta semana?", None, "novelty"),
+    ],
+)
+def test_the_question_picks_the_graph_lens(question, entity, lens):
+    from agents.runtime import view_lens
+
+    assert view_lens(question, entity) == lens
+
+
+def test_lens_values_are_in_the_contract():
+    import json
+
+    from radar.paths import REPO_ROOT
+
+    schema = json.loads((REPO_ROOT / "contracts" / "view_command.schema.json").read_text())
+    assert {"decision", "segment", "tone", "window", "bridge", "momentum", "novelty"} <= set(
+        schema["properties"]["color_by"]["enum"]
+    )

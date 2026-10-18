@@ -102,3 +102,61 @@ What the judge's reasons and the per-question scores say (measured, 3 runs per q
   dates "fechas futuras improbables" (q21 freshness). Grounding is checked by code instead; a judge that
   receives the tool results and today's date would score these fairly, but changing the judge needs the
   baseline re-scored with it.
+
+### Judge v2 and the decision line's scope (2026-10-18, addendum 01:25)
+
+`usefulness_v2` (in `evals/run_evals.py`, v1 kept) gives the judge today's date and the trimmed tool
+results the answer was built from, and asks it to score only usefulness to the executive given that
+data; grounding stays a code check. `--rescore <experiment>` adds it to an existing experiment
+(LangSmith `evaluate_existing`). Same notation as above: mean over 75 runs [lowest-highest repetition
+mean], all *(measured)*, same scores file.
+
+| Experiment (sha) | Change | usefulness v1 | usefulness_v2 | grounding | decisions | routing | latency | tokens/turn | Kept |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline-r3 (565d487), re-scored | `develop` before this lane | 0.443 [0.40-0.48] | 0.383 [0.36-0.41] | 0.947 | 1.00 | 0.960 | 6.1 s | 6,395 | - |
+| route-gaps-r3 (05c9ac0), re-scored | final of the first round | 0.520 [0.48-0.57] | 0.567 [0.50-0.60] | 1.000 | 1.00 | 1.000 | 6.2 s | 5,814 | yes |
+| decision-scope-r3 (a9dcfa7) | decision line only for decision questions | 0.447 [0.41-0.49] | 0.540 [0.51-0.57] | 1.000 | 1.00 | 1.000 | 10.5 s | 5,783 | no (reverted) |
+| entity-words-r3 (55fe2d9) | topic names matched as whole words; "principal", "linkedin" as stop words | 0.497 [0.47-0.53] (n=74, one judge 502) | 0.567 [0.55-0.59] | 1.000 | 0.987 [0.96-1.00] | 1.000 | 15.0 s (API slow, 502s) | 5,866 | yes (correctness) |
+| decision-scope2-r3 (edff6ea) | decision line for decision questions and non-graph named topics | 0.483 [0.46-0.50] | 0.560 [0.53-0.60] | 1.000 | 1.00 | 1.000 | 6.0 s | 5,801 | no (reverted) |
+
+**Final against the baseline, both judges:** usefulness v1 0.443 -> 0.497, usefulness_v2 0.383 ->
+0.567 (lowest final repetition 0.55 vs. the baseline's highest 0.41: well beyond the spread), grounding
+0.947 -> 1.000, routing 0.960 -> 1.000, tokens 6,395 -> 5,866. Decision faithfulness 1.00 -> 0.987:
+one run of 75 (q22, "¿Cuánto puedo confiar en el radar?") said "No se recomienda publicar ahora" with
+no card. That is not the entity change: the Auditor vetoes decision words only when no tool returned a
+decision, and the top 10 (always read) has decisions even when the route shows no card. Closing it is
+an Auditor rule change, out of this lane's scope.
+
+What the two judges show (per question, 3 runs each):
+
+- v2 fixes v1's blind spots: freshness (q21) 0.17 -> 0.83 once the judge knows today's date, and the
+  honest out-of-scope answer to "¿Qué opina Sam Altman...?" (q25) 0.00 -> 1.00. v2 is stricter where an
+  answer misuses the data it was given (q03 top 3 0.08, q05 "what is NOT hot" 0.00).
+- **The entity resolver was wrong on 7 of 25 questions** on the full lake: a substring test found
+  `org:a co` inside "ha costado" (q03, q14, q20), "el tema principal" became `org:principal group`
+  (q15, q19), and "post de LinkedIn" made LinkedIn the topic (q18, q24). With whole-word matching all
+  25 resolve as expected; v2 usefulness on those questions rose (q14 0.00 -> 0.58, q15 0.75 -> 1.00,
+  q03 0.08 -> 0.17). The `entity_resolved` evaluator only checks expected entities, never false
+  positives, which is why this was invisible; a false-positive check is a cheap next evaluator.
+- Scoping the decision line did not help in either form: q15 and q16 rose, but q06 (Nvidia) fell
+  without the line (0.83 -> 0.42), and with the line kept for named topics the net effect was within
+  noise. The line stays as it was.
+- Still weak under v2: q03 (top 3), q05 (what is not hot), q13 (communities), q17 (tone in Spanish:
+  the data has no Spanish tone field for the leader, so the answer leans on other numbers).
+
+### The Auditor gap (2026-10-18, addendum 2)
+
+The Auditor now keeps a decision phrase ("publicar ahora", "no es tema caliente", "preparar ya") only
+when the turn emits a decision card with that decision; otherwise it becomes "decisión pendiente" and
+a `veto` step is logged. `entity_resolved` now scores all 25 questions: 1 only when the entity the
+code route resolved (recorded on the Media Master's delegate step) equals the expected one, including
+none, so false positives count (earlier rows scored only the 6 entity questions, n = 18).
+
+| Experiment (sha) | Change | usefulness v1 | usefulness_v2 | grounding | decisions | routing | entities | latency | tokens/turn |
+|---|---|---|---|---|---|---|---|---|---|
+| entity-words-r3 (55fe2d9) | before | 0.497 [0.47-0.53] | 0.567 [0.55-0.59] | 1.000 | 0.987 [0.96-1.00] | 1.000 | 1.00 (n=18) | 15.0 s | 5,866 |
+| auditor-cards-r3 (7d99229) | decisions only with a card; false-positive entity check | 0.500 [0.47-0.55] | 0.550 [0.50-0.59] | 1.000 | **1.000** | 1.000 | **1.00 (n=75)** | 12.6 s | 5,812 |
+
+Decision faithfulness is back to 1.00 and no question resolves a topic it does not name (75 of 75);
+usefulness moves within the repetition spread (all *measured*). Latency was high on both runs tonight
+(Nebius returned 502s); token counts are flat, so it is the API, not the turn.
