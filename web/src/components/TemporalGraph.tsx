@@ -1,6 +1,7 @@
 import { Graph, type GraphConfig } from "@cosmos.gl/graph";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FAMILY_PALETTE, STANCE_PALETTE, familyEntry, stanceEntry } from "../aiLexicon";
+import { fetchLeaders } from "../api";
 import { browserHasGraphics } from "../graphics";
 import { displayName } from "../publicCopy";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
@@ -60,6 +61,8 @@ const LAYOUT_SAMPLE_INDEXES = [0, 100, 250, 500, 750, 999];
 const FIT_PAD = 0.08;
 /** Rendered label height in CSS px (the global button min-height). */
 const LABEL_H = 36;
+/** The AI graph always labels this many volume leaders of the displayed week (/api/leaders). */
+const LEADER_LABELS = 8;
 /** A focused neighbourhood is framed at most this many times the whole-graph zoom. */
 const SUBSET_MAX_ZOOM = 2.5;
 
@@ -239,6 +242,8 @@ export function TemporalGraph({
   const [error, setError] = useState<string | null>(null);
   const [weekIdx, setWeekIdx] = useState<number>(0);
   const [playing, setPlaying] = useState<boolean>(false);
+  // AI graph only: the week's volume leaders (/api/leaders), always labelled with the radar top 10.
+  const [leaders, setLeaders] = useState<ReadonlySet<string>>(new Set());
   const activeLens = graphLensFromColorBy(colorBy);
   const activeLensRef = useRef(activeLens);
   activeLensRef.current = activeLens;
@@ -327,9 +332,10 @@ export function TemporalGraph({
         const isNeighbour = neighbours?.has(i) ?? false;
         const rk = node.rank?.[w] ?? null;
         const isTop10 = rk !== null && rk >= 1 && rk <= 10;
-        const show = node.show_label || isTop10 || isFocused || isNeighbour;
+        const isLeader = leaders.has(node.id);
+        const show = node.show_label || isTop10 || isFocused || isNeighbour || isLeader;
         if (!show) continue;
-        if (isTop10 || isFocused) mustShow.add(i);
+        if (isTop10 || isFocused || isLeader) mustShow.add(i);
 
         const lx = live[i * 2];
         const ly = live[i * 2 + 1];
@@ -349,6 +355,7 @@ export function TemporalGraph({
         const priority =
           (isFocused ? 10000 : 0) +
           (isNeighbour ? 6000 : 0) +
+          (isLeader ? 5500 : 0) +
           (isTop10 ? 5000 - (rk ?? 10) * 100 : 0) +
           (decision === "publicar_ahora" || decision === "preparar" ? 600 : 0) +
           pr * 100000 +
@@ -385,37 +392,51 @@ export function TemporalGraph({
         if (cand.x + half > width - pad) cand.x = width - pad - half;
         if (cand.x - half < pad || cand.x + half > width - pad) continue;
         // The rendered box: LABEL_H tall, lifted by translate(-50%, -115%).
-        const boxAt = (y: number): Box => {
+        const boxAt = (y: number, x: number = cand.x): Box => {
           const y0 = y - LABEL_H * 1.15;
-          return { x0: cand.x - half, y0, x1: cand.x + half, y1: y0 + LABEL_H };
+          return { x0: x - half, y0, x1: x + half, y1: y0 + LABEL_H };
         };
         if (obstacle && overlaps(boxAt(cand.y), obstacle)) continue;
-        // Top-10 and highlighted labels must show: in a dense layout they step one
-        // label height up or down to a free slot instead of covering each other.
+        // Must-show labels (top 10, highlighted, AI volume leaders) take the nearest free slot:
+        // up to four label heights up or down, then one label width left or right, rather than
+        // cover each other in a dense centre.
         const must = mustShow.has(cand.idx);
-        const steps = must ? [0, -1, 1, -2, 2] : [0];
-        let chosen: number | null = null;
-        for (const step of steps) {
+        const slots: Array<[number, number]> = [[0, 0]];
+        if (must) {
+          for (const dx of [0, half * 2 + 8, -(half * 2 + 8)]) {
+            for (const step of [0, -1, 1, -2, 2, -3, 3, -4, 4]) {
+              if (dx !== 0 || step !== 0) slots.push([dx, step]);
+            }
+          }
+        }
+        let chosen: { x: number; y: number } | null = null;
+        for (const [dx, step] of slots) {
+          const x = cand.x + dx;
           const y = cand.y + step * LABEL_H;
-          const box = boxAt(y);
-          if (box.y0 < 0 || box.y1 > height) continue;
+          const box = boxAt(y, x);
+          if (box.y0 < 0 || box.y1 > height || box.x0 < 4 || box.x1 > width - 4) continue;
           if (obstacle && overlaps(box, obstacle)) continue;
           if (!placed.some((p) => overlaps(box, p))) {
-            chosen = y;
+            chosen = { x, y };
             break;
           }
         }
-        if (chosen === null && must) chosen = cand.y;
+        if (chosen === null && must) chosen = { x: cand.x, y: cand.y };
         if (chosen === null) continue;
-        cand.y = chosen;
-        placed.push(boxAt(chosen));
+        cand.x = chosen.x;
+        cand.y = chosen.y;
+        placed.push(boxAt(chosen.y, chosen.x));
         accepted.push(cand);
       }
 
       setLabels(accepted);
     },
-    [focusTopicIdx, highlightSet],
+    [focusTopicIdx, highlightSet, leaders],
   );
+  // The graph's config callbacks are created once: they call the latest labeller through this ref,
+  // or a zoom would relabel with the first render's state (no leaders, no focus).
+  const recomputeLabelsRef = useRef(recomputeLabels);
+  recomputeLabelsRef.current = recomputeLabels;
 
   // Frame the camera, then the labels. A focused topic in the Historia lens is
   // framed with its 1-hop neighbours so the reader sees what it connects to;
@@ -1267,7 +1288,7 @@ export function TemporalGraph({
       fitViewOnInit: false,
       attribution: "",
       onZoom: () => {
-        recomputeLabels(weekIdxRef.current);
+        recomputeLabelsRef.current(weekIdxRef.current);
       },
       onClick: (index) => {
         if (index !== undefined && data.nodes[index]) {
@@ -1441,8 +1462,41 @@ export function TemporalGraph({
     const first = reheatKeyRef.current === null;
     reheatKeyRef.current = key;
     if (first && !focusTopic) return;
+    if (data._meta.params.ai_only) {
+      // The AI graph (~100 topics) collapses into one clump when the simulation reheats: keep the
+      // exported layout, restyle for the lens and refit (a focused topic frames its ring).
+      applyLensRef.current(weekIdxRef.current, activeLens);
+      fitFrameRef.current();
+      return;
+    }
     applyLensRef.current(weekIdxRef.current, activeLens, { reheat: true });
   }, [activeLens, focusTopic, highlight, data]);
+
+  // AI graph: label the displayed week's top 8 by article volume next to the radar top 10.
+  const leadersWeek = data?._meta.params.ai_only
+    ? (data._meta.iso_weeks?.[weekIdx] ?? data._meta.weeks[weekIdx])
+    : null;
+  useEffect(() => {
+    if (!leadersWeek) return;
+    let cancelled = false;
+    fetchLeaders(leadersWeek)
+      .then((res) => {
+        if (cancelled) return;
+        const ids = res.rows.slice(0, LEADER_LABELS).map((r) => r.topic_id);
+        window.__metrics = { ...window.__metrics, leader_labels: ids.length, leaders_week: leadersWeek };
+        setLeaders(new Set(ids));
+      })
+      .catch(() => {
+        if (!cancelled) setLeaders(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [leadersWeek]);
+
+  useEffect(() => {
+    if (graphRef.current && dataRef.current) recomputeLabels(weekIdxRef.current);
+  }, [leaders, recomputeLabels]);
 
   // Pill clicks write the same color_by a chat answer writes (App.onLensChange).
   const handleSelectLens = (lens: LensMode) => {
@@ -1651,7 +1705,13 @@ export function TemporalGraph({
               <p>
                 Este navegador no tiene aceleración gráfica activada; mostramos una imagen del grafo
               </p>
-              <img src="/fallback/temporal.png" alt="Grafo temporal semanal" />
+              <img src="/fallback/temporal.png" alt="Grafo temporal semanal de los temas de IA" />
+              <p className="graph-fallback-note">
+                Imagen fija del grafo de IA (semana 2026-W42). Los colores son las familias del
+                léxico (laboratorios, modelos, productos, técnicas, infraestructura, investigación,
+                negocio, regulación, seguridad, oposición y sociedad); las etiquetas son el top 10 del
+                radar y los 8 temas con más artículos de la semana.
+              </p>
             </div>
           ) : (
             <>
