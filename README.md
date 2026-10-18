@@ -59,6 +59,7 @@ or claim the tools do not back.
 The living plan is [docs/plan/MASTER_PLAN.md](docs/plan/MASTER_PLAN.md) (the original is
 [MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf)), and the build design is in
 [docs/designs/radar-build-plan.md](docs/designs/radar-build-plan.md).
+The living plan, updated to v0.3.0 with its decisions, limits and next steps: [docs/plan/MASTER_PLAN.md](docs/plan/MASTER_PLAN.md).
 
 ## See it running
 

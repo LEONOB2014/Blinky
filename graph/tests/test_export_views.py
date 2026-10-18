@@ -261,3 +261,11 @@ def test_edge_state_uses_the_unpruned_previous_week():
         if pair == {"org:a", "org:c"} and week_i == 1:
             found = state
     assert found == "persisting"
+
+
+def test_the_ai_graph_uses_the_ring_floor_and_v02_keeps_its_own():
+    from graph.context import MIN_N as RING_MIN_N
+    from graph.export_views import MIN_N, default_min_n
+
+    assert default_min_n(ai=True) == RING_MIN_N == 3
+    assert default_min_n(ai=False) == MIN_N == 20
