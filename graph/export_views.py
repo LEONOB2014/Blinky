@@ -50,7 +50,113 @@ EXTRA_STORY_TOPICS = (
     "org:microsoft",
     "org:google",
     "org:openai group",
+    "org:openai",
+    "org:anthropic",
     "thm:TECH_AUTOMATION",
+)
+LEIDEN_SEED = 42
+
+# Core AI organizations from bq_sql/s2_monthly_insert.sql (f_org) + AI stack infrastructure.
+_RING_AI_ORGS = frozenset(
+    {
+        "openai",
+        "openai group",
+        "anthropic",
+        "google deepmind",
+        "deepmind",
+        "nvidia",
+        "nvidia corporation",
+        "mistral",
+        "mistral ai",
+        "deepseek",
+        "hugging face",
+        "perplexity",
+        "xai",
+        "cohere",
+        "stability ai",
+        "midjourney",
+        "scale ai",
+        "databricks",
+        "cerebras",
+        "groq",
+        "safe superintelligence",
+        "meta ai",
+        "data centers",
+        "supermicro",
+    }
+)
+_RING_AI_SUBTOPICS = frozenset({"agents", "llms_models", "chips_infra"})
+
+# Broader ICT / tech organizations from bq_sql/s4a_article_segment.sql (tech_org).
+_RING_IT_ORGS = frozenset(
+    {
+        "google",
+        "alphabet",
+        "microsoft",
+        "apple",
+        "amazon",
+        "meta",
+        "meta platforms",
+        "facebook",
+        "instagram",
+        "youtube",
+        "linkedin",
+        "ibm",
+        "intel",
+        "amd",
+        "advanced micro devices",
+        "qualcomm",
+        "tsmc",
+        "taiwan semiconductor",
+        "samsung",
+        "samsung electronics",
+        "broadcom",
+        "micron",
+        "micron technology",
+        "sandisk",
+        "oracle",
+        "salesforce",
+        "tesla",
+        "spacex",
+        "rocket lab",
+        "baidu",
+        "alibaba",
+        "tencent",
+        "huawei",
+        "bytedance",
+        "tiktok",
+        "sap",
+        "cisco",
+        "dell",
+        "netflix",
+        "comcast",
+        "softbank",
+        "softbank group",
+        "mercadolibre",
+        "globant",
+        "nubank",
+    }
+)
+
+# ICT & software theme prefixes from bq_sql/s2_monthly_insert.sql (f_ict) and GKG ICT taxonomy.
+_RING_IT_THEME_PREFIXES = (
+    "WB_133_",
+    "WB_2399_",
+    "WB_2381_",
+    "WB_652_",
+    "WB_658_",
+    "WB_661_",
+    "WB_662_",
+    "WB_667_",
+    "WB_669_",
+    "WB_670_",
+    "WB_672_",
+    "WB_678_",
+    "WB_694_",
+    "TECH_BIGDATA",
+    "SOC_INNOVATION",
+    "CYBER_ATTACK",
+    "MEDIA_SOCIAL",
 )
 
 _LOC_ES: dict[str, str] = {
@@ -290,6 +396,7 @@ _ACRONYMS = frozenset(
         "NVDA",
         "CEO",
         "TIC",
+        "SB",
     }
 )
 
@@ -307,6 +414,104 @@ def denied_topic_ids() -> frozenset[str]:
 
 def subtopic_labels() -> dict[str, str]:
     return {k: v["label_es"] for k, v in (_taxonomy().get("subtopics") or {}).items()}
+
+
+def node_ring_and_domain(
+    entity_id: str,
+    primary_subtopics: dict[str, str] | None = None,
+) -> tuple[str, str | None]:
+    """Classify a graph node into one of the three taxonomy rings (``ai``, ``it``, ``ai_domain``).
+
+    Because ``topic_daily`` in the lake is built from Ring-1 (``segment == 'ai'``) articles only
+    (``bq_sql/s4_aggregates.sql``), ``topic_daily.segment`` is ``'ai'`` for every entity in that
+    table. To distinguish core AI nodes, ICT/tech infrastructure nodes, and external domain nodes
+    where AI crosses into industry/policy/society, we apply the taxonomy rules from
+    ``contracts/taxonomy.yaml``, ``bq_sql/s2_monthly_insert.sql`` (``f_org``, ``f_ict``), and
+    ``bq_sql/s4a_article_segment.sql`` (``tech_org``, ``domains``):
+    - ``ai`` (Ring 1): ``thm:TECH_AUTOMATION``, core AI labs/models/chip orgs (``_RING_AI_ORGS``),
+      or ranked orgs whose primary subtopic is ``agents``, ``llms_models``, or ``chips_infra``.
+    - ``it`` (Ring 2): ICT/software GKG themes (``_RING_IT_THEME_PREFIXES``) and broader IT,
+      semiconductor, cloud, and platform orgs (``_RING_IT_ORGS``).
+    - ``ai_domain`` (Ring 3): domain themes matching ``taxonomy.yaml`` ``domains`` prefixes,
+      non-AI/non-IT sector organizations (finance, consulting, energy, healthcare, retail,
+      government, universities), and geographies (``loc:*``).
+    """
+    etype, raw = entity_id.split(":", 1) if ":" in entity_id else ("", entity_id)
+    domains_cfg = _taxonomy().get("domains") or {}
+    subtopic_to_domain: dict[str, str] = {}
+    for dom_name, dom_spec in domains_cfg.items():
+        for st in dom_spec.get("explains") or []:
+            subtopic_to_domain.setdefault(st, dom_name)
+
+    primary_st = (primary_subtopics or {}).get(entity_id, "")
+    matched_domain: str | None = subtopic_to_domain.get(primary_st)
+
+    if etype == "thm":
+        code = raw.upper()
+        for dom_name, dom_spec in domains_cfg.items():
+            for pref in dom_spec.get("themes_prefix") or []:
+                if code.startswith(pref.upper()):
+                    matched_domain = matched_domain or dom_name
+                    break
+            if matched_domain:
+                break
+        if code == "TECH_AUTOMATION" or code.startswith("AI_"):
+            return "ai", None
+        if any(code.startswith(p) for p in _RING_IT_THEME_PREFIXES):
+            return "it", None
+        return "ai_domain", matched_domain
+
+    if etype == "org":
+        low = raw.strip().lower()
+        if low in _RING_AI_ORGS or primary_st in _RING_AI_SUBTOPICS:
+            return "ai", None
+        if low in _RING_IT_ORGS:
+            return "it", None
+        return "ai_domain", matched_domain
+
+    return "ai_domain", matched_domain
+
+
+def _edge_state_and_growth(n: int, n_prev: int | None) -> tuple[str, float]:
+    """Classify weekly edge state and compute ``log((n + 1) / (n_prev + 1))``."""
+    prev_val = int(n_prev) if n_prev is not None and n_prev > 0 else 0
+    growth = math.log((float(n) + 1.0) / (float(prev_val) + 1.0))
+    if prev_val <= 0:
+        return "new", growth
+    if n >= 1.5 * prev_val:
+        return "growing", growth
+    if n <= 0.5 * prev_val:
+        return "fading", growth
+    return "persisting", growth
+
+
+def _within_week_percentiles(values: dict[str, float | int | None]) -> dict[str, float | None]:
+    """Within-week percentile in ``[0, 1]`` (ties broken deterministically by id)."""
+    valid = sorted(
+        ((float(val), ent) for ent, val in values.items() if val is not None),
+        key=lambda item: (item[0], item[1]),
+    )
+    m = len(valid)
+    out: dict[str, float | None] = dict.fromkeys(values)
+    if m == 0:
+        return out
+    if m == 1:
+        out[valid[0][1]] = 1.0
+        return out
+    denom = float(m - 1)
+    for k, (_, ent) in enumerate(valid):
+        out[ent] = k / denom
+    return out
+
+
+def _median_p90(vals: list[float]) -> dict[str, float | int | None]:
+    clean_vals = sorted(float(x) for x in vals if x is not None and not math.isnan(float(x)))
+    n = len(clean_vals)
+    if n == 0:
+        return {"n": 0, "median": None, "p90": None}
+    med = clean_vals[n // 2] if n % 2 == 1 else 0.5 * (clean_vals[n // 2 - 1] + clean_vals[n // 2])
+    p90 = clean_vals[min(n - 1, int(0.90 * n))]
+    return {"n": n, "median": round(med, 6), "p90": round(p90, 6)}
 
 
 def iso_week(monday: date) -> str:
@@ -518,11 +723,77 @@ def _precompute_layout(
     ]
 
 
+def _compute_subgraph_metrics(
+    node_ids: list[str],
+    edge_rows: list[tuple[str, str, int, float]],
+    ring_of: dict[str, str],
+) -> tuple[dict[str, float | None], dict[str, float | None], dict[str, int | None]]:
+    """Compute normalised betweenness, cross_ring_share, and Leiden on one week's edges."""
+    import igraph as ig
+    import leidenalg
+
+    bet_out: dict[str, float | None] = dict.fromkeys(node_ids)
+    cross_out: dict[str, float | None] = dict.fromkeys(node_ids)
+    comm_out: dict[str, int | None] = dict.fromkeys(node_ids)
+    if not edge_rows:
+        return bet_out, cross_out, comm_out
+
+    tot_n: dict[str, int] = {}
+    cross_n: dict[str, int] = {}
+    active_set: set[str] = set()
+    for u, v, n_val, _ in edge_rows:
+        active_set.add(u)
+        active_set.add(v)
+        tot_n[u] = tot_n.get(u, 0) + int(n_val)
+        tot_n[v] = tot_n.get(v, 0) + int(n_val)
+        if ring_of.get(u) != ring_of.get(v):
+            cross_n[u] = cross_n.get(u, 0) + int(n_val)
+            cross_n[v] = cross_n.get(v, 0) + int(n_val)
+
+    for u in active_set:
+        if tot_n.get(u, 0) > 0:
+            cross_out[u] = cross_n.get(u, 0) / float(tot_n[u])
+
+    active_nodes = sorted(active_set)
+    n_active = len(active_nodes)
+    v_idx = {u: i for i, u in enumerate(active_nodes)}
+    ig_edges = [(v_idx[u], v_idx[v]) for u, v, _, _ in edge_rows]
+    n_weights = [float(n_val) for _, _, n_val, _ in edge_rows]
+    dists = [1.0 / max(float(npmi_val), 1e-6) for _, _, _, npmi_val in edge_rows]
+
+    g = ig.Graph(n=n_active, edges=ig_edges, directed=False)
+    g.vs["name"] = active_nodes
+    g.es["n"] = n_weights
+    g.es["dist"] = dists
+
+    raw_bet = g.betweenness(directed=False, weights="dist")
+    denom = float((n_active - 1) * (n_active - 2)) / 2.0 if n_active > 2 else 1.0
+    for i, u in enumerate(active_nodes):
+        bet_out[u] = min(1.0, float(raw_bet[i]) / denom)
+
+    part = leidenalg.find_partition(
+        g,
+        leidenalg.ModularityVertexPartition,
+        weights="n",
+        seed=LEIDEN_SEED,
+    )
+    comms = sorted(
+        [[active_nodes[idx_v] for idx_v in members] for members in part],
+        key=lambda c: (-len(c), min(c)),
+    )
+    for c_idx, members in enumerate(comms):
+        for u in members:
+            comm_out[u] = c_idx
+
+    return bet_out, cross_out, comm_out
+
+
 def export_temporal(
     edges: pl.LazyFrame | pl.DataFrame,
     node_metrics: pl.LazyFrame | pl.DataFrame,
     scores: pl.LazyFrame | pl.DataFrame | None = None,
     *,
+    topic_daily: pl.LazyFrame | pl.DataFrame | None = None,
     span: int = SPAN_WEEKS,
     max_nodes: int = MAX_NODES,
     min_n: int = MIN_N,
@@ -572,13 +843,24 @@ def export_temporal(
 
     denied = denied_topic_ids()
     score_labels: dict[str, str] = {}
+    primary_subtopics: dict[str, str] = {}
     wk_names = {iso_week(w): i for i, w in enumerate(weeks)}
     sc_df: pl.DataFrame | None = None
     if scores is not None:
         sc_cols = scores.lazy().collect_schema().names()
         sel_cols = [
             c
-            for c in ("week", "topic_id", "rank", "decision", "label_es", "priority")
+            for c in (
+                "week",
+                "topic_id",
+                "rank",
+                "decision",
+                "label_es",
+                "priority",
+                "primary_subtopic",
+                "emotional_charge_pct",
+                "window",
+            )
             if c in sc_cols
         ]
         sc_df = (
@@ -595,6 +877,10 @@ def export_temporal(
             for tid, lbl in sc_df.select("topic_id", "label_es").iter_rows():
                 if lbl:
                     score_labels[tid] = str(lbl)
+        if "primary_subtopic" in sc_df.columns:
+            for tid, pst in sc_df.select("topic_id", "primary_subtopic").iter_rows():
+                if pst:
+                    primary_subtopics[tid] = str(pst)
         # Ensure top-10 ranked topics that appear in all_deg are included within max_nodes.
         top_ranked_ids = (
             sc_df.filter(pl.col("rank").is_not_null() & (pl.col("rank") <= 10))["topic_id"]
@@ -617,9 +903,27 @@ def export_temporal(
     kept = kept.filter(pl.col("x").is_in(ids) & pl.col("y").is_in(ids)).sort("wk", "x", "y")
     kept = _prune_top_k_per_node(kept, top_k)
 
+    ring_of: dict[str, str] = {}
+    domain_of: dict[str, str | None] = {}
+    for v in ids:
+        r_seg, r_dom = node_ring_and_domain(v, primary_subtopics)
+        ring_of[v] = r_seg
+        domain_of[v] = r_dom
+
     nm_cols = node_metrics_lf.collect_schema().names()
     nm_sel = [
-        c for c in ("wk", "entity_id", "pagerank", "pr_rank_delta", "deg_growth") if c in nm_cols
+        c
+        for c in (
+            "wk",
+            "entity_id",
+            "pagerank",
+            "pr_rank_delta",
+            "deg_growth",
+            "new_nbr_rate",
+            "kcore",
+            "is_hub",
+        )
+        if c in nm_cols
     ]
     pr = (
         node_metrics_lf.filter(pl.col("wk").is_in(weeks) & pl.col("entity_id").is_in(ids))
@@ -629,6 +933,8 @@ def export_temporal(
     pagerank: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
     pr_rank_delta: dict[str, list[int | None]] = {v: [None] * len(weeks) for v in ids}
     deg_growth: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    new_nbr_rate: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    kcore: dict[str, list[int | None]] = {v: [None] * len(weeks) for v in ids}
     for row in pr.to_dicts():
         wi = widx[row["wk"]]
         ent = row["entity_id"]
@@ -637,9 +943,15 @@ def export_temporal(
             pr_rank_delta[ent][wi] = row.get("pr_rank_delta")
         if "deg_growth" in row:
             deg_growth[ent][wi] = row.get("deg_growth")
+        if "new_nbr_rate" in row:
+            new_nbr_rate[ent][wi] = row.get("new_nbr_rate")
+        if "kcore" in row:
+            kcore[ent][wi] = row.get("kcore")
 
     rank: dict[str, list[int | None]] = {v: [None] * len(weeks) for v in ids}
     decision: dict[str, list[str | None]] = {v: [None] * len(weeks) for v in ids}
+    emotional_charge_pct: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    window_state: dict[str, list[str | None]] = {v: [None] * len(weeks) for v in ids}
     if sc_df is not None:
         sc_in_ids = sc_df.filter(pl.col("topic_id").is_in(ids))
         for row in sc_in_ids.to_dicts():
@@ -647,6 +959,115 @@ def export_temporal(
             ent = row["topic_id"]
             rank[ent][wi] = row.get("rank")
             decision[ent][wi] = row.get("decision")
+            if "emotional_charge_pct" in row:
+                emotional_charge_pct[ent][wi] = row.get("emotional_charge_pct")
+            win = row.get("window")
+            if isinstance(win, dict) and win.get("state"):
+                window_state[ent][wi] = str(win["state"])
+
+    tone: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    if topic_daily is not None and weeks:
+        td_lf = topic_daily.lazy()
+        td_cols = td_lf.collect_schema().names()
+        if {"topic_id", "dt", "mean_tone", "n_articles"}.issubset(td_cols):
+            min_dt = weeks[0]
+            max_dt = weeks[-1] + timedelta(days=6)
+            td_df = (
+                td_lf.filter(
+                    (pl.col("dt") >= min_dt)
+                    & (pl.col("dt") <= max_dt)
+                    & pl.col("topic_id").is_in(ids)
+                    & pl.col("mean_tone").is_not_null()
+                    & ~pl.col("is_missing")
+                )
+                .with_columns(wk=pl.col("dt").dt.truncate("1w"))
+                .group_by("wk", "topic_id")
+                .agg(
+                    (
+                        (pl.col("mean_tone") * pl.col("n_articles")).sum()
+                        / pl.col("n_articles").sum()
+                    ).alias("wk_tone")
+                )
+                .collect()
+            )
+            for row in td_df.to_dicts():
+                if row["wk"] in widx:
+                    tone[row["topic_id"]][widx[row["wk"]]] = row["wk_tone"]
+
+    # Compute per-week node & edge graph properties on the pruned graph (Addendum 3).
+    betweenness: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    cross_ring_share: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    community_week: dict[str, list[int | None]] = {v: [None] * len(weeks) for v in ids}
+    importance: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+    momentum: dict[str, list[float | None]] = {v: [None] * len(weeks) for v in ids}
+
+    edges_by_week: dict[int, list[tuple[str, str, int, float]]] = {
+        wi: [] for wi in range(len(weeks))
+    }
+    edge_n_by_week_pair: dict[int, dict[tuple[str, str], int]] = {
+        wi: {} for wi in range(len(weeks))
+    }
+    for wk_dt, u_id, v_id, n_val, npmi_val in kept.select("wk", "x", "y", "n", "npmi").iter_rows():
+        wi = widx[wk_dt]
+        pair = (u_id, v_id) if u_id < v_id else (v_id, u_id)
+        edges_by_week[wi].append((u_id, v_id, int(n_val), float(npmi_val)))
+        edge_n_by_week_pair[wi][pair] = int(n_val)
+
+    # Also check w_0 - 7 days in edges_lf so week 0 edge_state is accurate when prior week exists.
+    week0_prev_map: dict[tuple[str, str], int] = {}
+    if weeks:
+        prev_w0 = weeks[0] - timedelta(weeks=1)
+        df_prev0 = (
+            _no_persons(edges_lf)
+            .filter(
+                (pl.col("wk") == prev_w0)
+                & (pl.col("n") >= min_n)
+                & pl.col("npmi").is_not_null()
+                & (pl.col("npmi") > min_npmi)
+                & pl.col("x").is_in(ids)
+                & pl.col("y").is_in(ids)
+            )
+            .select("wk", "x", "y", "n", "npmi")
+            .collect()
+        )
+        df_prev0 = _prune_top_k_per_node(df_prev0, top_k)
+        for u_id, v_id, n_val in df_prev0.select("x", "y", "n").iter_rows():
+            pair = (u_id, v_id) if u_id < v_id else (v_id, u_id)
+            week0_prev_map[pair] = int(n_val)
+
+    for wi in range(len(weeks)):
+        bet_w, cross_w, comm_w = _compute_subgraph_metrics(ids, edges_by_week[wi], ring_of)
+        imp_w = _within_week_percentiles({v: pagerank[v][wi] for v in ids})
+        pct_prd = _within_week_percentiles({v: pr_rank_delta[v][wi] for v in ids})
+        pct_dgr = _within_week_percentiles({v: deg_growth[v][wi] for v in ids})
+        for v in ids:
+            betweenness[v][wi] = bet_w[v]
+            cross_ring_share[v][wi] = cross_w[v]
+            community_week[v][wi] = comm_w[v]
+            importance[v][wi] = imp_w[v]
+            p1, p2 = pct_prd[v], pct_dgr[v]
+            if p1 is not None and p2 is not None:
+                momentum[v][wi] = 0.5 * (p1 + p2)
+            elif p1 is not None:
+                momentum[v][wi] = p1
+            elif p2 is not None:
+                momentum[v][wi] = p2
+
+    edge_states: list[str] = []
+    edge_n_growths: list[float] = []
+    edge_cross_ring: list[bool] = []
+    for wk_dt, u_id, v_id, n_val in kept.select("wk", "x", "y", "n").iter_rows():
+        wi = widx[wk_dt]
+        pair = (u_id, v_id) if u_id < v_id else (v_id, u_id)
+        prev_map: dict[tuple[str, str], int] = {}
+        if wi == 0:
+            prev_map = week0_prev_map
+        elif weeks[wi] - weeks[wi - 1] == timedelta(weeks=1):
+            prev_map = edge_n_by_week_pair[wi - 1]
+        st, gr = _edge_state_and_growth(int(n_val), prev_map.get(pair))
+        edge_states.append(st)
+        edge_n_growths.append(gr)
+        edge_cross_ring.append(ring_of[u_id] != ring_of[v_id])
 
     # Top ~30 nodes by max PageRank over the span + every ranked top-10 topic get labels.
     max_pr_by_id = {v: max((p for p in pagerank[v] if p is not None), default=0.0) for v in ids}
@@ -672,13 +1093,25 @@ def export_temporal(
             "label": _label(v, score_labels),
             "label_es": _label(v, score_labels),
             "etype": v.split(":", 1)[0],
+            "ring": ring_of[v],
+            "domain": domain_of[v],
             "x": coords[idx[v]][0],
             "y": coords[idx[v]][1],
             "show_label": v in label_ids,
             "deg_span": int(d),
             "pagerank": pagerank[v],
+            "importance": importance[v],
             "pr_rank_delta": pr_rank_delta[v],
             "deg_growth": deg_growth[v],
+            "momentum": momentum[v],
+            "betweenness": betweenness[v],
+            "cross_ring_share": cross_ring_share[v],
+            "community_week": community_week[v],
+            "new_nbr_rate": new_nbr_rate[v],
+            "kcore": kcore[v],
+            "tone": tone[v],
+            "emotional_charge_pct": emotional_charge_pct[v],
+            "window_state": window_state[v],
             "rank": rank[v],
             "decision": decision[v],
         }
@@ -726,6 +1159,50 @@ def export_temporal(
         )
         top_movers_per_week.append((ranked_w + rising_w)[:10])
 
+    latest_dists: dict[str, Any] = {}
+    if last_w >= 0:
+        latest_edge_idxs = [
+            ei for ei, w_i in enumerate(widx[w] for w in kept["wk"]) if w_i == last_w
+        ]
+        n_list = kept["n"].to_list()
+        latest_dists = {
+            "week": iso_week(weeks[last_w]),
+            "edge_n": _median_p90([float(n_list[ei]) for ei in latest_edge_idxs]),
+            "edge_npmi": _median_p90([float(npmis[ei]) for ei in latest_edge_idxs]),
+            "edge_n_growth": _median_p90([float(edge_n_growths[ei]) for ei in latest_edge_idxs]),
+            "node_betweenness": _median_p90(
+                [
+                    float(n["betweenness"][last_w])
+                    for n in nodes
+                    if n["betweenness"][last_w] is not None
+                ]
+            ),
+            "node_cross_ring_share": _median_p90(
+                [
+                    float(n["cross_ring_share"][last_w])
+                    for n in nodes
+                    if n["cross_ring_share"][last_w] is not None
+                ]
+            ),
+            "node_momentum": _median_p90(
+                [float(n["momentum"][last_w]) for n in nodes if n["momentum"][last_w] is not None]
+            ),
+            "node_new_nbr_rate": _median_p90(
+                [
+                    float(n["new_nbr_rate"][last_w])
+                    for n in nodes
+                    if n["new_nbr_rate"][last_w] is not None
+                ]
+            ),
+            "node_importance": _median_p90(
+                [
+                    float(n["importance"][last_w])
+                    for n in nodes
+                    if n["importance"][last_w] is not None
+                ]
+            ),
+        }
+
     return _clean(
         {
             "_meta": {
@@ -741,12 +1218,14 @@ def export_temporal(
                     "min_npmi_exclusive": min_npmi,
                     "top_k_per_node": top_k,
                     "top_labels": TOP_LABELS,
+                    "leiden_seed": LEIDEN_SEED,
                 },
                 "n_nodes": len(nodes),
                 "n_labeled_nodes": len(label_ids),
                 "n_edges": kept.height,
                 "edges_per_week": [kept.filter(pl.col("wk") == w).height for w in weeks],
                 "top_movers_per_week": top_movers_per_week,
+                "property_distributions_latest_week": latest_dists,
                 "decisions": DECISIONS,
             },
             "nodes": nodes,
@@ -756,6 +1235,9 @@ def export_temporal(
                 "week": [widx[w] for w in kept["wk"]],
                 "n": kept["n"].to_list(),
                 "npmi": npmis,
+                "edge_state": edge_states,
+                "n_growth": edge_n_growths,
+                "cross_ring": edge_cross_ring,
             },
         }
     )
@@ -815,10 +1297,19 @@ def export_story(
     topic_id: str,
     week: str,
     scores: pl.LazyFrame | pl.DataFrame | None = None,
+    *,
+    prev_edges: pl.LazyFrame | pl.DataFrame | None = None,
+    node_metrics_wk: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if topic_id.startswith(PERSON_PREFIX):
         raise ValueError("persons are never exported")
     monday = week_monday(week)
+    ring_cols = ring.lazy().collect_schema().names()
+    sel_ring_cols = [
+        c
+        for c in ("neighbor", "rank", "n", "npmi", "neighbor_segment", "neighbor_domain")
+        if c in ring_cols
+    ]
     nbrs = (
         ring.lazy()
         .filter(
@@ -828,6 +1319,7 @@ def export_story(
         )
         .sort("rank")
         .head(20)
+        .select(sel_ring_cols)
         .collect()
     )
     members = [topic_id, *nbrs["neighbor"].to_list()]
@@ -843,8 +1335,25 @@ def export_story(
         .select("x", "y", "n", "npmi")
         .collect()
     )
+
+    prev_pair_n: dict[tuple[str, str], int] = {}
+    prev_source = prev_edges if prev_edges is not None else edges
+    prev_monday = monday - timedelta(weeks=1)
+    prev_df = (
+        _no_persons(prev_source.lazy())
+        .filter(
+            (pl.col("wk") == prev_monday) & pl.col("x").is_in(members) & pl.col("y").is_in(members)
+        )
+        .select("x", "y", "n")
+        .collect()
+    )
+    for px, py, pn in prev_df.iter_rows():
+        pair = (px, py) if px < py else (py, px)
+        prev_pair_n[pair] = int(pn)
+
     score_row = None
     score_labels: dict[str, str] = {}
+    primary_subtopics: dict[str, str] = {}
     if scores is not None:
         rows = (
             scores.lazy()
@@ -856,10 +1365,49 @@ def export_story(
             score_row = _clean(rows[0])
             if score_row.get("label_es"):
                 score_labels[topic_id] = str(score_row["label_es"])
+            if score_row.get("primary_subtopic"):
+                primary_subtopics[topic_id] = str(score_row["primary_subtopic"])
 
     topic_label_es = _label(topic_id, score_labels)
     if score_row is not None:
         score_row["label_es"] = topic_label_es
+
+    ring_of: dict[str, str] = {}
+    domain_of: dict[str, str | None] = {}
+    t_ring, t_dom = node_ring_and_domain(topic_id, primary_subtopics)
+    ring_of[topic_id] = t_ring
+    domain_of[topic_id] = t_dom
+    for row in nbrs.to_dicts():
+        nb = row["neighbor"]
+        nb_ring, nb_dom = node_ring_and_domain(nb, primary_subtopics)
+        if row.get("neighbor_segment"):
+            nb_ring = str(row["neighbor_segment"])
+        if row.get("neighbor_domain"):
+            nb_dom = str(row["neighbor_domain"])
+        ring_of[nb] = nb_ring
+        domain_of[nb] = nb_dom
+
+    story_edge_rows: list[tuple[str, str, int, float]] = [
+        (topic_id, str(r["neighbor"]), int(r["n"]), float(r["npmi"])) for r in nbrs.to_dicts()
+    ] + [(str(x), str(y), int(n), float(npmi)) for x, y, n, npmi in among.iter_rows()]
+    bet_map, cross_map, comm_map = _compute_subgraph_metrics(members, story_edge_rows, ring_of)
+
+    def _node_extra(nid: str) -> dict[str, Any]:
+        nm = (node_metrics_wk or {}).get(nid) or {}
+        return {
+            "ring": ring_of.get(nid, "ai_domain"),
+            "domain": domain_of.get(nid),
+            "betweenness": nm.get("betweenness", bet_map.get(nid)),
+            "cross_ring_share": cross_map.get(nid),
+            "community_week": nm.get("community_week", comm_map.get(nid)),
+            "importance": nm.get("importance"),
+            "momentum": nm.get("momentum"),
+            "new_nbr_rate": nm.get("new_nbr_rate"),
+            "pagerank": nm.get("pagerank"),
+            "pr_rank_delta": nm.get("pr_rank_delta"),
+            "deg_growth": nm.get("deg_growth"),
+            "kcore": nm.get("kcore"),
+        }
 
     k = max(1, nbrs.height)
     n_max = max([1, *nbrs["n"].to_list()])
@@ -874,6 +1422,7 @@ def export_story(
                 "size": 18,
                 "role": "topic",
                 "etype": topic_id.split(":", 1)[0],
+                **_node_extra(topic_id),
             },
         }
     ]
@@ -881,6 +1430,8 @@ def export_story(
     for i, (nb, rk, n, npmi) in enumerate(nbrs.select("neighbor", "rank", "n", "npmi").iter_rows()):
         angle = 2 * math.pi * i / k
         nb_label_es = _label(nb, score_labels)
+        pair = (topic_id, nb) if topic_id < nb else (nb, topic_id)
+        e_state, e_growth = _edge_state_and_growth(int(n), prev_pair_n.get(pair))
         nodes.append(
             {
                 "key": nb,
@@ -895,6 +1446,7 @@ def export_story(
                     "n": n,
                     "npmi": npmi,
                     "etype": nb.split(":", 1)[0],
+                    **_node_extra(nb),
                 },
             }
         )
@@ -908,17 +1460,30 @@ def export_story(
                     "npmi": npmi,
                     "size": 1 + 7 * n / n_max,
                     "kind": "ring",
+                    "edge_state": e_state,
+                    "n_growth": e_growth,
+                    "cross_ring": ring_of.get(topic_id) != ring_of.get(nb),
                 },
             }
         )
     for j, (x, y, n, npmi) in enumerate(among.iter_rows()):
         width = 0.3 + 1.2 * min(n, n_max) / n_max  # thinner than ring edges, so the ring reads
+        pair = (x, y) if x < y else (y, x)
+        e_state, e_growth = _edge_state_and_growth(int(n), prev_pair_n.get(pair))
         edge_list.append(
             {
                 "key": f"a{j}",
                 "source": x,
                 "target": y,
-                "attributes": {"n": n, "npmi": npmi, "size": width, "kind": "among"},
+                "attributes": {
+                    "n": n,
+                    "npmi": npmi,
+                    "size": width,
+                    "kind": "among",
+                    "edge_state": e_state,
+                    "n_growth": e_growth,
+                    "cross_ring": ring_of.get(x) != ring_of.get(y),
+                },
             }
         )
     return _clean(
@@ -971,12 +1536,15 @@ def main(argv: list[str] | None = None) -> int:
     ring = pl.scan_parquet(paths.gold("topic_context_1hop"))
     scores_path = paths.gold("topic_scores_weekly")
     scores = pl.scan_parquet(scores_path) if scores_path.exists() else None
+    td_path = paths.gold("topic_daily")
+    topic_daily = pl.scan_parquet(td_path) if td_path.exists() else None
 
     t0 = time.perf_counter()
     temporal = export_temporal(
         edges,
         metrics,
         scores,
+        topic_daily=topic_daily,
         max_nodes=args.max_nodes,
         min_n=args.min_n,
         top_k=args.top_k,
@@ -996,12 +1564,33 @@ def main(argv: list[str] | None = None) -> int:
 
     t2 = time.perf_counter()
     monday = week_monday(week)
-    # Materialize only the single target week once for all story exports.
+    prev_monday = monday - timedelta(weeks=1)
+    # Materialize target week (and prior week for edge_state) once for story exports.
     edges_wk = _no_persons(edges).filter(pl.col("wk") == monday).collect()
+    edges_prev_wk = _no_persons(edges).filter(pl.col("wk") == prev_monday).collect()
     ring_wk = ring.filter(
         (pl.col("wk") == monday) & ~pl.col("neighbor").str.starts_with(PERSON_PREFIX)
     ).collect()
     scores_wk = scores.filter(pl.col("week") == week).collect() if scores is not None else None
+
+    # Build lookup of weekly node metrics from temporal.json and node_metrics_weekly.
+    iso_weeks_list = temporal["_meta"]["iso_weeks"]
+    node_metrics_wk: dict[str, dict[str, Any]] = {}
+    if week in iso_weeks_list:
+        wi = iso_weeks_list.index(week)
+        for tn in temporal["nodes"]:
+            node_metrics_wk[tn["id"]] = {
+                "betweenness": tn["betweenness"][wi],
+                "cross_ring_share": tn["cross_ring_share"][wi],
+                "community_week": tn["community_week"][wi],
+                "importance": tn["importance"][wi],
+                "momentum": tn["momentum"][wi],
+                "new_nbr_rate": tn["new_nbr_rate"][wi],
+                "pagerank": tn["pagerank"][wi],
+                "pr_rank_delta": tn["pr_rank_delta"][wi],
+                "deg_growth": tn["deg_growth"][wi],
+                "kcore": tn["kcore"][wi],
+            }
 
     story_topics: list[str] = []
     for r in top10_rows:
@@ -1022,7 +1611,15 @@ def main(argv: list[str] | None = None) -> int:
     size_s = 0
 
     for tid in story_topics:
-        st = export_story(edges_wk, ring_wk, tid, week, scores_wk)
+        st = export_story(
+            edges_wk,
+            ring_wk,
+            tid,
+            week,
+            scores_wk,
+            prev_edges=edges_prev_wk,
+            node_metrics_wk=node_metrics_wk,
+        )
         fname = story_filename(tid)
         _write(st, args.out / fname)
         if tid == topic:

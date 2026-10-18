@@ -167,3 +167,56 @@ def test_default_story_target_reads_the_scores_table():
     assert story_filename("org:marsh mclennan") == "story_org_marsh_mclennan.json"
     assert week_monday("2026-W42") == date(2026, 10, 12)
     assert iso_week(date(2026, 10, 12)) == "2026-W42"
+
+
+def test_temporal_and_story_carry_addendum3_properties(dev):
+    edges, metrics, ring, _ = dev
+    out = export_temporal(
+        edges,
+        metrics,
+        max_nodes=MAX_NODES,
+        min_n=MIN_N,
+        min_npmi=MIN_NPMI,
+        top_k=3,
+    )
+    e = out["edges"]
+    assert "edge_state" in e and "n_growth" in e and "cross_ring" in e
+    valid_states = {"new", "growing", "persisting", "fading"}
+    assert set(e["edge_state"]).issubset(valid_states)
+    assert len(e["edge_state"]) == len(e["n"])
+    assert all(isinstance(x, bool) for x in e["cross_ring"])
+
+    valid_rings = {"ai", "it", "ai_domain"}
+    weeks_len = len(out["_meta"]["weeks"])
+    for n in out["nodes"]:
+        assert n["ring"] in valid_rings
+        assert len(n["importance"]) == weeks_len
+        assert len(n["momentum"]) == weeks_len
+        assert len(n["betweenness"]) == weeks_len
+        assert len(n["cross_ring_share"]) == weeks_len
+        assert len(n["community_week"]) == weeks_len
+        for b in n["betweenness"]:
+            if b is not None:
+                assert 0.0 <= b <= 1.0
+        for cr in n["cross_ring_share"]:
+            if cr is not None:
+                assert 0.0 <= cr <= 1.0
+
+    dists = out["_meta"]["property_distributions_latest_week"]
+    assert "node_betweenness" in dists and "node_cross_ring_share" in dists
+    assert "median" in dists["node_betweenness"] and "p90" in dists["node_betweenness"]
+
+    wk = ring["wk"].max()
+    topic = (
+        ring.filter(pl.col("wk") == wk)
+        .group_by("topic_id")
+        .len()
+        .sort("len", descending=True)["topic_id"][0]
+    )
+    st = export_story(edges, ring, topic, iso_week(wk))
+    assert all(n["attributes"]["ring"] in valid_rings for n in st["nodes"])
+    for edge in st["edges"]:
+        attrs = edge["attributes"]
+        assert attrs["edge_state"] in valid_states
+        assert isinstance(attrs["n_growth"], float)
+        assert isinstance(attrs["cross_ring"], bool)
