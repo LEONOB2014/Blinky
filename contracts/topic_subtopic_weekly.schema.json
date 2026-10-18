@@ -5,7 +5,7 @@
   "description": "BigQuery radar.topic_subtopic_weekly from radar.article_entities joined with radar.article_topic (ring 1 only) -> lake/gold/topic_subtopic_weekly.parquet. WS4 reads it for a topic's primary subtopic (the window chip's pooled lag, the fit rules). Multi-label: a topic's rows in one week can sum to more than its articles; articles with no subtopic count under subtopic null.",
   "type": "object",
   "x-owner": "WS1",
-  "x-mock": "pending-dev-slice",
+  "x-mock": "dev-slice",
   "properties": {
     "topic_id": {
       "type": "string",
