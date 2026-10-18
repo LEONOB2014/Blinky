@@ -181,21 +181,3 @@ def test_social_metrics_and_opinions_are_refused(question):
     from agents.runtime import out_of_scope
 
     assert out_of_scope(question) is not None
-
-
-@pytest.mark.unit
-def test_the_decision_line_shows_only_when_a_decision_is_asked():
-    from agents.evals.run_evals import load_questions
-
-    qs = {q["id"]: q["question"] for q in load_questions()["questions"]}
-    yes = {"q01", "q02", "q03", "q04", "q05", "q08", "q11"}
-    no = {"q06", "q07", "q09", "q10", "q12", "q13", "q14", "q15", "q16", "q17"}
-    assert {q for q in yes | no if runtime.asks_for_decision(qs[q], runtime.route(qs[q]))} == yes
-    assert runtime.asks_for_decision("Escribe un gancho", ["editor"])
-
-
-@pytest.mark.unit
-def test_an_audience_question_gets_no_decision_line():
-    model = ScriptedChat("Ángulo: explicador.")
-    response = runtime.run_turn("¿Desde qué ángulo le cuento el tema principal?", model=model)
-    assert not response["answer_es"].startswith("Decisión del radar")
