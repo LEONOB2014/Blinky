@@ -6,12 +6,45 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-<!-- time (UTC-5), branch, PR -->
+2026-10-18 01:33 UTC-5, branch `feat/ws6-wikipedia-pageviews`, PR not opened (needs approval)
 
 ## Done
 
+- `entity/wikidata.py` resolves topics with wbsearchentities (es/en/pt) and a P31 check.
+- Persons are never resolved.
+- `crosssource/pageviews.py` fetches daily `agent=user` pageviews from 2025-10-01.
+- Gold and the 8-week dev cut (2026-08-24 .. 2026-10-17) land in the lake.
+- Unit tests parse one real cached response per endpoint.
+
 ## In progress
+
+- Priority es/pt pageviews are in progress. Rerun is safe: responses are cached.
+- Full `topic_daily` is included when the lake file exists. It was present.
 
 ## Blocked on
 
 ## Numbers (each marked measured or estimate)
+
+Phase: In progress.
+
+- topics attempted: 11060 (measured)
+- resolved exact: 1916 (measured)
+- resolved alias: 997 (measured)
+- resolved none: 8147 (measured)
+- articles found, es / pt / en: 1306 / 1138 / 2289 (measured)
+- pageview rows in gold: 35462 (measured)
+- pageview rows in the 8-week dev cut: 2563 (measured)
+- pageview end date returned by the API: 2026-10-18 (measured)
+- failed requests (final non-200): 0 (measured)
+- priority topics: 679 (measured)
+- priority exact / alias / none: 373 / 105 / 201 (measured)
+- priority topics sent to Wikidata this run: 201 (measured)
+- priority articles found, es / pt / en: 273 / 255 / 406 (measured)
+- priority pageview articles attempted / HTTP 200: 100 / 100 (measured)
+- priority pageviews: es.wikipedia and pt.wikipedia, 2025-10-01 .. 2026-10-18
+- HTTP 429: 0 (measured)
+- write times:
+  - 2026-10-18 01:22 UTC-5 topic_wikidata rows 11060 (measured)
+  - 2026-10-18 01:27 UTC-5 wiki_pageviews_daily rows 17764 (dev cut 1339, end 2026-10-18) (measured)
+  - 2026-10-18 01:33 UTC-5 wiki_pageviews_daily rows 35462 (dev cut 2563, end 2026-10-18) (measured)
+- confidence rule: 0.9 exact, 0.6 alias, +0.05 per extra language, cap 1 (estimate, not calibrated)
