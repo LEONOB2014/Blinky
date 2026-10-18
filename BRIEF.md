@@ -65,3 +65,11 @@ Briefs in the lake by **04:30**; regenerate once at **06:00** after the final sc
 ## If blocked
 
 `BLOCKED: <reason>` at the top of `status/WS0-agents.md`, then stop.
+
+## Addendum (orchestrator, 03:35 UTC-5): one more tool in the same file
+
+Also add `get_topic_evidence(topic_id, week)` to `agents/tools.py` (reads
+`lake/gold/topic_evidence_weekly.parquet`, merged in PR #31; returns outlet, date, language and title
+per article, at most 5, never the URL to the LLM), and let the Signal analyst and the Editor use it when a
+named topic is asked about, so answers can say "según N artículos de M medios". The briefs may cite the
+counts, never titles. Offline test with a scripted model.
