@@ -39,21 +39,21 @@ The full plan is in [docs/plan/MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf), and 
 
 ## Status
 
-<sub>Updated 2026-10-17 23:40 UTC-5. Every number is measured unless marked otherwise.</sub>
+<sub>Updated 2026-10-18 01:00 UTC-5. Every number is measured unless marked otherwise.</sub>
 
 | Part | State | Evidence |
 |---|---|---|
 | GDELT loop (WS1) | Done for 2025-11 → 2026-10-18 | 4.03M AI/IT/domain articles segmented; 367.5 GB billed over 62 BigQuery jobs ([ledger](reports/bq_ledger.csv)), inside the 1 TB free tier |
 | Graph metrics, 1-hop ring (WS3) | Done, 51 weeks | 473,275 node-weeks; 4,773,204 ring rows, no persons |
 | Link-prediction baselines (WS7) | Done | EdgeBank MRR 0.0050 on new edges, persistence 0.0123 on all ([report](reports/tgnn.md)) |
-| Scores, window, decision (WS4) | Topic scores in the lake; eligibility gate next | 17,285 topic-weeks, median 376 ranked topics a week |
+| Scores, window, decision (WS4) | Topic scores in the lake; eligibility gate in progress (the public top 10 still shows GKG name fragments) | 17,285 topic-weeks, median 376 ranked topics a week |
 | Backtest (WS4) | Waiting on the Wikipedia label | — |
 | Wikipedia resolution and pageviews (WS6) | Running | 2,675 topics resolved; pageviews not yet written |
-| Article classifier cascade (WS2b) | Teacher labels done; student next | 4,000 articles labelled by a two-family panel (Qwen3-235B, DeepSeek-V4-Pro; gpt-oss-120b breaks ties), 96.8% agreement on "is AI"; by the panel, 80.9% of ring-1 articles are AI (95% interval about 78.9-82.9%, n = 1,500), 1.0% of rejected control rows (n = 1,000). Model labels, not yet checked against human labels |
+| Article classifier cascade (WS2b) | Merged; human labels next (04:00) | Teacher panel (Qwen3-235B, DeepSeek-V4-Pro) agrees 96.8% on "is AI"; local student F1 0.964 on a frozen test split; on 300 sheet rows the GDELT rule's precision is 0.75 against the student's 0.94, subtopic agreement 0.11 (regex) against 0.54. Reference is the teacher panel until the human labels land. Jev spend $0.044 over 981 calls ([report](reports/label_quality.md)) |
 | API and UI (WS5, WS5b) | Merged, on the full lake | 5 of 5 endpoints; privacy guards for persons and deny-listed orgs; 10 API tests |
 | Agents | Merged, working on the full lake | 8 agents; Qwen3-30B on Nebius; traces saved per turn |
-| Graph views (GPU, temporal) | Smoke test next; full build last | cosmos.gl (WebGL, MIT) for the temporal sweep, sigma.js for the story view; no cloud service |
-| Deploy | Prepared next | API on Modal, static fallback on Netlify |
+| Graph views (GPU, temporal) | Smoke test merged; full build last | cosmos.gl temporal sweep: 2,000 nodes, 1.87M week-edges over 13 weeks; sigma.js story view; both render on the laptop GPU, nothing uploaded |
+| Deploy | Live and public | UI on Netlify ([radar-senal-temprana.netlify.app](https://radar-senal-temprana.netlify.app)), API and agents on Google Cloud Run; warm `/api/radar` 0.3 s, one chat turn 10.3 s; static fallback for every panel except chat |
 
 ## Architecture
 
