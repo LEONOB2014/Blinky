@@ -1,8 +1,8 @@
 # Backtest: the radar's weekly top 10
 
-Generated 2026-10-18 03:15 UTC-5 by `models/backtest.py` on the `full` profile. Every number below is **measured** on the lake unless marked otherwise. Protocol: `docs/designs/radar-build-plan.md` (Evaluation, Backtest) and the module docstring. The score weights and thresholds are hand-set (estimate), not fitted to either label. The syndication guard (Addendum 5) was added after WS9 saw syndicated topics in the 2026-W42 top 10; its thresholds come from WS1's source distributions, not from either label, but its design is not blind to the data. Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build (no lake table maps gkg_id to topics yet); the backtest does not use them.
+Generated 2026-10-18 03:26 UTC-5 by `models/backtest.py` on the `full` profile. Every number below is **measured** on the lake unless marked otherwise. Protocol: `docs/designs/radar-build-plan.md` (Evaluation, Backtest) and the module docstring. The score weights and thresholds are hand-set (estimate), not fitted to either label. The syndication guard (Addendum 5) was added after WS9 saw syndicated topics in the 2026-W42 top 10; its thresholds come from WS1's source distributions, not from either label, but its design is not blind to the data. Evidence ids: `topic_scores_weekly.evidence_ids` is empty in this build (no lake table maps gkg_id to topics yet); the backtest does not use them.
 
-The primary label (es+pt Wikipedia pageviews) is not reportable yet (coverage). The secondary label (es+pt GDELT article growth) is the fallback card when pageviews are missing.
+The primary label (es+pt Wikipedia pageviews) is reported below with bounds (coverage under 90.0%). The secondary label (es+pt GDELT article growth) is the fallback card when pageviews are missing.
 
 ## Primary label: es+pt Wikipedia pageview growth (exact Wikidata matches only)
 
@@ -18,7 +18,33 @@ Label coverage of each ranker's top 10, over evaluable weeks:
 | Baseline: raw-count growth | 378/440 | 85.9% (measured) |
 | Baseline: persistence (the label's own last 2 weeks) | 426/440 | 96.8% (measured) |
 
-**Not reported:** coverage is below 90.0% for at least one ranker, so precision@10 could move by more than 10.0% once the missing labels arrive. Rerun `RADAR_PROFILE=full uv run python -m models.backtest` after the next WS6 write.
+**Below the 90.0% coverage rule:** at least one ranker has fewer than 90.0% of its top-10 labels, so an unbounded precision@10 is not reported. Below, each ranker's precision is computed on the labelled slots of its own top 10, with bounds that count its unlabelled slots as all misses (worst case) and all hits (best case). The bounds are hard limits; the labelled precision assumes the unlabelled slots behave like the labelled ones, which nothing guarantees (the missing labels are pageview series with fewer than 12 days of data in a 14-day window, mostly new or rarely viewed articles).
+- Evaluable weeks: 43 (measured): 2025-W49, 2025-W50, 2025-W51, 2025-W52, 2026-W01, 2026-W02, 2026-W03, 2026-W04, 2026-W05, 2026-W06, 2026-W07, 2026-W08, 2026-W09, 2026-W10, 2026-W11, 2026-W12, 2026-W13, 2026-W14, 2026-W15, 2026-W16, 2026-W17, 2026-W18, 2026-W19, 2026-W20, 2026-W21, 2026-W22, 2026-W23, 2026-W24, 2026-W25, 2026-W26, 2026-W27, 2026-W28, 2026-W29, 2026-W30, 2026-W31, 2026-W32, 2026-W33, 2026-W34, 2026-W35, 2026-W36, 2026-W37, 2026-W38, 2026-W39.
+  - 2026-W40 excluded: 0 mapped units with a label (needs 11).
+  - 2026-W41 excluded: label window not complete.
+  - 2026-W42 excluded: label window not complete.
+
+### Precision@10 on labelled slots, with bounds
+
+| Ranker | Coverage (labelled / slots) | Precision@10 on labelled slots | 95% bootstrap interval over weeks | Worst case (unlabelled = misses) | Best case (unlabelled = hits) |
+|---|---|---|---|---|---|
+| Radar, with the eligibility gate and the syndication guard (published) | 408/440 = 92.7% | 119/408 = 29.2% | 24.4% .. 34.0% | 27.0% | 34.3% |
+| Radar, with the eligibility gate, without the syndication guard | 403/440 = 91.6% | 135/403 = 33.5% | 29.2% .. 38.0% | 30.7% | 39.1% |
+| Radar, without the gate (Priority alone) | 403/440 = 91.6% | 134/403 = 33.3% | 28.8% .. 37.5% | 30.5% | 38.9% |
+| Baseline: raw-count growth | 378/440 = 85.9% | 120/378 = 31.7% | 26.8% .. 37.0% | 27.3% | 41.4% |
+| Baseline: persistence (the label's own last 2 weeks) | 426/440 = 96.8% | 77/426 = 18.1% | 14.8% .. 21.3% | 17.5% | 20.7% |
+| Base rate (top quartile; ties at the cutoff excluded, measured share) | n/a | 1036/4085 = 25.4% | n/a | n/a | n/a |
+
+All figures measured. Worst-case comparisons (each radar's worst case minus each baseline's best case, paired bootstrap over weeks):
+
+- Radar, with the eligibility gate and the syndication guard (published) (worst) minus Baseline: raw-count growth (best): -14.3%, 95% interval -20.2% .. -8.6%: the advantage **does not hold** under the worst case.
+- Radar, with the eligibility gate and the syndication guard (published) (worst) minus Baseline: persistence (the label's own last 2 weeks) (best): 6.4%, 95% interval 0.7% .. 12.0%: the advantage **holds** under the worst case.
+- Radar, with the eligibility gate, without the syndication guard (worst) minus Baseline: raw-count growth (best): -10.7%, 95% interval -14.8% .. -6.6%: the advantage **does not hold** under the worst case.
+- Radar, with the eligibility gate, without the syndication guard (worst) minus Baseline: persistence (the label's own last 2 weeks) (best): 10.0%, 95% interval 5.0% .. 15.2%: the advantage **holds** under the worst case.
+- Radar, without the gate (Priority alone) (worst) minus Baseline: raw-count growth (best): -10.9%, 95% interval -15.0% .. -7.0%: the advantage **does not hold** under the worst case.
+- Radar, without the gate (Priority alone) (worst) minus Baseline: persistence (the label's own last 2 weeks) (best): 9.8%, 95% interval 4.8% .. 14.8%: the advantage **holds** under the worst case.
+
+Hook (primary label): **may not use** this result: the published radar's advantage over raw-count growth does not hold under the worst case (measured). The page uses the secondary label or the fallback hook.
 
 ## Primary label, alias matches included (separate row; aliases are confidence 0.6 and several are wrong)
 
@@ -34,7 +60,31 @@ Label coverage of each ranker's top 10, over evaluable weeks:
 | Baseline: raw-count growth | 318/440 | 72.3% (measured) |
 | Baseline: persistence (the label's own last 2 weeks) | 427/440 | 97.0% (measured) |
 
-**Not reported:** coverage is below 90.0% for at least one ranker, so precision@10 could move by more than 10.0% once the missing labels arrive. Rerun `RADAR_PROFILE=full uv run python -m models.backtest` after the next WS6 write.
+**Below the 90.0% coverage rule:** at least one ranker has fewer than 90.0% of its top-10 labels, so an unbounded precision@10 is not reported. Below, each ranker's precision is computed on the labelled slots of its own top 10, with bounds that count its unlabelled slots as all misses (worst case) and all hits (best case). The bounds are hard limits; the labelled precision assumes the unlabelled slots behave like the labelled ones, which nothing guarantees (the missing labels are pageview series with fewer than 12 days of data in a 14-day window, mostly new or rarely viewed articles).
+- Evaluable weeks: 43 (measured): 2025-W49, 2025-W50, 2025-W51, 2025-W52, 2026-W01, 2026-W02, 2026-W03, 2026-W04, 2026-W05, 2026-W06, 2026-W07, 2026-W08, 2026-W09, 2026-W10, 2026-W11, 2026-W12, 2026-W13, 2026-W14, 2026-W15, 2026-W16, 2026-W17, 2026-W18, 2026-W19, 2026-W20, 2026-W21, 2026-W22, 2026-W23, 2026-W24, 2026-W25, 2026-W26, 2026-W27, 2026-W28, 2026-W29, 2026-W30, 2026-W31, 2026-W32, 2026-W33, 2026-W34, 2026-W35, 2026-W36, 2026-W37, 2026-W38, 2026-W39.
+  - 2026-W40 excluded: 0 mapped units with a label (needs 11).
+  - 2026-W41 excluded: label window not complete.
+  - 2026-W42 excluded: label window not complete.
+
+### Precision@10 on labelled slots, with bounds
+
+| Ranker | Coverage (labelled / slots) | Precision@10 on labelled slots | 95% bootstrap interval over weeks | Worst case (unlabelled = misses) | Best case (unlabelled = hits) |
+|---|---|---|---|---|---|
+| Radar, with the eligibility gate and the syndication guard (published) | 402/440 = 91.4% | 113/402 = 28.1% | 23.3% .. 33.1% | 25.7% | 34.3% |
+| Radar, with the eligibility gate, without the syndication guard | 400/440 = 90.9% | 134/400 = 33.5% | 29.2% .. 38.2% | 30.5% | 39.5% |
+| Radar, without the gate (Priority alone) | 356/440 = 80.9% | 118/356 = 33.1% | 29.1% .. 37.3% | 26.8% | 45.9% |
+| Baseline: raw-count growth | 318/440 = 72.3% | 106/318 = 33.3% | 27.9% .. 39.1% | 24.1% | 51.8% |
+| Baseline: persistence (the label's own last 2 weeks) | 427/440 = 97.0% | 72/427 = 16.9% | 13.6% .. 20.1% | 16.4% | 19.3% |
+| Base rate (top quartile; ties at the cutoff excluded, measured share) | n/a | 1181/4668 = 25.3% | n/a | n/a | n/a |
+
+All figures measured. Worst-case comparisons (each radar's worst case minus each baseline's best case, paired bootstrap over weeks):
+
+- Radar, with the eligibility gate and the syndication guard (published) (worst) minus Baseline: raw-count growth (best): -26.1%, 95% interval -32.0% .. -20.0%: the advantage **does not hold** under the worst case.
+- Radar, with the eligibility gate and the syndication guard (published) (worst) minus Baseline: persistence (the label's own last 2 weeks) (best): 6.4%, 95% interval 0.9% .. 12.3%: the advantage **holds** under the worst case.
+- Radar, with the eligibility gate, without the syndication guard (worst) minus Baseline: raw-count growth (best): -21.4%, 95% interval -26.1% .. -16.6%: the advantage **does not hold** under the worst case.
+- Radar, with the eligibility gate, without the syndication guard (worst) minus Baseline: persistence (the label's own last 2 weeks) (best): 11.1%, 95% interval 5.9% .. 16.8%: the advantage **holds** under the worst case.
+- Radar, without the gate (Priority alone) (worst) minus Baseline: raw-count growth (best): -25.0%, 95% interval -30.0% .. -19.5%: the advantage **does not hold** under the worst case.
+- Radar, without the gate (Priority alone) (worst) minus Baseline: persistence (the label's own last 2 weeks) (best): 7.5%, 95% interval 2.5% .. 12.0%: the advantage **holds** under the worst case.
 
 ## Secondary label: es+pt GDELT article growth
 

@@ -12,12 +12,39 @@ READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.par
 with the syndication guard in the eligibility gate (16,904 rows, 46 weeks, 4,911 topics, 0 contract
 violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060 rows, 1,916 exact).
 
+## Primary backtest, reported with bounds (orchestrator decision, 03:40 UTC-5)
+
+`models/backtest.py` now reports a label below the 90% coverage rule instead of withholding it:
+precision@10 on the labelled slots of each ranker's own top 10, plus a worst case (its unlabelled
+slots all misses) and a best case (all hits). The 90% rule's caveat stays in the report, and no
+unbounded precision is printed. Slots of weeks with too few labelled topics (2026-W40) count as
+unknown. Exact Wikidata matches, 440 slots per ranker (43 evaluable weeks + W40), all measured:
+
+| Ranker | Coverage | Precision on labelled slots [95% interval] | Worst | Best |
+|---|---|---|---|---|
+| Radar, published (gate + guard) | 92.7% | 119/408 = 29.2% [24.4..34.0] | 27.0% | 34.3% |
+| Radar, gate, no guard | 91.6% | 135/403 = 33.5% [29.2..38.0] | 30.7% | 39.1% |
+| Radar, no gate | 91.6% | 134/403 = 33.3% [28.8..37.5] | 30.5% | 38.9% |
+| Raw-count growth | 85.9% | 120/378 = 31.7% [26.8..37.0] | 27.3% | 41.4% |
+| Persistence | 96.8% | 77/426 = 18.1% [14.8..21.3] | 17.5% | 20.7% |
+| Base rate | | 1036/4085 = 25.4% | | |
+
+- **Hook: may not use the primary result.** The published radar's worst case minus raw-count
+  growth's best case is -14.3 points (95% interval -20.2..-8.6). Even on labelled slots alone the
+  published radar (29.2%) is not above raw-count growth (31.7%); the intervals overlap.
+- Every radar beats persistence under the worst case (published: +6.4 points, interval 0.7..12.0).
+- On labelled slots the syndication guard lowers the radar's precision (29.2% with it, 33.5% without;
+  the intervals overlap, measured).
+- The alias-included run (separate section) gives the same reading: the published radar's worst
+  case 25.7% vs raw-count growth's best case 51.8%.
+- The secondary-label backtest (es+pt GDELT growth) is unchanged in the report.
+
 ## Primary backtest after WS6's last write (03:20 UTC-5, Claude #4 / claude-cacho, after the handover)
 
 WS6 reports **Done** (03:14 write: 368,394 pageview rows; all 292 missing exact topics fetched, 512 of
 512 articles HTTP 200). Final run on that data (`RADAR_PROFILE=full POLARS_MAX_THREADS=4 uv run
---extra models python -m models.backtest`, exit 0), label coverage of each ranker's top 10 over 44
-evaluable weeks (measured):
+--extra models python -m models.backtest`, exit 0), label coverage of each ranker's top 10 over 440
+top-10 slots (43 evaluable weeks plus 2026-W40, which has no labels; measured):
 
 | Ranker | Exact matches (primary) | Alias included (separate row) |
 |---|---|---|
