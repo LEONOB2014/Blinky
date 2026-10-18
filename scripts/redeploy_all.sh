@@ -75,6 +75,10 @@ run make deploy-static RADAR_SOURCE="$SOURCE"
 # tracked at web/public/fallback/temporal.png, so that wipe does not remove it.
 step "3b. graph views, rewritten after the static export wipes web/public/data"
 run "RADAR_PROFILE=full uv run --extra graph python -m graph.export_views $VIEWS_FLAGS"
+if [[ "$VIEWS_FLAGS" == *--ai* ]]; then
+  # Gate: every week x lens x important topic of the AI graph must be covered, or no deploy.
+  run "RADAR_PROFILE=full uv run python -m graph.check_ai_views"
+fi
 
 step "4. web build pointing at the API"
 run make deploy-web API_URL="$API_URL"
