@@ -181,3 +181,24 @@ def test_social_metrics_and_opinions_are_refused(question):
     from agents.runtime import out_of_scope
 
     assert out_of_scope(question) is not None
+
+
+@pytest.mark.unit
+def test_entity_resolution_needs_whole_words(monkeypatch):
+    nodes = frozenset({"org:a co", "org:principal group", "org:linkedin", "org:nvidia",
+                       "org:openai inc", "org:microsoft", "org:samsung", "org:google",
+                       "org:taiwan semiconductor"})  # fmt: skip
+    monkeypatch.setattr(runtime.tools, "graph_nodes", lambda week=None: nodes)
+    monkeypatch.setattr(
+        runtime.tools,
+        "resolve_topic",
+        lambda name: {
+            "principal": "org:principal group",
+            "openai": "org:openai inc",
+            "linkedin": "org:linkedin",
+        }.get(name.lower(), name),  # fmt: skip
+    )
+    from agents.evals.run_evals import load_questions
+
+    for q in load_questions()["questions"]:
+        assert runtime._entity_in_question(q["question"], None) == q.get("entity"), q["id"]

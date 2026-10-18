@@ -469,14 +469,22 @@ def decision_line(turn: Turn, entity: str | None, question: str) -> str:
 
 
 _WORD = re.compile(r"[\wáéíóúñü&.-]+", re.I)
+_NON_NAME = re.compile(r"[^\w&.-]+")
 
 
 def _entity_in_question(question: str, week: str | None) -> str | None:
     """The graph topic a question names: a full node name in the text ('google' -> 'org:google'),
     else the longest 1-3 word phrase that resolves to one ('OpenAI' -> GDELT's 'org:openai inc')."""
-    q = question.lower()
+    # whole words only: a plain substring test found 'org:a co' inside "ha costado"
+    padded = f" {_NON_NAME.sub(' ', question.lower())} "
     names = tools.graph_nodes(week)
-    hits = [n for n in names if len(n.split(":", 1)[1]) > 3 and n.split(":", 1)[1] in q]
+    hits = [
+        n
+        for n in names
+        if len(n.split(":", 1)[1].replace(" ", "")) > 3
+        and n.split(":", 1)[1] not in labels_stop()
+        and f" {n.split(':', 1)[1]} " in padded
+    ]
     if hits:
         return max(hits, key=len)
     words = _WORD.findall(question)
@@ -521,6 +529,10 @@ def labels_stop() -> frozenset[str]:
             "muéstrame",
             "muestrame",
             "ahora",
+            # 'el tema principal' is not 'org:principal group'; LinkedIn is where 30X publishes,
+            # not the topic of the question
+            "principal",
+            "linkedin",
         ]
     )
 
