@@ -4,9 +4,12 @@ import json
 from pathlib import Path
 
 import pytest
-from entity.wikidata import parse_entity_payload
 
-from crosssource.pageviews import (
+pytest.importorskip("tenacity")  # the crosssource extra; CI installs no extras
+
+from entity.wikidata import parse_entity_payload  # noqa: E402
+
+from crosssource.pageviews import (  # noqa: E402
     article_keys,
     merge_pageview_rows,
     parse_pageviews,

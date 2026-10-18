@@ -5,9 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from entity.claims import claim_ids
-from entity.client import RateLimiter
-from entity.wikidata import (
+pytest.importorskip("tenacity")  # the crosssource extra; CI installs no extras
+
+from entity.claims import claim_ids  # noqa: E402
+from entity.client import RateLimiter  # noqa: E402
+from entity.wikidata import (  # noqa: E402
     ALLOWED_ROOTS,
     classify,
     load_dev_topics,
