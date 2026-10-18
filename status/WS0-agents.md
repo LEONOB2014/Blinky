@@ -4,7 +4,33 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 06:45 UTC-5 · answer polish (fix/agents-answer-polish): one decision line, es/pt coverage by code, LatAm and outlet-count audits · committed locally; the orchestrator lands it.
+2026-10-18 06:50 UTC-5 · release eval v0.2.0 on develop 822169c: grounding 1.000, usefulness_v2 0.663 (measured) · committed locally; the orchestrator lands it.
+
+## Release eval v0.2.0 (06:50 UTC-5, branch `docs/agents-release-eval`, committed locally; the orchestrator lands it)
+
+`release-v0.2.0-02b4e632`: the frozen 25 questions x 3 on `develop` 822169c, concurrency 4, no lost
+runs. All *measured*; brackets are the min-max of the three repetition means. This replaces the
+combined estimate in the answer-polish section (grounding 0.947, usefulness_v2 0.663) with one
+full run.
+
+| Experiment | grounding | routing | decisions / entities | usefulness v1 | usefulness_v2 | tokens/turn |
+|---|---|---|---|---|---|---|
+| PR #48 graph-facts (d6fa0ff) | 0.933 [0.88-0.96] | 1.000 | 1.000 / 1.000 | 0.490 [0.48-0.50] | 0.647 [0.61-0.67] | 6,205 [6,186-6,219] |
+| **release-v0.2.0 (822169c)** | **1.000** [1.00-1.00] | 1.000 | 1.000 / 1.000 | 0.597 [0.51-0.65] | 0.663 [0.63-0.70] | 6,355 [6,328-6,369] |
+
+- **Grounding:** 75 of 75 runs, with no untraced number in any answer (PR #48 missed 5 of 75).
+- **usefulness v1:** above PR #48's range. **usefulness_v2:** up, but within the range.
+- **Tokens:** +150 per turn (beyond the range), from the coverage and outlet-count lines.
+- **Double decision lines:** 0 of 75 (PR #48: 3 of 75).
+- **LatAm warnings:** 2 of 75.
+  - q11: "con datos de crecimiento en LatAm" for a topic with 0 es/pt articles, a real unbacked
+    claim the Auditor caught.
+  - q05: "empresas de tecnología espacial con presencia en LatAm" is borderline. It is about the
+    companies' presence, not the topic's coverage, so it is likely a false positive of the rule.
+- **Outlet-count warnings:** 0.
+- **Nebius spend,** *estimate*: agent tokens 476,626 (*measured*, Qwen3-30B); judge tokens not
+  recorded, roughly 150 calls x ~4k on Qwen3-235B; about $0.21 at assumed list rates, under the
+  $0.30 cap.
 
 ## Answer polish: one decision line, es/pt coverage by code, LatAm claims audited (06:45 UTC-5, branch `fix/agents-answer-polish`, committed locally; the orchestrator lands it)
 
