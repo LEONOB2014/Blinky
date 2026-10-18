@@ -49,10 +49,11 @@ def membership(fit_subtopics: set[str]) -> pl.DataFrame | None:
     """
     if not mapping_available():
         return None
-    m = pl.read_parquet(gold("topic_subtopic_weekly"))
-    if m.schema["week"] == pl.String:
+    m = pl.scan_parquet(gold("topic_subtopic_weekly")).filter(in_universe("topic_id"))
+    if m.collect_schema()["week"] == pl.String:
         m = m.with_columns(pl.col("week").str.to_date())
-    # each source week counts toward itself and the 3 weeks after it (window t-3..t)
+    # each source week counts toward itself and the 3 weeks after it (window t-3..t); lazy, so
+    # the 4x copy is never held in memory at once
     spread = pl.concat(
         [
             m.with_columns((pl.col("week") + dt.timedelta(days=7 * k)).alias("target"))
@@ -64,11 +65,13 @@ def membership(fit_subtopics: set[str]) -> pl.DataFrame | None:
         .unique(["topic_id", "iso_week", "week"])
         .group_by("topic_id", "iso_week")
         .agg(pl.col("n_topic_articles").sum().alias("n_topic"))
+        .collect()
     )
     sub = (
         spread.filter(pl.col("subtopic").is_not_null())
         .group_by("topic_id", "iso_week", "subtopic")
         .agg(pl.col("n_articles").sum())
+        .collect()
         .with_columns(
             pl.col("subtopic")
             .replace_strict(

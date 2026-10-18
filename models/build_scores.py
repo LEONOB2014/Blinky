@@ -126,26 +126,51 @@ def why(row: dict[str, Any], win: window.Window, dec: str = "", rule: int = 0) -
     return out[:5]
 
 
+# What the later steps read from the daily rolling frame (window onsets, gate history, the
+# backtest's raw-count growth and GDELT label); the rest is dropped to keep memory low.
+SLIM = ("unit_id", "group", "dt", "n", "n_7d", "z_7d_r")
+CHUNK_TOPICS = 300  # topics per rolling pass: the full frame peaks at ~3 GB, a chunk well under
+
+
+def _slim(roll: pl.DataFrame) -> pl.DataFrame:
+    return roll.select(SLIM).with_columns(pl.col("n_7d", "z_7d_r").cast(pl.Float32))
+
+
 def _inputs(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None, dt.date]:
-    """Rolling frame (with `ai_all`), the unit's own rolling frame, membership and span start."""
+    """Weekly panel (with `ai_all`), the unit's slim daily frame, membership and span start.
+
+    Topics are processed in chunks of CHUNK_TOPICS: every rolling feature is per topic, so the
+    weekly panel of a chunk does not depend on the other chunks.
+    """
     totals = features.load_totals()
     sub = features.subtopic_daily()
     if unit == "subtopic":
         roll = features.rolling(sub, totals)
+        panel = scores.weekly_panel(roll)
         weights = {s: {s: 1.0} for s in sub["unit_id"].unique().to_list()}
         weights["ai_all"] = {}
-        mem = scores.static_membership(scores.weekly_panel(roll), weights).with_columns(
+        mem = scores.static_membership(panel, weights).with_columns(
             pl.col("unit_id").alias("primary_subtopic"),
             pl.concat_list(pl.col("unit_id")).alias("subtopics"),
         )
-        return roll, roll, mem, sub["dt"].min()
+        return panel, _slim(roll), mem, sub["dt"].min()
     daily = features.topic_daily()
-    own = features.rolling(daily, totals)
+    span = (daily["dt"].min(), daily["dt"].max())
+    ids = daily["unit_id"].unique().sort().to_list()
+    panels, slims = [], []
+    for k in range(0, len(ids), CHUNK_TOPICS):
+        part = daily.filter(pl.col("unit_id").is_in(ids[k : k + CHUNK_TOPICS]))
+        roll = features.rolling(part, totals, span=span)
+        panels.append(scores.weekly_panel(roll))
+        slims.append(_slim(roll))
+        del roll
     # ai_all is the base for the fit's LatAm / es+pt shares; it is never ranked
     base = features.rolling(sub.filter(pl.col("unit_id") == "ai_all"), totals)
-    base = base.filter(pl.col("dt").is_between(own["dt"].min(), own["dt"].max()))
-    roll = pl.concat([own, base], how="vertical_relaxed")
-    return roll, own, universe.membership(scores.FIT_SUBTOPICS), daily["dt"].min()
+    base = base.filter(pl.col("dt").is_between(*span))
+    panels.append(scores.weekly_panel(base))
+    panel = pl.concat(panels, how="vertical_relaxed")
+    own = pl.concat(slims)
+    return panel, own, universe.membership(scores.FIT_SUBTOPICS), span[0]
 
 
 # Eligibility gate for the top 10 (Addendum 3; thresholds hand-set, estimate): a topic can headline
@@ -249,8 +274,8 @@ def gate(scored: pl.DataFrame, own: pl.DataFrame) -> pl.DataFrame:
 
 def scored_units(unit: str) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None]:
     """Scored unit-weeks after the warm-up, the unit's own rolling frame and its membership."""
-    roll, own, mem, start = _inputs(unit)
-    scored = scores.score(scores.weekly_panel(roll), mem, graph=_graph("unit_id"))
+    panel, own, mem, start = _inputs(unit)
+    scored = scores.score(panel, mem, graph=_graph("unit_id"))
     scored = scored.filter(pl.col("asof") >= start + dt.timedelta(days=WARMUP_DAYS))
     return scored, own, mem
 
