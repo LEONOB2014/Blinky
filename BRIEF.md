@@ -138,3 +138,8 @@ measured $0.000026 each); label quality is. So, replacing Outputs 2-4 where they
 
 Approved for this addendum: the 100-article pilot on up to five Nebius models, panel labels for about
 6,000 articles in total, Jev calls inside the existing caps.
+
+Nebius budget (maintainer, 23:10): about $400 of free credit, monthly limits unknown. The full panel
+is approved. Treat HTTP 402/429 or quota errors as a signal: back off once, and if they persist, stop
+that teacher, fall back to the remaining panel (or Qwen3-30B), and report the error text and the
+tokens used up to that point.
