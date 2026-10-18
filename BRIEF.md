@@ -253,3 +253,39 @@ TS2353 at `TemporalGraph.tsx:688`). In the installed `index.d.ts`: reheat with `
 `graph.render(simulationAlpha, transitionDuration)`, which also animates the transition (for example
 `render(0.3, 400)`). Stop with `graph.pause()` once settled (`graph.progress` / `isSimulationRunning`).
 Keep `bun run build` passing before each commit.
+
+## Addendum 5 (orchestrator, 03:10 UTC-5): fix list after Grok's review — for Grok
+
+Grok's read-only review (`status/WS5-review.md`) found that the lenses do not follow a question and the
+layout never rearranges; the orchestrator found two data errors. Fix in this order, `bun run build`
+passing before each commit, one commit per item. Measure only what actually happens.
+
+1. **The lens follows the question.** Pass `view_command.color_by` (and `focus_topic`, `highlight`) from
+   `App.tsx` into `TemporalGraph` / `StoryGraph`; the chip, the legend and the graph must agree. A pill
+   click and a chat answer go through the same path.
+2. **Real re-layout.** Set the lens's link strengths (`setLinkStrength`: the focus or highlighted topics'
+   links high, the rest low) and pins (`setPinnedPoints` for the focus topic), then `graph.start(0.3)`;
+   let it run until `graph.progress` stops changing or a cap (e.g. 2.5 s), then `graph.pause()`. Never
+   `render(0, 0)` after a reheat. Measure the real settle time and fps during it, and check that two
+   lenses give different positions.
+3. **Named topics stay in the GPU graph.** When the focus topic is among the 1,000 nodes, use the
+   temporal graph's Story lens (pin, zoom with `zoomToPointByIndex`, neighbours bright, rest dimmed);
+   open the sigma story only for topics outside the graph, and say so in the caption.
+4. **Movers panel:** show growth as a real ratio or percent (`exp(log) - 1`), not a log printed as a
+   percent.
+5. **Edge state against the full previous week** (orchestrator's finding): `graph/export_views.py` builds
+   the previous week from the top-k-pruned `kept` set, so 2,752 of 3,463 W42 edges are labelled `new`.
+   Compare against the previous week's `edges_weekly` with the same `n` / NPMI thresholds but no top-k
+   pruning; re-export and report the new state counts and `n_growth` median.
+6. **Name the ring honestly** (orchestrator's finding): `node_ring_and_domain` is a name-list rule (every
+   node comes from AI articles), so label it in the legend "Sector (regla por nombre): IA / TI / otros
+   sectores", document the rule and its lists in `graph/README.md`, and call `cross_ring_share`
+   "cruce de sector (regla)".
+7. **Correct `status/WS5.md`:** replace the earlier fps / settle numbers and the categorical counts with
+   values re-measured from the fixed build and recomputed from the shipped `temporal.json`; mark what was
+   wrong before.
+8. **Then Addendum 4** (Brief, Evidence, Trust cards) with a "pendiente" state when a data file is
+   missing. If it cannot be done by 05:30, record it as dropped in the status.
+
+Deadlines: items 1-4 by **04:30**, 5-7 by **04:45**, item 8 by **05:30** or dropped. Screenshots (headed
+Chrome) for 1-3 into `lake/views/`. Commit locally; the orchestrator pushes.
