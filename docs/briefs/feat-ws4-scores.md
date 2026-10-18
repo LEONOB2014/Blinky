@@ -145,3 +145,23 @@ The radar is public (Cloud Run API + Netlify UI) and its W42 top 10 still shows 
    Run image holds a copy of the lake, so the orchestrator has WS8 rebuild and redeploy it.
 
 Deadline: **01:30**.
+
+## Addendum 4 (orchestrator, 01:10 UTC-5): the backtest without waiting idle
+
+Addendum 3 is done and live (Cloud Run revision 00003). Accepted: only `exact` Wikidata matches
+open the gate (the alias errors you found justify it). The backtest's label (es+pt pageviews) is
+late: WS6 is now fetching only the backtest's 679 priority topics
+(`lake/labels/backtest_priority_topics.parquet`: every week's radar top 10 and raw-count-growth
+top 10), writing `wiki_pageviews_daily` every 50 articles, done by about 04:00.
+
+1. **Secondary-label backtest now** (the design allows it as secondary): es+pt GDELT article growth
+   as the label, precision@10 against the base rate and both baselines, lead time, bootstrap
+   intervals over weeks, with and without the eligibility gate. Title it clearly as the secondary
+   label in `reports/backtest.md`: it is the fallback card if pageviews do not arrive.
+2. **Make the primary backtest incremental:** a command that runs on whatever pageviews exist and
+   prints the coverage (labelled topic-weeks / needed topic-weeks, per method) first; it refuses to
+   report precision below a coverage you set and justify (state it).
+3. Run it at each WS6 write you see; final run when WS6 reports done.
+4. Memory is short until ~03:00 (Google Drive copy): stay under ~1.5 GB peak, one heavy job at a time.
+
+Deadlines: secondary-label backtest by **02:30**; primary backtest within 30 minutes of WS6's last write.
