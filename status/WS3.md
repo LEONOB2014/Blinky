@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 22:45 UTC-5 · `feat/ws3-graph-metrics` (addendum 22:30; PR #5 merged) · push waits for the maintainer
+2026-10-17 23:48 UTC-5 · `feat/ws3-graph-smoke` (WS3c graph-view smoke test) · committed locally; the orchestrator pushes
 
 ## Done
 
@@ -28,6 +28,67 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 - 12 unit tests on real dev-slice weeks (hub exclusion, NPMI/n/rank limits, top-20 equals the
   brute-force top NPMI, community matching 2026-10-05 -> 2026-10-12, gap handling, contract
   validation of both outputs). `make check && make test` pass locally.
+
+## WS3c graph-view smoke test (done, 2026-10-17 23:48 UTC-5)
+
+All numbers *(measured)* on this Mac (Apple M1 Pro; Chrome reports the WebGL renderer as
+"ANGLE Metal Renderer: Apple M1 Pro", so both views run on the real GPU), full profile, unless marked
+*(estimate)*. Nothing was uploaded; no cloud service or account.
+
+**Exports** (`graph/export_views.py` -> `lake/views/`, fields in `graph/README.md`):
+
+| export | nodes | edges | file | build time |
+|---|---|---|---|---|
+| temporal, 13 weeks (2026-07-20 .. 2026-10-12), top 2,000 nodes, n >= 5, NPMI > 0.1 | 2,000 | 1,869,221 (134,711-173,028 a week; 608,196 unique pairs) | 42.0 MB | 3.9 s (5.2 s with the story) |
+| temporal "light": top 1,000 nodes, n >= 20 | 1,000 | 702,169 (50,039-66,979 a week; 206,278 unique pairs) | 15.8 MB | 1.6 s |
+| story: `org:marsh mclennan`, 2026-W42 (the #1 of `topic_scores_weekly`, read, not hard-coded) | 21 | 162 (20 ring + 142 among neighbours) | 29.6 kB | 0.05 s |
+
+No `per:` node in any export (guarded in code and by a unit test that injects one).
+
+**GPU temporal view** (`lake/views/temporal.html`, cosmos.gl 3.5.1 from unpkg, force layout and drawing
+on the GPU; 10 s of layout on the union of the 13 weeks, then frozen; play/pause and week slider;
+node size = that week's PageRank, ranked topics coloured by decision). Headed Chrome, 1440x900:
+
+| export | JSON parsed | first frame | fps during layout | fps playing the 13 weeks | week switch (median / max) |
+|---|---|---|---|---|---|
+| full (2,000 / 1.87M) | 0.31 s | 1.02 s | 16.6 | 107.0 | 14.8 / 25.2 ms |
+| light (1,000 / 702k) | 0.12 s | 1.16 s | 45.6 | 119.6 | 4.5 / 14.5 ms |
+
+Largest graph that stays smooth: the full export plays the sweep at 107 fps (about 140k edges a
+week); only the layout phase drops below 30 fps, at 608k unique links. The light export stays above
+45 fps throughout. So about 200k unique links is the limit for a smooth live layout on this Mac, and
+a precomputed (frozen) layout removes that limit for the sweep.
+
+**Story view** (`lake/views/story.html`, sigma.js 3.0.3 + graphology 0.26.0): rendered 75-98 ms after
+load; topic in the centre, its 20 neighbours by rank, edge width by co-mentions, scores row as the side
+panel.
+
+**Screenshots (not committed):** `/Users/andresbecerra/Documents/30x_Blinky/radar/lake/views/temporal.png` (full), `/Users/andresbecerra/Documents/30x_Blinky/radar/lake/views/light/temporal.png`,
+`/Users/andresbecerra/Documents/30x_Blinky/radar/lake/views/story.png`.
+
+**What broke (and the fix in place):**
+1. jsDelivr's `+esm` build of cosmos.gl loads two luma.gl versions (`@luma.gl/engine@9.3.6` imports
+   `shadertools@9.3.5`); luma.gl throws "multiple versions detected". Fix: the self-contained UMD
+   build `unpkg.com/@cosmos.gl/graph@3.5.1/dist/index.min.js` (global `Cosmos`). In `web/` the npm
+   install must pin all four `@luma.gl/*` packages to one `~9.3` version (the README says so).
+2. With `fitViewOnInit` and rescaled small coordinates the camera zoomed into empty space (zoom 9.7)
+   and nothing was visible. Fix: positions in space units, `rescalePositions: false`, an explicit
+   `fitView()` after `ready` and after the layout freezes. Control: cosmos.gl's own storybook example
+   rendered in the same harness.
+3. sigma.js 4.0.3 (latest) filled the whole canvas with a single node, even in a two-node example; sigma
+   3.0.3 renders correctly. Pinned to 3.0.3.
+4. The full temporal graph renders smoothly but reads as a hairball (dense co-occurrence, 140k edges a
+   week among 2,000 nodes). Readability is G work: a precomputed layout per span, fewer edges per week
+   (e.g. top-k by NPMI per node), and highlighting the ranked top 10.
+5. The 10 s GPU layout does not converge on 608k links (it took 139 s to end on its own).
+
+**Hours G needs to move both views into `web/`** *(estimate)*: about 4.5 h in total. That covers a
+cosmos.gl React component with pinned luma.gl, a frozen layout and the week player (1.5 h),
+readability (1.5 h), a sigma 3 story component reading the same JSON (1 h), and a static export or
+API path for the JSON (0.5 h). That fits the gate's "full G" branch only if G starts by 06:30.
+
+**Not done:** item 5 of the brief (precomputed layout with pygraphistry/networkx); the frozen GPU
+layout covers the sweep for now.
 
 ## Addendum 22:30 (done)
 
