@@ -12,6 +12,10 @@ import datetime as dt
 import json
 import math
 import os
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated, Any
 
@@ -19,7 +23,7 @@ import duckdb
 import polars as pl
 import yaml
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -387,12 +391,106 @@ def get_chat_model() -> ChatModel:
     return NebiusChat()
 
 
+@dataclass(frozen=True)
+class ChatLimits:
+    per_client: int  # turns per client per window
+    window_s: int
+    daily_cap: int  # turns per UTC day, all clients together
+
+
+def chat_limits() -> ChatLimits:
+    """Config: RADAR_CHAT_PER_CLIENT (10), RADAR_CHAT_WINDOW_S (600), RADAR_CHAT_DAILY_CAP (500)."""
+    return ChatLimits(
+        per_client=int(os.environ.get("RADAR_CHAT_PER_CLIENT", "10")),
+        window_s=int(os.environ.get("RADAR_CHAT_WINDOW_S", "600")),
+        daily_cap=int(os.environ.get("RADAR_CHAT_DAILY_CAP", "500")),
+    )
+
+
+class ChatQuota:
+    """In-memory chat quota: a sliding window per client and a global UTC-day cap.
+
+    Each turn spends Nebius credit and the endpoint is public. The state lives in one process, so
+    with N instances (Cloud Run: at most 3) the effective limits are up to N times the configured
+    ones; deploy/README.md says so.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.reset()
+
+    def reset(self) -> None:
+        self._hits: dict[str, deque[float]] = {}
+        self._day = ""
+        self._day_count = 0
+
+    def admit(self, client: str, limits: ChatLimits, now: float | None = None) -> str | None:
+        """Record one turn and return None, or return the Spanish refusal without recording it."""
+        now = time.time() if now is None else now
+        day = dt.datetime.fromtimestamp(now, dt.UTC).date().isoformat()
+        with self._lock:
+            if day != self._day:
+                self._day, self._day_count = day, 0
+            hits = self._hits.setdefault(client, deque())
+            while hits and hits[0] <= now - limits.window_s:
+                hits.popleft()
+            if len(hits) >= limits.per_client:
+                wait_min = max(1, math.ceil((hits[0] + limits.window_s - now) / 60))
+                return (
+                    f"Límite de preguntas alcanzado: {limits.per_client} cada "
+                    f"{round(limits.window_s / 60)} minutos por visitante. "
+                    f"Vuelve a intentarlo en {wait_min} min."
+                )
+            if self._day_count >= limits.daily_cap:
+                return (
+                    f"El chat llegó a su límite diario de {limits.daily_cap} preguntas. "
+                    "Las tarjetas, las series y el anillo de contexto siguen disponibles; "
+                    "vuelve a intentarlo mañana."
+                )
+            hits.append(now)
+            self._day_count += 1
+            return None
+
+    def retry_after_s(self, client: str, limits: ChatLimits, now: float | None = None) -> int:
+        now = time.time() if now is None else now
+        with self._lock:
+            hits = self._hits.get(client)
+            if hits and len(hits) >= limits.per_client:
+                return max(1, math.ceil(hits[0] + limits.window_s - now))
+        tomorrow = dt.datetime.fromtimestamp(now, dt.UTC).date() + dt.timedelta(days=1)
+        midnight = dt.datetime.combine(tomorrow, dt.time(), dt.UTC).timestamp()
+        return max(1, math.ceil(midnight - now))
+
+
+chat_quota = ChatQuota()
+
+
+def client_key(request: Request) -> str:
+    """The caller's IP. Behind Cloud Run the real client is the *last* X-Forwarded-For entry
+    (Google appends it), so a client cannot dodge the limit by sending its own header."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+    if hops:
+        return hops[-1]
+    return request.client.host if request.client else "unknown"
+
+
 @app.post("/api/chat")
 def post_chat(
     req: ChatRequest,
+    request: Request,
     model: Annotated[ChatModel, Depends(get_chat_model)],
 ) -> dict[str, Any]:
-    """One turn with the Media Master (`contracts/api.yaml`)."""
+    """One turn with the Media Master (`contracts/api.yaml`), rate limited (HTTP 429)."""
+    limits = chat_limits()
+    client = client_key(request)
+    refusal = chat_quota.admit(client, limits)
+    if refusal is not None:
+        raise HTTPException(
+            status_code=429,
+            detail=refusal,
+            headers={"Retry-After": str(chat_quota.retry_after_s(client, limits))},
+        )
     return run_turn(
         req.message,
         conversation_id=req.conversation_id,
