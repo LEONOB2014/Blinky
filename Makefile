@@ -3,7 +3,7 @@
 # Reto 30X "Radar de contenido"
 # ==============================================================================
 
-.PHONY: help setup sync test test-ws lint format check worktree clean ask
+.PHONY: help setup sync test test-ws lint format check worktree clean ask api-dev web-dev
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -43,6 +43,15 @@ check: ## Every pre-commit hook on every file (identical to CI)
 # ==============================================================================
 ask: ## Ask the Media Master (Qwen3-30B via Nebius; NEBIUS_API_KEY in .env)
 	uv run python -m agents "$(Q)"
+
+# ==============================================================================
+# WS5: API and web UI
+# ==============================================================================
+api-dev: ## Run the FastAPI server on port 8000 (RADAR_PROFILE=dev by default)
+	uv run --extra api uvicorn api.app:app --reload --host 127.0.0.1 --port 8000
+
+web-dev: ## Run the Vite dev server in web/ (bun)
+	cd web && bun run dev
 
 # ==============================================================================
 # Worktrees: make worktree BRANCH=feat/ws1-run-bq
