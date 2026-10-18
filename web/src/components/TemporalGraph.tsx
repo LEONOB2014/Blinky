@@ -1651,7 +1651,13 @@ export function TemporalGraph({
               <p>
                 Este navegador no tiene aceleración gráfica activada; mostramos una imagen del grafo
               </p>
-              <img src="/fallback/temporal.png" alt="Grafo temporal semanal" />
+              <img src="/fallback/temporal.png" alt="Grafo temporal semanal de los temas de IA" />
+              <p className="graph-fallback-note">
+                Imagen fija del grafo de IA (semana 2026-W42). Los colores son las familias del
+                léxico (laboratorios, modelos, productos, técnicas, infraestructura, investigación,
+                negocio, regulación, seguridad, oposición y sociedad); las etiquetas son temas del top
+                10 del radar.
+              </p>
             </div>
           ) : (
             <>
