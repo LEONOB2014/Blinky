@@ -1,0 +1,70 @@
+repos:
+  # === Formatting & Linting ===
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      # Scoped to real Python files: ruff >=0.16 also formats Python inside
+      # Markdown fences, which would rewrite the illustrative code in docs/.
+      - id: ruff-check
+        args: [--fix]
+        types_or: [python, pyi, jupyter]
+      - id: ruff-format
+        types_or: [python, pyi, jupyter]
+
+  # === General file hygiene ===
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      # main and develop change only through pull requests. This is the local guard;
+      # CI skips it (CI checks out main itself after every merge).
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, develop]
+
+  # === Lockfile ===
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.9.10
+    hooks:
+      - id: uv-lock
+
+  # === GitHub Actions ===
+  # Catches invalid workflow expressions before they reach CI. A job-level
+  # `if: hashFiles(...)` is rejected by GitHub and runs zero jobs.
+  - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
+    rev: v1.7.12.25
+    hooks:
+      - id: actionlint
+
+  # === Security ===
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        exclude: (\.lock|\.csv|\.parquet|\.pdf)$
+
+  # === Data contracts ===
+  # Every schema in contracts/ is valid JSON Schema and every mock in mocks/ matches its contract.
+  - repo: local
+    hooks:
+      - id: contracts
+        name: contracts and mocks agree
+        entry: uv run --frozen pytest -q tests/test_contracts.py
+        language: system
+        files: ^(contracts/|mocks/|tests/test_contracts\.py)
+        pass_filenames: false
+
+  # === Commit Messages ===
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.29.1
+    hooks:
+      - id: commitizen

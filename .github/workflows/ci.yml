@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# A newer push to the same branch or PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================================
+  # Code Quality
+  # ============================================================================
+  quality:
+    name: "Lint, Format & Hooks"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install environment
+        run: uv sync --locked
+
+      # Single source of truth: the same pinned hooks that run locally on commit.
+      # no-commit-to-branch guards local commits; on a push to main CI checks out
+      # main itself, so the hook would fail every post-merge run.
+      - name: Run every hook (pre-commit)
+        env:
+          SKIP: no-commit-to-branch
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  # ============================================================================
+  # Tests (no network, no BigQuery, no lake: those tests skip themselves)
+  # ============================================================================
+  test:
+    name: "Tests"
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install environment
+        run: uv sync --locked
+
+      - name: Run tests
+        run: uv run pytest -m "not bq and not data" --cov=radar --cov-report=term-missing
+
+  # ============================================================================
+  # Pull request title (it becomes the merge commit and the changelog entry)
+  # ============================================================================
+  pr-title:
+    name: "Conventional PR title"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            test
+            build
+            ci
+            chore
+            style
+            revert
+            bump
+          requireScope: false
+          subjectPattern: ^[a-z].+[^.]$
+          subjectPatternError: "The description must start lowercase and have no trailing period."
+
+  # ============================================================================
+  # Web UI (web/, Lovable React app). Skipped until web/package.json exists.
+  # ============================================================================
+  web:
+    name: "Web build"
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      # Checked in a step: a job-level `if: hashFiles(...)` is rejected by GitHub.
+      - name: Check for the web app
+        id: app
+        run: |
+          if [ -f web/package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::web/package.json not written yet - skipping"
+          fi
+
+      - name: Install bun
+        if: steps.app.outputs.present == 'true'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        if: steps.app.outputs.present == 'true'
+        working-directory: web
+        run: bun install
+
+      - name: Build
+        if: steps.app.outputs.present == 'true'
+        working-directory: web
+        run: bun run build

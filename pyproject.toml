@@ -1,0 +1,103 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "radar"
+version = "0.1.0"
+description = "Radar de Señal Temprana: the early-signal radar of AI topics for 30X (Reto 30X \"Radar de contenido\")"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Andres Becerra" }]
+
+# Shared core: every workstream reads and writes Parquet against the contracts.
+dependencies = [
+    "duckdb>=1.1.0",
+    "polars>=1.10.0",
+    "pyarrow>=18.0.0",
+    "pydantic>=2.9.0",
+    "jsonschema>=4.23.0",
+    "pyyaml>=6.0.2",
+    "python-dotenv>=1.0.0",
+]
+
+# One extra per workstream, so an agent installs only what its directory needs:
+#   uv sync --extra bq        (WS1)   uv sync --extra graph   (WS3)
+#   uv sync --extra models    (WS4)   uv sync --extra api     (WS5)
+[project.optional-dependencies]
+bq = ["google-cloud-bigquery>=3.27.0", "google-cloud-bigquery-storage>=2.27.0"]
+labels = ["httpx>=0.27.0", "tenacity>=9.0.0"]
+graph = ["igraph>=0.11.8", "leidenalg>=0.10.2", "graphistry>=0.34.0"]
+models = ["scikit-learn>=1.5.0", "lightgbm>=4.5.0", "shap>=0.46.0"]
+api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.32.0"]
+crosssource = ["httpx>=0.27.0", "tenacity>=9.0.0"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.16.10",   # keep in sync with .pre-commit-config.yaml
+    "pre-commit>=4.0.0",
+    "commitizen>=3.29.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/radar"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests", "pipelines", "graph", "models", "entity", "crosssource", "api"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "S",    # flake8-bandit (security)
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "RET",  # flake8-return
+    "SIM",  # flake8-simplify
+    "PTH",  # flake8-use-pathlib
+]
+ignore = [
+    "B008",  # Depends() in FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"**/tests/**" = ["S101"]
+# The lead's original BigQuery helpers: compact one-off scripts, kept as written.
+"bq_sql/**" = ["E401", "E501", "BLE001", "S608"]
+# Pipeline and model jobs build SQL from fixed table and column names in code, never from input.
+"pipelines/**" = ["S608"]
+"models/**" = ["N803", "N806"]  # math-style names (X, y_hat) are normal in model code
+
+[tool.ruff.lint.isort]
+known-first-party = ["radar"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "pipelines", "graph", "models", "entity", "crosssource", "api"]
+addopts = "-q --tb=short"
+markers = [
+    "unit: fast tests with no network or data",
+    "data: needs the local lake (skips when absent)",
+    "bq: calls BigQuery (never in CI)",
+]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+version_files = ["pyproject.toml:^version"]
+tag_format = "v$version"
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"
+major_version_zero = true

@@ -1,0 +1,57 @@
+# Dependencies
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Environment and local agent preferences
+.env
+.env.*
+!.env.example
+CLAUDE.local.md
+GEMINI.local.md
+
+# IDEs and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Data never enters git. One shared lake/ lives in the main checkout; worktrees
+# symlink to it, so the pattern has no trailing slash (it must match the link too).
+/lake
+*.parquet
+*.duckdb
+*.duckdb.wal
+*.arrow
+*.jsonl
+*.csv
+# Committed exceptions: the BigQuery cost ledger and small reviewed tables
+!reports/*.csv
+
+# Models and caches
+*.pkl
+*.joblib
+*.pt
+*.onnx
+mlruns/
+
+# Web (web/ is its own bun project)
+web/node_modules/
+web/dist/
+web/.netlify/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.log
+
+# Secrets (.secrets.baseline is committed: it is the detect-secrets audit baseline)
+*.pem
+*.key
+service-account*.json

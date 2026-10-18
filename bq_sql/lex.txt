@@ -1,0 +1,1 @@
+URL_RE r'artificial-intelligence|inteligencia-artificial|intelig[a-z0-9%]{1,8}ncia-artificial|intelligence-artificielle|intelligenza-artificiale|kunstliche-intelligenz|chatgpt|openai|anthropic|deepmind|deepseek|generative-ai|genai|ia-generativa|machine-learning|aprendizaje-automatico|large-language|llm|agentic|ai-agent|agentes-de-ia|agentes-ia|copilot|nvidia|hugging-?face'
