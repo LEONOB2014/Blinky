@@ -4,7 +4,8 @@
 # ==============================================================================
 
 .PHONY: help setup sync test test-ws lint format check worktree clean ask api-dev web-dev \
-	deploy-push-lake deploy-serve deploy-api deploy-static deploy-web
+	deploy-push-lake deploy-serve deploy-api deploy-static deploy-web \
+	deploy-cloudrun-stage deploy-cloudrun-local deploy-cloudrun
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -65,6 +66,18 @@ deploy-serve: ## Temporary Modal URL for the API (no secret: /api/chat answers 5
 
 deploy-api: ## Deploy the API on Modal (needs the radar-nebius secret; maintainer's approval)
 	uv run --extra deploy modal deploy deploy/modal_app.py
+
+deploy-cloudrun-stage: ## Stage the Cloud Run build context in build/cloudrun/ (code + 7 lake tables)
+	RADAR_PROFILE=full uv run python deploy/cloudrun_stage.py
+
+deploy-cloudrun-local: deploy-cloudrun-stage ## Build and run the Cloud Run image locally on :18080
+	docker build -t radar-api:local build/cloudrun
+	docker run --rm -p 18080:8080 -e PORT=8080 radar-api:local
+
+deploy-cloudrun: deploy-cloudrun-stage ## Deploy the API on Cloud Run (public URL: maintainer's approval)
+	gcloud run deploy radar-api --source build/cloudrun --region $(or $(REGION),us-central1) \
+		--allow-unauthenticated --cpu 1 --memory 1Gi --min-instances 0 --max-instances 3 \
+		--set-secrets NEBIUS_API_KEY=radar-nebius-key:latest
 
 deploy-static: ## Write the static fallback to web/public/data/ from the full lake
 	RADAR_PROFILE=full uv run --extra api python deploy/export_static.py
