@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/community_topic_weekly.schema.json",
+  "title": "Week x AI topic x community category: what the AI community publishes about the topic",
+  "description": "crosssource/community.py from public feeds and APIs (HF daily papers and model releases, lab and practitioner newsletters, AI Engineer and YC YouTube, YC Requests for Startups, The Batch, AI safety and critic organisations), matched to contracts/ai_lexicon.yaml -> lake/gold/community_topic_weekly.parquet. A separate, unvalidated signal: most feeds keep a short history, so it never enters the backtest. Item titles stay in lake/raw/community, never in git.",
+  "type": "object",
+  "x-owner": "WS6",
+  "x-mock": "private",
+  "properties": {
+    "topic_id": {"type": "string", "pattern": "^ai:", "description": "'ai:<lexicon id>'"},
+    "week": {"type": "string", "pattern": "^\\d{4}-W\\d{2}$", "description": "ISO week, as topic_scores_weekly"},
+    "category": {"type": "string", "enum": ["research", "practitioners", "builders", "vision", "media", "critics"]},
+    "n_items": {"type": "integer", "minimum": 1, "description": "items of the week matching the topic"},
+    "n_sources": {"type": "integer", "minimum": 1, "description": "distinct sources among them"},
+    "score": {"type": "number", "minimum": 0, "description": "summed public engagement where the source gives one (HF upvotes or likes), else 0"}
+  },
+  "required": ["topic_id", "week", "category", "n_items", "n_sources", "score"],
+  "additionalProperties": false
+}
