@@ -350,6 +350,9 @@ def cards_from_scores(turn: Turn) -> list[dict[str, Any]]:
     return cards
 
 
+# a question about money: the Scout answers it, and only then does the Auditor read the cost ledger
+_COST_Q = re.compile(r"cost[oóa]|costad|cuesta|gast|factur", re.I)
+
 ROUTES = [
     (
         re.compile(r"grafo|graf|red |muestr|mu[eé]stra|visual|vista|conect|vecin|comunidad", re.I),
@@ -364,7 +367,7 @@ ROUTES = [
         "audience_strategist",
     ),
     (re.compile(r"contenido|guion|gancho|post|formato|escrib|brief", re.I), "editor"),
-    (re.compile(r"cost[oóa]|costad|cuesta|gast|factur|fresc|actualiz|fuente", re.I), "scout"),
+    (re.compile(rf"{_COST_Q.pattern}|fresc|actualiz|fuente", re.I), "scout"),
     (re.compile(r"conf[ií]a|backtest|precisi|evidencia|calidad", re.I), "auditor"),
 ]
 
@@ -593,7 +596,10 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
         + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
         "scout": [("get_freshness", {}), ("get_cost_ledger", {})],
         "curator": [("get_segment_mix", {"week": week}), ("get_filter_quality", {})],
-        "auditor": [("get_backtest", {}), ("get_filter_quality", {}), ("get_cost_ledger", {})],
+        # the cost ledger only when asked about cost: given it unasked, the model recast it as
+        # an invented weekly cost ("$2.20 por semana", q22 in grounding-gaps)
+        "auditor": [("get_backtest", {}), ("get_filter_quality", {})]
+        + ([("get_cost_ledger", {})] if _COST_Q.search(question) else []),
     }[agent]
     results = (
         [ctx["signals"]] if agent in {"signal_analyst", "audience_strategist", "editor"} else []

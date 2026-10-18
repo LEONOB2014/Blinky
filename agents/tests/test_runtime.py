@@ -153,6 +153,21 @@ def test_cartographer_reads_the_leaders_ring_when_no_entity_is_named():
     assert not [s for s in turn.trace if s["tool"] == "get_context_1hop"]
 
 
+@pytest.mark.unit
+def test_auditor_reads_the_cost_ledger_only_when_asked_about_cost():
+    ctx = {"week": None, "leader": None, "entity": None, "signals": {}}
+
+    def tools_called(question):
+        turn = runtime.Turn("t")
+        runtime.gather(turn, "auditor", question, ctx)
+        return {s["tool"] for s in turn.trace if s["action"] == "tool_call"}
+
+    trust = tools_called("¿Cuánto puedo confiar en el radar? ¿Hay backtest?")
+    assert trust == {"get_backtest", "get_filter_quality"}
+    assert "get_cost_ledger" in tools_called("¿Cuánto ha costado el radar y qué tan confiable es?")
+    assert "get_cost_ledger" in tools_called("¿Cuánto se ha gastado en BigQuery?")
+
+
 @pytest.mark.parametrize(
     "question",
     [
