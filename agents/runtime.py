@@ -43,7 +43,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     },
     "cartographer": {
         "name_es": "Cartógrafo",
-        "tools": ["get_context_1hop", "update_view"],
+        "tools": ["get_context_1hop", "get_graph_facts", "update_view"],
         "role": "Explicas un tema por sus vecinos en el grafo de co-menciones y cambias la vista del "
         "grafo con update_view cuando el usuario quiere ver algo.",
     },
@@ -544,6 +544,39 @@ _EVIDENCE_Q = re.compile(r"\bart[ií]culos?\b|\bevidencias?\b|\bfuentes?\b|\bmed
 LANG_ES = {"spa": "español", "eng": "inglés", "por": "portugués"}
 
 
+def _num(x: float) -> str:
+    """A threshold as the answer writes it: 0.1 -> "0,1", 20 -> "20"."""
+    return f"{x:g}".replace(".", ",")
+
+
+def graph_facts_line(turn: Turn, entity: str | None) -> str:
+    """How the graph shown was built, written by code from the graph tools' own output: a named
+    topic's ring (get_context_1hop's criterios) or the weekly view (get_graph_facts)."""
+    found = {r["tool"]: r["result"] for r in turn.tool_results if r["result"].get("available")}
+    ring, view = found.get("get_context_1hop"), found.get("get_graph_facts")
+    if view and not entity:
+        return (
+            f"Cómo se arma el grafo ({view['week']}): cada tema muestra hasta sus "
+            f"{view['conexiones_por_tema']} conexiones más fuertes, con al menos "
+            f"{view['min_coapariciones']} co-menciones y NPMI mayor que {_num(view['npmi_mayor_que'])}; "
+            f"esta semana son {view['temas_semana']} temas y {view['conexiones_semana']} conexiones."
+        )
+    if ring and ring.get("criterios"):
+        c = ring["criterios"]
+        top = (
+            f"sus {c['top_por_tema']} vecinos más fuertes"
+            if c.get("top_por_tema")
+            else "sus vecinos"
+        )
+        return (
+            f"Cómo se arma el grafo ({ring['week']}): {top}, con al menos "
+            f"{c['n_minimo_coapariciones']} co-menciones y NPMI mayor que "
+            f"{_num(c['npmi_mayor_que'])}, sin los nodos más conectados ni personas; "
+            f"se muestran {len(ring.get('rows') or [])}."
+        )
+    return ""
+
+
 def evidence_block(turn: Turn) -> str:
     """The articles behind a named topic, written by code from get_topic_evidence (and the week's
     outlet count from get_topic_sources), so an evidence question lists them verbatim."""
@@ -675,9 +708,12 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
         # no entity named: the ring of the week's #1 topic, so the answer has real neighbours
-        "cartographer": [("get_context_1hop", {"entity": entity or leader, "week": week})]
-        if (entity or (leader and ":" in leader))
-        else [],
+        "cartographer": (
+            [("get_context_1hop", {"entity": entity or leader, "week": week})]
+            if (entity or (leader and ":" in leader))
+            else []
+        )
+        + ([] if entity else [("get_graph_facts", {"week": week})]),
         # the pre-written, Auditor-checked brief first when it exists (agents/briefs.py)
         "editor": (
             [("get_topic_brief", {"topic_id": entity or leader, "week": week})]
@@ -869,6 +905,9 @@ def run_turn(
         block = evidence_block(turn) if _EVIDENCE_Q.search(question) else ""
         if block:
             line = f"{line}\n\n{block}" if line else block
+        facts = graph_facts_line(turn, entity) if "cartographer" in needed else ""
+        if facts:
+            line = f"{line}\n\n{facts}" if line else facts
         instructions = (
             f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
             "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
@@ -878,6 +917,11 @@ def run_turn(
             else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
             "los informes; no agregues KPIs ni decisiones que no estén en ellos."
             + (f" El sistema ya lista los artículos: «{block}». No los repitas." if block else "")
+        ) + (
+            f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
+            "menciones otros umbrales, mínimos de co-menciones ni valores de NPMI."
+            if facts
+            else ""
         )
         reply = model.chat(
             [

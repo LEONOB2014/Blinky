@@ -10,6 +10,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -18,7 +19,7 @@ import yaml
 from jsonschema import Draft202012Validator
 
 from radar.contracts import load_schema
-from radar.paths import REPO_ROOT, gold, profile
+from radar.paths import REPO_ROOT, gold, lake, profile
 
 WEEK_RE = re.compile(r"^(\d{4})-W(\d{2})$")
 Z_DISPLAY_CAP = 10.0  # z-scores above this are shown as ">10": tiny 28-day baselines inflate them
@@ -391,6 +392,42 @@ RING_TOP_K = 20
 RING_HUB_SHARE = 0.01
 
 
+@functools.lru_cache(maxsize=2)
+def _view_summary(path: str, mtime: float) -> tuple[dict[str, Any], list[int]]:
+    """The view's _meta and, per week, how many nodes it draws (those with an edge that week);
+    cached per file version, since the view is several MB."""
+    view = json.loads(Path(path).read_text(encoding="utf-8"))
+    drawn: list[set[int]] = [set() for _ in view["_meta"]["iso_weeks"]]
+    edges = view["edges"]
+    for a, b, w in zip(edges["source"], edges["target"], edges["week"], strict=True):
+        drawn[w].update((a, b))
+    return view["_meta"], [len(d) for d in drawn]
+
+
+def get_graph_facts(week: str | None = None) -> dict[str, Any]:
+    """How the weekly graph view is built, from the metadata graph/export_views.py writes
+    (lake/views/temporal.json): per-node top-k, minimum co-mentions, the NPMI cut, and how many
+    nodes and edges the view draws that week. Read, never restated, so the answer cites the real thresholds."""
+    path = lake() / "views" / "temporal.json"
+    if profile() == "dev" or not path.exists():
+        return _unavailable("views/temporal.json")
+    meta, present = _view_summary(str(path), path.stat().st_mtime)
+    weeks = meta["iso_weeks"]
+    label = week if week in weeks else weeks[-1]
+    i = weeks.index(label)
+    params = meta["params"]
+    return {
+        "available": True,
+        "source": "views/temporal.json",
+        "week": label,
+        "conexiones_por_tema": params["top_k_per_node"],
+        "min_coapariciones": params["min_n"],
+        "npmi_mayor_que": params["min_npmi_exclusive"],
+        "temas_semana": present[i],
+        "conexiones_semana": meta["edges_per_week"][i],
+    }
+
+
 def ring_criteria(shown: int) -> dict[str, Any]:
     """How the ring was built, in the words and numbers the answer may cite."""
     return {
@@ -714,6 +751,13 @@ TOOLS: dict[str, Tool] = {
                 "properties": {"topic_id": {"type": "string"}, "week": WEEK},
                 "required": ["topic_id"],
             },
+        ),
+        Tool(
+            "get_graph_facts",
+            get_graph_facts,
+            "Cómo se arma el grafo semanal que ve el usuario: conexiones por tema, mínimo de "
+            "co-menciones, corte de NPMI y cuántos temas y conexiones tiene la semana.",
+            {"type": "object", "properties": {"week": WEEK}},
         ),
         Tool(
             "get_context_1hop",
