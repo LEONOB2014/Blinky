@@ -68,7 +68,7 @@ run "npx --yes netlify-cli deploy --dir web/dist --site \"$SITE_ID\" --prod"
 run "rm -rf .netlify"
 
 step "6. live check (reads only; add a chat turn with make demo-check ARGS=--chat)"
-run make demo-check
+run make demo-check ARGS=   # clear the caller's ARGS=--run, which make passes down
 
 if [[ $RUN == 1 ]]; then
   printf '\nDONE: redeployed; demo-check above must read 7/7 passed.\n'
