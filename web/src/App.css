@@ -1291,16 +1291,18 @@ body {
 .workspace-stage .story-graph-container {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
+  height: auto;
   margin: 0;
 }
 
 .workspace-stage .temporal-split,
-.workspace-stage .story-split {
+.workspace-stage .story-canvas-split {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
-  grid-template-columns: 1fr;
+  height: auto;
+  gap: 0;
 }
 
 .workspace-stage .temporal-movers-aside {
@@ -1309,10 +1311,23 @@ body {
 
 .workspace-stage .temporal-canvas-wrap,
 .workspace-stage .story-canvas-wrap {
-  height: 100%;
-  min-height: 280px;
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
   border: none;
   border-radius: 0;
+}
+
+.workspace-stage .temporal-canvas-host,
+.workspace-stage .story-sigma-host {
+  position: absolute;
+  inset: 0;
+}
+
+.workspace-stage .story-neighbors-aside {
+  flex: 0 1 auto;
+  max-height: 30%;
+  overflow: auto;
 }
 
 .rail-row {

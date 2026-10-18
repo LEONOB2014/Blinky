@@ -374,6 +374,34 @@ export function StoryGraph({
     };
   }, [storyData, highlightSet, activeLens]);
 
+  useEffect(() => {
+    const host = sigmaContainerRef.current;
+    if (!host || !storyData || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    let lastW = -1;
+    let lastH = -1;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      const w = rect.width;
+      const h = rect.height;
+      if (w < 2 || h < 2) return;
+      if (lastW >= 0 && Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return;
+      lastW = w;
+      lastH = h;
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        sigmaRef.current?.resize();
+      });
+    });
+    observer.observe(host);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [storyData]);
+
   const top10Stories = useMemo(() => indexData?.top10 ?? [], [indexData]);
   const referenceStories = useMemo(
     () =>

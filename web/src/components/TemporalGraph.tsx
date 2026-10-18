@@ -1,4 +1,4 @@
-import { Graph } from "@cosmos.gl/graph";
+import { Graph, type GraphConfig } from "@cosmos.gl/graph";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
@@ -89,6 +89,8 @@ export function TemporalGraph({
 }: TemporalGraphProps) {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Graph | null>(null);
+  const graphConfigRef = useRef<GraphConfig | null>(null);
+  const graphReadyRef = useRef(false);
   const dataRef = useRef<TemporalGraphData | null>(null);
   const [data, setData] = useState<TemporalGraphData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -972,7 +974,8 @@ export function TemporalGraph({
     }
     weekLinkMapRef.current = linkMapByWeek;
 
-    const graph = new Graph(host, {
+    // setConfig replaces the whole config, so a resize must pass this same object.
+    const config: GraphConfig = {
       spaceSize: 4096,
       backgroundColor: "#0f172a",
       pointDefaultSize: 4,
@@ -993,7 +996,9 @@ export function TemporalGraph({
           onSelectTopic?.(data.nodes[index].id);
         }
       },
-    });
+    };
+    graphConfigRef.current = config;
+    const graph = new Graph(host, config);
 
     graphRef.current = graph;
     const initialW = Math.max(0, Math.min(weekIdx, nWeeks - 1));
@@ -1008,6 +1013,7 @@ export function TemporalGraph({
         applyLensRef.current(initialW, activeLensRef.current);
       }
       graph.fitView(0, 0.08, false);
+      graphReadyRef.current = true;
 
       requestAnimationFrame(() => {
         if (disposed) return;
@@ -1042,6 +1048,8 @@ export function TemporalGraph({
 
     return () => {
       disposed = true;
+      graphReadyRef.current = false;
+      graphConfigRef.current = null;
       graph.destroy();
       graphRef.current = null;
     };
@@ -1050,6 +1058,50 @@ export function TemporalGraph({
   const weekIdxRef = useRef<number>(weekIdx);
   const applyLensRef = useRef(applyLensToGraph);
   applyLensRef.current = applyLensToGraph;
+  const recomputeLabelsRef = useRef(recomputeLabels);
+  recomputeLabelsRef.current = recomputeLabels;
+
+  // The library resizes its drawing buffer on its own. The camera stays framed
+  // for the old box until we pass the full config and fit the new host size.
+  useEffect(() => {
+    const host = canvasHostRef.current;
+    if (!host || !data || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    let lastW = -1;
+    let lastH = -1;
+
+    const fitToHost = () => {
+      frame = 0;
+      const g = graphRef.current;
+      const cfg = graphConfigRef.current;
+      if (!g || !cfg || !graphReadyRef.current) return;
+      const rect = host.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return;
+      g.setConfig(cfg);
+      applyLensRef.current(weekIdxRef.current, activeLensRef.current);
+      g.fitView(0, 0.08, false);
+      recomputeLabelsRef.current(weekIdxRef.current);
+    };
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      const w = rect.width;
+      const h = rect.height;
+      if (w < 2 || h < 2) return;
+      if (lastW >= 0 && Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return;
+      lastW = w;
+      lastH = h;
+      if (!graphReadyRef.current) return;
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitToHost);
+    });
+    observer.observe(host);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [data]);
 
   useEffect(() => {
     return () => {
@@ -1280,7 +1332,7 @@ export function TemporalGraph({
               className="pill pill-primary"
               onClick={() => onOpenStory(focusTopic)}
             >
-              Ver anillo 1-salto en Sigma.js →
+              Ver anillo de 1 salto
             </button>
           )}
         </div>
@@ -1366,7 +1418,7 @@ export function TemporalGraph({
                   <span className="legend-dot legend-bridge-low" /> mismo sector (Azul marino)
                 </span>
                 <span className="legend-item">
-                  Tamaño = Betweenness normalizada (igraph)
+                  Tamaño = betweenness normalizada
                 </span>
               </>
             )}
