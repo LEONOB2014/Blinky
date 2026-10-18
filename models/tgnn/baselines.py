@@ -43,43 +43,43 @@ REPORT = paths.REPO_ROOT / "reports" / "tgnn.md"
 Adjacency = dict[str, set[str]]
 
 
-def weekly_adjacency(edges: pl.DataFrame) -> dict[date, Adjacency]:
-    adj: dict[date, Adjacency] = defaultdict(lambda: defaultdict(set))
-    for wk, x, y in edges.select("wk", "x", "y").iter_rows():
-        adj[wk][x].add(y)
-        adj[wk][y].add(x)
+def week_adjacency(week: pl.DataFrame) -> Adjacency:
+    adj: Adjacency = defaultdict(set)
+    for x, y in week.select("x", "y").iter_rows():
+        adj[x].add(y)
+        adj[y].add(x)
     return adj
 
 
 def query_rank(memory: set[str], true_node: str, negatives: set[str]) -> float:
     """Mean-position rank of ``true_node`` among ``negatives`` under binary memory scores."""
-    hits = len(memory & negatives)
-    if true_node in memory:
+    return _rank(true_node in memory, len(memory & negatives), len(negatives))
+
+
+def _rank(remembered: bool, hits: int, n_neg: int) -> float:
+    if remembered:
         return 1 + hits / 2
-    return 1 + hits + (len(negatives) - hits) / 2
+    return 1 + hits + (n_neg - hits) / 2
 
 
-def evaluate_pair(prior: list[Adjacency], nxt: Adjacency) -> list[dict]:
-    """One row per (target, model) for the week pair: ``prior`` holds weeks <= t, oldest first."""
-    last = prior[-1]
-    bank: Adjacency = defaultdict(set)
-    for adj in prior:
-        for u, vs in adj.items():
-            bank[u] |= vs
+def evaluate_pair(last: Adjacency, bank: Adjacency, nxt: Adjacency) -> list[dict]:
+    """One row per (target, model) for the pair (t, t+1).
+
+    ``last`` is week t, ``bank`` every edge of the contiguous weeks up to t. A node's negatives
+    are the same for all its true neighbours, so its memory hits are counted once.
+    """
     nodes = set(nxt)
+    empty: set[str] = set()
     sums = {(tg, m): 0.0 for tg in TARGETS for m in MODELS}
     counts = dict.fromkeys(TARGETS, 0)
     for u, true_nbrs in nxt.items():
-        candidates = nodes - true_nbrs - {u}
+        negatives = nodes - true_nbrs - {u}
+        mem = {"persistence": last.get(u, empty), "edgebank": bank.get(u, empty), "random": empty}
+        hits = {m: len(mem[m] & negatives) for m in MODELS}
         for v in true_nbrs:
-            is_new = v not in last.get(u, set())
-            recip = {
-                "persistence": 1 / query_rank(last.get(u, set()), v, candidates),
-                "edgebank": 1 / query_rank(bank.get(u, set()), v, candidates),
-                "random": 1 / query_rank(set(), v, candidates),
-            }
+            recip = {m: 1 / _rank(v in mem[m], hits[m], len(negatives)) for m in MODELS}
             for tg in TARGETS:
-                if tg == "new" and not is_new:
+                if tg == "new" and v in mem["persistence"]:
                     continue
                 counts[tg] += 1
                 for m in MODELS:
@@ -91,21 +91,28 @@ def evaluate_pair(prior: list[Adjacency], nxt: Adjacency) -> list[dict]:
     ]
 
 
-def evaluate(edges: pl.DataFrame) -> pl.DataFrame:
-    """Per week pair, target and model: queries and the sum of reciprocal ranks."""
-    adj = weekly_adjacency(edges)
-    weeks = sorted(adj)
+def evaluate(edges: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+    """Per week pair, target and model: queries and the sum of reciprocal ranks.
+
+    Streams one week at a time. EdgeBank's memory restarts after a gap, so it only spans
+    contiguous weeks up to t.
+    """
+    lf = edges.lazy()
+    weeks = sorted(lf.select(pl.col("wk").unique()).collect()["wk"].to_list())
     rows = []
-    for i, wk in enumerate(weeks[:-1]):
-        if weeks[i + 1] - wk != WEEK:
-            continue
-        # EdgeBank's memory runs back to the last gap: weeks are contiguous up to t.
-        start = i
-        while start > 0 and weeks[start] - weeks[start - 1] == WEEK:
-            start -= 1
-        prior = [adj[w] for w in weeks[start : i + 1]]
-        for row in evaluate_pair(prior, adj[weeks[i + 1]]):
-            rows.append({"wk_t": wk, "wk_next": weeks[i + 1], **row})
+    bank: Adjacency = defaultdict(set)
+    last: Adjacency | None = None
+    prev_wk: date | None = None
+    for wk in weeks:
+        adj = week_adjacency(lf.filter(pl.col("wk") == wk).collect())
+        if last is not None and prev_wk is not None and wk - prev_wk == WEEK:
+            for row in evaluate_pair(last, bank, adj):
+                rows.append({"wk_t": prev_wk, "wk_next": wk, **row})
+        else:
+            bank = defaultdict(set)
+        for u, vs in adj.items():
+            bank[u] |= vs
+        last, prev_wk = adj, wk
     return pl.DataFrame(rows)
 
 
@@ -139,13 +146,18 @@ def summarize(per_pair: pl.DataFrame) -> pl.DataFrame:
     return pl.DataFrame(out)
 
 
-def render(summary: pl.DataFrame, per_pair: pl.DataFrame, edges: pl.DataFrame) -> str:
-    weeks = sorted(edges["wk"].unique())
+def render(
+    summary: pl.DataFrame, per_pair: pl.DataFrame, edges: pl.DataFrame | pl.LazyFrame
+) -> str:
+    stats = edges.lazy().select(
+        first=pl.col("wk").min(), last=pl.col("wk").max(), n_weeks=pl.col("wk").n_unique(),
+        n_edges=pl.len(),
+    ).collect().row(0, named=True)  # fmt: skip
     lines = [
         "# TGNN baselines: EdgeBank and persistence (WS7, P2)",
         "",
-        f"Profile: `{paths.profile()}`. Input: `edges_weekly`, {len(weeks)} weeks "
-        f"({weeks[0]} .. {weeks[-1]}), {edges.height:,} edges (measured). "
+        f"Profile: `{paths.profile()}`. Input: `edges_weekly`, {stats['n_weeks']} weeks "
+        f"({stats['first']} .. {stats['last']}), {stats['n_edges']:,} edges (measured). "
         "Code: `models/tgnn/baselines.py` (task, filtering and tie rule in its docstring).",
         "",
         "Every number below is *(measured)*. MRR = mean of 1/rank over queries; each positive "
@@ -177,7 +189,7 @@ def render(summary: pl.DataFrame, per_pair: pl.DataFrame, edges: pl.DataFrame) -
 
 
 def main() -> int:
-    edges = pl.read_parquet(paths.gold("edges_weekly"))
+    edges = pl.scan_parquet(paths.gold("edges_weekly"))
     per_pair = evaluate(edges)
     text = render(summarize(per_pair), per_pair, edges)
     if paths.profile() == "full":
