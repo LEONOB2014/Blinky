@@ -12,7 +12,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 01:35 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
+2026-10-18 01:30 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
 committed locally, the orchestrator pushes.
 
 ## Done
@@ -117,6 +117,29 @@ committed locally, the orchestrator pushes.
   - Redeploy after a lake rebuild: `make deploy-cloudrun`, `make deploy-static`,
     `make deploy-web API_URL=<Cloud Run URL>`, then
     `npx netlify-cli deploy --dir web/dist --site $NETLIFY_SITE_ID --prod`.
+
+- **Chat rate limit (addendum 00:50), live in revision `radar-api-00002`.** In `api/app.py`: 10 turns
+  per 10 minutes per client IP and 500 turns per UTC day in total, set with `RADAR_CHAT_PER_CLIENT`,
+  `RADAR_CHAT_WINDOW_S` and `RADAR_CHAT_DAILY_CAP`.
+  - Over the limit the API answers HTTP 429 with a Spanish message (the chat panel shows it) and
+    `Retry-After`.
+  - The client IP is the last `X-Forwarded-For` hop, so a client cannot reset its limit by sending
+    its own header. Refused turns do not count. A missing key answers 503 without spending quota.
+  - The counters are in memory, one set per instance: up to 3x the limits with 3 instances (in the
+    runbook).
+  - 8 offline tests, all passing. One sends 10 demo questions with the default limits: all 10
+    answer 200, none blocked (measured with a scripted model).
+  - Before the 01:20 addendum, a local container with a limit of 2 answered the 3rd call with 429,
+    the Spanish detail and `Retry-After: 599` (measured).
+  - Live after the redeploy (measured): `/api/radar` 200 (1.98 s cold, 0.31 s warm),
+    `/api/freshness` 200, one chat turn 200 in 13.6 s with an 8-step trace. A live 429 was not
+    triggered: it would spend 10 real Nebius turns.
+- Merged `origin/develop` (LangSmith agents, labels cascade): `uv.lock` was regenerated and
+  `.env.example` keeps both blocks.
+  - The agents now import `langsmith`. The image's packages are now read from `pyproject.toml`
+    (core + `api` extra), so the redeploy carries it.
+- Addendum 01:20 (memory): the redeploy built with Cloud Build (`gcloud run deploy --source`, 2 min
+  29 s) and Docker Desktop was quit. The two local container tests ran before I read the addendum.
 
 ## Waits for approval or for the maintainer
 
