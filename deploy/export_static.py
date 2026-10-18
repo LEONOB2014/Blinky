@@ -14,6 +14,8 @@ Layout (``slug`` = the topic id lowercased, every non [a-z0-9] run replaced by "
     timeline/<slug>.json           GET /api/topic/<id>/timeline
     context/<slug>/<week>.json     GET /api/topic/<id>/context?week=<week>, the last 4 weeks
     context/<slug>/latest.json     GET /api/topic/<id>/context
+    evidence/topics/<slug>.json    topic_evidence_weekly (up to 5 articles per week) for the top 10
+                                   of the last 4 scored weeks; titles and URLs, so never in git
 Topics: every topic in a top 10 of the last 4 weeks, the subtopics (timelines only) and the
 entities the UI offers by default.
 """
@@ -25,6 +27,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 REPO = Path(__file__).resolve().parents[1]
@@ -61,6 +64,40 @@ def _write(path: Path, body: object) -> int:
     return len(text.encode("utf-8"))
 
 
+EVIDENCE_TOP, EVIDENCE_WEEKS = 10, 4
+
+
+def iso_week(day: dt.date) -> str:
+    iso = day.isocalendar()
+    return f"{iso.year}-W{iso.week:02d}"
+
+
+def topic_evidence_json(scores: Any, evidence: Any) -> dict[str, dict[str, Any]]:
+    """slug -> {topic_id, weeks: {ISO week: [articles]}} for the top 10 of the last 4 scored weeks.
+
+    `scores` is topic_scores_weekly, `evidence` is topic_evidence_weekly (Polars frames). Articles
+    keep the contract's fields; weeks without evidence are left out, never invented.
+    """
+    import polars as pl
+
+    ranked = scores.filter(pl.col("rank").is_not_null() & (pl.col("rank") <= EVIDENCE_TOP))
+    weeks = sorted(ranked["week"].unique().to_list())[-EVIDENCE_WEEKS:]
+    wanted = ranked.filter(pl.col("week").is_in(weeks)).select("week", "topic_id")
+    ev = evidence.with_columns(
+        pl.col("week").map_elements(iso_week, return_dtype=pl.String).alias("iso_week")
+    ).join(wanted, left_on=["iso_week", "topic_id"], right_on=["week", "topic_id"], how="inner")
+    out: dict[str, dict[str, Any]] = {}
+    for row in ev.sort(["topic_id", "iso_week", "evidence_rank"]).iter_rows(named=True):
+        body = out.setdefault(slug(row["topic_id"]), {"topic_id": row["topic_id"], "weeks": {}})
+        article = {
+            k: (v.isoformat() if isinstance(v, dt.date) else v)
+            for k, v in row.items()
+            if k not in {"iso_week", "topic_id", "week"}
+        }
+        body["weeks"].setdefault(row["iso_week"], []).append(article)
+    return out
+
+
 def export(out: Path = OUT) -> dict[str, int]:
     require_full_profile()
     import polars as pl
@@ -89,7 +126,7 @@ def export(out: Path = OUT) -> dict[str, int]:
 
     tmp = out.with_name(out.name + ".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
-    sizes = {"radar": 0, "timeline": 0, "context": 0, "other": 0}
+    sizes = {"radar": 0, "timeline": 0, "context": 0, "other": 0, "evidence": 0}
 
     ranked: list[str] = []
     for week in weeks:
@@ -123,6 +160,14 @@ def export(out: Path = OUT) -> dict[str, int]:
         sizes["context"] += _write(tmp / "context" / slugs[topic] / "latest.json", get(base))
 
     sizes["other"] += _write(tmp / "freshness.json", get("/api/freshness"))
+    evidence_path = gold("topic_evidence_weekly")
+    if evidence_path.exists():
+        evidence = topic_evidence_json(
+            pl.read_parquet(gold("topic_scores_weekly"), columns=["week", "topic_id", "rank"]),
+            pl.read_parquet(evidence_path),
+        )
+        for name, body in evidence.items():
+            sizes["evidence"] += _write(tmp / "evidence" / "topics" / f"{name}.json", body)
     index = {
         "generated_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "profile": "full",
