@@ -28,7 +28,13 @@ MAX_ROUNDS = 3
 SPECIALISTS: dict[str, dict[str, Any]] = {
     "signal_analyst": {
         "name_es": "Analista de señales",
-        "tools": ["list_subtopic_trends", "get_topic_series", "get_top10", "get_topic_scores"],
+        "tools": [
+            "list_subtopic_trends",
+            "get_topic_series",
+            "get_top10",
+            "get_topic_scores",
+            "get_topic_evidence",
+        ],
         "role": "Mides qué temas de IA crecen, en qué etapa están y su carga emocional, con las "
         "señales normalizadas de GDELT (participación del día, z_7d, crecimiento, tono, controversia). "
         "Empieza por get_top10; si dice que no está disponible, usa list_subtopic_trends y "
@@ -48,7 +54,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     },
     "editor": {
         "name_es": "Editor",
-        "tools": ["get_topic_brief", "get_topic_series", "get_context_1hop"],
+        "tools": ["get_topic_brief", "get_topic_evidence", "get_topic_series", "get_context_1hop"],
         "role": "Propones formato, dos ganchos y un guion de 30-45 s en español, apoyado solo en los "
         "datos que consultas. Si existe el brief ya escrito del tema, parte de él.",
     },
@@ -567,7 +573,8 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     week, leader, entity = ctx["week"], ctx["leader"], ctx["entity"]
     calls: list[tuple[str, dict[str, Any]]] = {
         "signal_analyst": [("get_topic_series", {"topic": entity or leader or "ai_all"})]
-        + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else []),
+        + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else [])
+        + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
@@ -581,7 +588,8 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
             if tools.brief_available() and (entity or leader)
             else []
         )
-        + [("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa", "weeks": 4})],
+        + [("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa", "weeks": 4})]
+        + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
         "scout": [("get_freshness", {}), ("get_cost_ledger", {})],
         "curator": [("get_segment_mix", {"week": week}), ("get_filter_quality", {})],
         "auditor": [("get_backtest", {}), ("get_filter_quality", {}), ("get_cost_ledger", {})],
