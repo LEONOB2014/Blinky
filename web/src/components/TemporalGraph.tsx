@@ -61,6 +61,8 @@ const LAYOUT_SAMPLE_INDEXES = [0, 100, 250, 500, 750, 999];
 const FIT_PAD = 0.08;
 /** Rendered label height in CSS px (the global button min-height). */
 const LABEL_H = 36;
+/** Height of an AI-graph label (frameless text, min-height reset in .graph-label-ai). */
+const AI_LABEL_H = 20;
 /** The AI graph always labels this many volume leaders of the displayed week (/api/leaders). */
 const LEADER_LABELS = 8;
 /** A focused neighbourhood is framed at most this many times the whole-graph zoom. */
@@ -255,6 +257,8 @@ export function TemporalGraph({
   const reheatTokenRef = useRef(0);
   // Null until the first time a live graph sees a lens. That pass stays frozen.
   const reheatKeyRef = useRef<string | null>(null);
+  // AI graph: the focus the camera was last fitted to (a lens switch alone does not refit).
+  const aiFocusRef = useRef<string>("");
   const [labels, setLabels] = useState<LabelItem[]>([]);
   const [hoveredTooltip, setHoveredTooltip] = useState<TooltipItem | null>(null);
   const [metricsSnapshot, setMetricsSnapshot] = useState<{
@@ -383,27 +387,40 @@ export function TemporalGraph({
       type Box = { x0: number; y0: number; x1: number; y1: number };
       const overlaps = (a: Box, b: Box) =>
         a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+      // AI labels are frameless text right of the node (.graph-label-ai: translate(10px, -50%),
+      // AI_LABEL_H tall); v0.2 labels are framed boxes centred above it.
+      const aiLabels = Boolean(d._meta.params.ai_only);
+      const labelH = aiLabels ? AI_LABEL_H : LABEL_H;
       for (const cand of candidates) {
         if (accepted.length >= maxLabels && !cand.isFocused) break;
-        const estW = Math.min(200, Math.max(54, cand.text.length * 7 + 12));
+        const estW = aiLabels
+          ? Math.min(320, cand.text.length * 7 + 4)
+          : Math.min(200, Math.max(54, cand.text.length * 7 + 12));
         const half = estW / 2;
         const pad = 4;
-        if (cand.x - half < pad) cand.x = half + pad;
-        if (cand.x + half > width - pad) cand.x = width - pad - half;
-        if (cand.x - half < pad || cand.x + half > width - pad) continue;
-        // The rendered box: LABEL_H tall, lifted by translate(-50%, -115%).
+        if (!aiLabels) {
+          if (cand.x - half < pad) cand.x = half + pad;
+          if (cand.x + half > width - pad) cand.x = width - pad - half;
+          if (cand.x - half < pad || cand.x + half > width - pad) continue;
+        }
+        // The rendered box: v0.2, LABEL_H tall lifted by translate(-50%, -115%); AI, right of the node.
         const boxAt = (y: number, x: number = cand.x): Box => {
+          if (aiLabels) {
+            const y0 = y - labelH / 2;
+            return { x0: x + 10, y0, x1: x + 10 + estW, y1: y0 + labelH };
+          }
           const y0 = y - LABEL_H * 1.15;
           return { x0: x - half, y0, x1: x + half, y1: y0 + LABEL_H };
         };
-        if (obstacle && overlaps(boxAt(cand.y), obstacle)) continue;
         // Must-show labels (top 10, highlighted, AI volume leaders) take the nearest free slot:
         // up to four label heights up or down, then one label width left or right, rather than
-        // cover each other in a dense centre.
+        // cover each other in a dense centre or disappear under the chat dock.
         const must = mustShow.has(cand.idx);
+        if (!must && obstacle && overlaps(boxAt(cand.y), obstacle)) continue;
         const slots: Array<[number, number]> = [[0, 0]];
         if (must) {
-          for (const dx of [0, half * 2 + 8, -(half * 2 + 8)]) {
+          const aside = aiLabels ? [0, -(estW + 20)] : [0, half * 2 + 8, -(half * 2 + 8)];
+          for (const dx of aside) {
             for (const step of [0, -1, 1, -2, 2, -3, 3, -4, 4]) {
               if (dx !== 0 || step !== 0) slots.push([dx, step]);
             }
@@ -412,7 +429,7 @@ export function TemporalGraph({
         let chosen: { x: number; y: number } | null = null;
         for (const [dx, step] of slots) {
           const x = cand.x + dx;
-          const y = cand.y + step * LABEL_H;
+          const y = cand.y + step * labelH;
           const box = boxAt(y, x);
           if (box.y0 < 0 || box.y1 > height || box.x0 < 4 || box.x1 > width - 4) continue;
           if (obstacle && overlaps(box, obstacle)) continue;
@@ -1281,6 +1298,17 @@ export function TemporalGraph({
     }
     weekLinkMapRef.current = linkMapByWeek;
 
+    // AI graph: the sizes and widths set per lens are meant as screen pixels. cosmos otherwise
+    // scales points by the zoom (~0.3 here, so 6-32 px rendered as 2-10 px), fades every link
+    // longer than 150 px to 25% (most AI edges), and curves them; the v0.2 graph keeps those.
+    const aiStyle: Partial<GraphConfig> = data._meta.params.ai_only
+      ? {
+          scalePointsOnZoom: false,
+          curvedLinks: false,
+          linkVisibilityDistanceRange: [100000, 200000],
+          linkVisibilityMinTransparency: 1,
+        }
+      : {};
     // setConfig replaces the whole config, so a resize must pass this same object.
     const config: GraphConfig = {
       spaceSize: 4096,
@@ -1295,6 +1323,7 @@ export function TemporalGraph({
       rescalePositions: false,
       fitViewOnInit: false,
       attribution: "",
+      ...aiStyle,
       onZoom: () => {
         recomputeLabelsRef.current(weekIdxRef.current);
       },
@@ -1375,6 +1404,8 @@ export function TemporalGraph({
     let lastW = -1;
     let lastH = -1;
 
+    let fittedW = -1;
+    let fittedH = -1;
     const fitToHost = () => {
       frame = 0;
       const g = graphRef.current;
@@ -1384,6 +1415,18 @@ export function TemporalGraph({
       if (rect.width < 2 || rect.height < 2) return;
       g.setConfig(cfg);
       applyLensRef.current(weekIdxRef.current, activeLensRef.current);
+      // AI graph: the rail's width follows its content, so a lens switch can nudge the canvas
+      // by ~20 px; a refit then moves every node. Keep the camera for changes under 5%.
+      const small =
+        fittedW > 0 &&
+        Math.abs(rect.width - fittedW) / fittedW < 0.05 &&
+        Math.abs(rect.height - fittedH) / fittedH < 0.05;
+      if (dataRef.current?._meta.params.ai_only && small) {
+        recomputeLabelsRef.current(weekIdxRef.current);
+        return;
+      }
+      fittedW = rect.width;
+      fittedH = rect.height;
       fitFrameRef.current();
     };
 
@@ -1472,9 +1515,16 @@ export function TemporalGraph({
     if (first && !focusTopic) return;
     if (data._meta.params.ai_only) {
       // The AI graph (~100 topics) collapses into one clump when the simulation reheats: keep the
-      // exported layout, restyle for the lens and refit (a focused topic frames its ring).
+      // exported layout and restyle for the lens. Refit only when the focus changes (a focused
+      // topic frames its ring): a plain lens switch keeps the camera, so nothing jumps.
       applyLensRef.current(weekIdxRef.current, activeLens);
-      fitFrameRef.current();
+      const focusKey = focusTopic ?? "";
+      if (focusKey !== aiFocusRef.current) {
+        aiFocusRef.current = focusKey;
+        fitFrameRef.current();
+      } else {
+        recomputeLabelsRef.current(weekIdxRef.current);
+      }
       return;
     }
     applyLensRef.current(weekIdxRef.current, activeLens, { reheat: true });
