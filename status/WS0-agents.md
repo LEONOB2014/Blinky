@@ -4,7 +4,44 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 07:40 UTC-5 · trust calibration (fix/agents-trust-calibration): calibrated trust line by code, overclaim audit; usefulness_v2 0.750 (measured) · committed locally; the orchestrator lands it.
+2026-10-18 07:45 UTC-5 · week tracing and Editor duration (fix/agents-week-and-editor) · committed locally; the orchestrator lands it.
+
+## Week tracing and the Editor's duration (07:45 UTC-5, branch `fix/agents-week-and-editor`, committed locally; the orchestrator lands it)
+
+Two leftovers from trust-calibration's grounding misses:
+
+1. **Weeks (q21).**
+   - "semana 42 de 2026" was flagged although the tools return `2026-W42`: the Auditor read 42 as a
+     loose number.
+   - Now a week named in the answer ("semana 42", year optional) is matched whole against the ISO
+     weeks in the tool data. An untraced week is still flagged ("semana 43 de 2026", "semana 42 de
+     2025"), and numbers beside it are still checked. "semana 1" and the like are skipped, as small
+     counts are.
+2. **Durations (q02, q13).**
+   - The Editor's role said "un guion de 30-45 s". Every role is in the Media Master's prompt, so
+     answers on other routes wrote "video de 35 segundos", a number no tool returned.
+   - The role now says the format comes from the brief already written, with no invented
+     durations. The "Qué hacer" instruction says the same.
+   - A first rewording named the brief field ("format_es"), and 2 of 3 q02 answers then wrote
+     "format_es: …" with an invented value. The field name was removed (deaec3f), and a test keeps
+     it out of the prompt.
+- **Tests:** 2 new. `make test` 295 passed, `make check` clean.
+
+**Rerun,** all *measured*, against trust-calibration (3 runs per question):
+
+| Question | grounding before -> after | usefulness_v2 before -> after | answers with a duration |
+|---|---|---|---|
+| q02 (rerun on deaec3f) | 2/3 -> 3/3 | 0.83 -> 1.00 | 3 -> 0 |
+| q13 (e389542) | 3/3 -> 3/3 | 0.33 -> 0.42 | 3 -> 0 |
+| q21 (e389542) | 2/3 -> 3/3 | 0.75 -> 0.58 | 0 -> 0 |
+
+- **Weeks:** none of the three q21 runs named a week this time, so the fix was not exercised live;
+  the unit test covers it.
+- **q21** still volunteers the cost (the Scout reads the ledger for freshness, by design).
+- **q13's "Qué hacer"** still frames a story about insurers (the known D3 limit).
+- **Nebius spend,** *estimate*: agent tokens 68,214 (*measured*: 49,342 + 18,872); judge tokens not
+  recorded, roughly 24 calls x ~4k on Qwen3-235B; about $0.03 at assumed list rates, under the
+  $0.05 cap.
 
 ## Trust calibration (07:40 UTC-5, branch `fix/agents-trust-calibration`, committed locally; the orchestrator lands it)
 
