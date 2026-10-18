@@ -3,7 +3,7 @@
 # Reto 30X "Radar de contenido"
 # ==============================================================================
 
-.PHONY: help setup sync test test-ws lint format check worktree clean ask api-dev web-dev \
+.PHONY: demo-check help setup sync test test-ws lint format check worktree clean ask api-dev web-dev \
 	deploy-push-lake deploy-serve deploy-api deploy-static deploy-web \
 	deploy-cloudrun-stage deploy-cloudrun-local deploy-cloudrun
 
@@ -84,6 +84,9 @@ deploy-static: ## Write the static fallback to web/public/data/ from the full la
 
 deploy-web: ## Build web/dist with API_URL (empty = static only)
 	cd web && bun install && VITE_API_BASE_URL="$(API_URL)" bun run build
+
+demo-check: ## Check the public site and API before the demo (ARGS=--chat adds one real chat turn)
+	uv run python scripts/demo_check.py $(ARGS)
 
 # ==============================================================================
 # Worktrees: make worktree BRANCH=feat/ws1-run-bq
