@@ -82,3 +82,21 @@ report by **05:00**; editor sheet by **08:30**.
 - `energy_climate` has no rows yet (WS1 adds its rule in S4); do not special-case it.
 - The agent runtime (`agents/`, merged) reads `topic_scores_weekly` through `get_top10` and
   `get_topic_scores`: once your table validates, decision cards appear in the Media Master's answers.
+
+## Addendum 2 (orchestrator, 22:30 UTC-5): unblocked
+
+- **Ranked unit** (PR #8, `contracts/taxonomy.yaml` `ranked_universe`): every `org:` topic of
+  `topic_daily` except `org_deny`, plus `thm:TECH_*`, with at least `min_articles_week` (20) ring-1
+  articles in the week. Measured: orgs alone median 382 a week over 50 weeks. Read the lists from
+  the taxonomy; never hard-code them.
+- **Primary subtopic:** WS1 builds `topic_subtopic_weekly` (contract in PR #8; lake by 00:00, dev cut
+  by 00:30). Primary subtopic of a topic in week t = the non-null subtopic with the most articles over
+  weeks t-3..t (ties: the subtopic's id order in the taxonomy); none -> the window chip says
+  `sin_estimacion` and fit uses the topic's own series only.
+- Build the `topic` branch now against `lake/gold/topic_daily.parquet` (it is there: 2,012,823 rows,
+  measured); plug the mapping in when it lands. Keep the 12-subtopic table as it is (the agents use it
+  for the overview).
+- **Evidence ids** stay empty; say so in the report. No contract change for them tonight.
+- Backtest: as soon as WS6 lands `topic_wikidata` + `wiki_pageviews_daily` (Grok is still resolving;
+  ETA in `status/WS6.md`). Run it on mapped topics only and report the coverage (mapped / ranked).
+- New deadlines: topic scores in the lake by **01:30**; backtest by **05:00**; editor sheet by 08:30.
