@@ -503,7 +503,14 @@ def evidence_block(turn: Turn) -> str:
     evidence, sources = found.get("get_topic_evidence"), found.get("get_topic_sources")
     if not evidence:
         return ""
-    name = topic_name({"topic_id": evidence["topic_id"]})
+    scored = [
+        row
+        for r in turn.tool_results
+        if r["tool"] in {"get_top10", "get_topic_scores"} and r["result"].get("available")
+        for row in r["result"].get("rows") or []
+        if row.get("topic_id") == evidence["topic_id"]
+    ]
+    name = topic_name(scored[0] if scored else {"topic_id": evidence["topic_id"]})
     head = f"Artículos que respaldan a {name} ({evidence['week']})"
     if sources:
         head += f": {sources['n_articulos']} artículos de {sources['n_medios']} medios esa semana"
