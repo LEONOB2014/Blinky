@@ -34,13 +34,31 @@ const SUBTOPICS: Array<{ id: string; label_es: string }> = [
   { id: "ai_all", label_es: "IA en general" },
 ];
 
+const SUBTOPIC_LABELS: Record<string, string> = Object.fromEntries(
+  SUBTOPICS.map((st) => [st.id, st.label_es]),
+);
+
+// Real topic ids on the full lake (GDELT names: "org:openai group", not "org:openai").
 const CONTEXT_ENTITIES = [
-  "org:google",
-  "org:openai",
+  "org:nvidia",
   "org:microsoft",
-  "org:meta",
-  "thm:ECON_STOCKMARKET",
+  "org:google",
+  "org:openai group",
+  "thm:TECH_AUTOMATION",
 ];
+
+/** Card title: the taxonomy label for subtopics, the name for org:/thm: topics. */
+function topicName(topicId: string, labelEs?: string | null): string {
+  if (SUBTOPIC_LABELS[topicId]) return SUBTOPIC_LABELS[topicId];
+  if (labelEs && labelEs !== topicId) return labelEs;
+  const idx = topicId.indexOf(":");
+  return idx >= 0 ? topicId.slice(idx + 1) : topicId;
+}
+
+/** Options for a topic selector: the fixed list plus the selected topic when it is not in it. */
+function withSelected(ids: string[], selected: string): string[] {
+  return ids.includes(selected) ? ids : [selected, ...ids];
+}
 
 const QUICK_QUESTIONS = [
   "¿Qué tema de IA sube esta semana y por qué? Muéstramelo en el grafo",
@@ -80,10 +98,12 @@ export function App() {
   const [freshness, setFreshness] = useState<FreshnessResponse | null>(null);
   const [radarItems, setRadarItems] = useState<TopicScoreWeekly[]>([]);
   const [radarEmptyReason, setRadarEmptyReason] = useState<string | null>(null);
+  // ISO week ("2026-W42") of the radar; empty until freshness gives the latest scored week.
+  const [radarWeek, setRadarWeek] = useState<string>("");
   const [selectedTopic, setSelectedTopic] = useState<string>("regulation_policy");
   const [timeline, setTimeline] = useState<TopicDaily[]>([]);
   const [timelineLoading, setTimelineLoading] = useState<boolean>(false);
-  const [selectedEntity, setSelectedEntity] = useState<string>("org:google");
+  const [selectedEntity, setSelectedEntity] = useState<string>(CONTEXT_ENTITIES[0]);
   const [contextRing, setContextRing] = useState<TopicContext1Hop[]>([]);
 
   const [chatInput, setChatInput] = useState<string>(QUICK_QUESTIONS[0]);
@@ -106,23 +126,40 @@ export function App() {
 
   useEffect(() => {
     void fetchFreshness()
-      .then(setFreshness)
+      .then((f) => {
+        setFreshness(f);
+        // Default week: the latest scored week (falls back to the API's own default).
+        setRadarWeek(f.tables.topic_scores_weekly ?? "latest");
+      })
       .catch((err: unknown) => {
         console.error(err);
+        setRadarWeek("latest");
       });
+  }, []);
 
-    void fetchRadar()
+  useEffect(() => {
+    if (!radarWeek) return;
+    void fetchRadar(radarWeek === "latest" ? undefined : radarWeek)
       .then((res) => {
         setRadarItems(res.items);
         setRadarEmptyReason(res.emptyReason);
         if (res.items.length > 0) {
-          setSelectedTopic(res.items[0].topic_id);
+          selectTopic(res.items[0].topic_id);
         }
       })
       .catch((err: unknown) => {
         console.error(err);
+        setRadarItems([]);
       });
-  }, []);
+  }, [radarWeek]);
+
+  function selectTopic(topicId: string) {
+    setSelectedTopic(topicId);
+    // Subtopics have no 1-hop ring; org:/thm: topics do.
+    if (topicId.includes(":")) setSelectedEntity(topicId);
+  }
+
+  const contextWeek = radarWeek && radarWeek !== "latest" ? radarWeek : undefined;
 
   useEffect(() => {
     setTimelineLoading(true);
@@ -140,13 +177,13 @@ export function App() {
   }, [selectedTopic]);
 
   useEffect(() => {
-    void fetchTopicContext(selectedEntity)
+    void fetchTopicContext(selectedEntity, contextWeek)
       .then(setContextRing)
       .catch((err: unknown) => {
         console.error(err);
         setContextRing([]);
       });
-  }, [selectedEntity]);
+  }, [selectedEntity, contextWeek]);
 
   const timelineByDate = useMemo(() => {
     const dates = Array.from(new Set(timeline.map((r) => r.dt))).sort();
@@ -209,6 +246,7 @@ export function App() {
       const res = await sendChatTurn({
         message: trimmed,
         conversation_id: conversationId,
+        week: contextWeek,
       });
       setConversationId(res.conversation_id);
       setChatAnswer(res.answer_es);
@@ -264,7 +302,16 @@ export function App() {
           <section className="panel" aria-labelledby="top10-heading">
             <div className="panel-header">
               <h2 id="top10-heading">Top 10 semanal (`GET /api/radar`)</h2>
-              <span className="badge">Contrato: topic_scores_weekly</span>
+              <label className="week-picker">
+                Semana{" "}
+                <input
+                  type="week"
+                  aria-label="Semana ISO del radar"
+                  value={radarWeek === "latest" ? "" : radarWeek}
+                  max={freshness?.tables.topic_scores_weekly ?? undefined}
+                  onChange={(e) => setRadarWeek(e.target.value || "latest")}
+                />
+              </label>
             </div>
 
             {radarItems.length === 0 ? (
@@ -274,9 +321,8 @@ export function App() {
                   <code>{radarEmptyReason ?? "sin filas todavía"}</code>
                 </p>
                 <p>
-                  Mientras WS4 entrega `topic_scores_weekly`, explora abajo las series
-                  diarias reales del corte (`daily_topic`, 8 semanas medidas) y el anillo
-                  de 1 salto (`edges_weekly`, 12,000 aristas medidas):
+                  Sin tarjetas para esta semana. Explora abajo las series diarias reales
+                  por subtema y el anillo de 1 salto:
                 </p>
                 <div className="subtopic-pills">
                   {SUBTOPICS.map((st) => (
@@ -286,7 +332,7 @@ export function App() {
                       className={
                         selectedTopic === st.id ? "pill pill-active" : "pill"
                       }
-                      onClick={() => setSelectedTopic(st.id)}
+                      onClick={() => selectTopic(st.id)}
                     >
                       {st.label_es} (<code>{st.id}</code>)
                     </button>
@@ -303,11 +349,14 @@ export function App() {
                         ? "topic-card topic-card-selected"
                         : "topic-card"
                     }
-                    onClick={() => setSelectedTopic(card.topic_id)}
+                    onClick={() => selectTopic(card.topic_id)}
                   >
                     <div className="card-top">
                       <span className="rank-badge">#{card.rank ?? "-"}</span>
-                      <h3>{card.label_es}</h3>
+                      <h3>
+                        {topicName(card.topic_id, card.label_es)}{" "}
+                        <code className="topic-id">{card.topic_id}</code>
+                      </h3>
                       <span className={`decision-badge decision-${card.decision}`}>
                         {DECISION_LABELS[card.decision]}
                       </span>
@@ -363,11 +412,14 @@ export function App() {
               <select
                 aria-label="Seleccionar tema para la serie diaria"
                 value={selectedTopic}
-                onChange={(e) => setSelectedTopic(e.target.value)}
+                onChange={(e) => selectTopic(e.target.value)}
               >
-                {SUBTOPICS.map((st) => (
-                  <option key={st.id} value={st.id}>
-                    {st.label_es} ({st.id})
+                {withSelected(
+                  SUBTOPICS.map((st) => st.id),
+                  selectedTopic,
+                ).map((id) => (
+                  <option key={id} value={id}>
+                    {topicName(id)} ({id})
                   </option>
                 ))}
               </select>
@@ -390,7 +442,7 @@ export function App() {
                           <strong>{lang.toUpperCase()}</strong>
                         </div>
                         <div>
-                          Artículos (8 sem):{" "}
+                          Artículos (serie completa):{" "}
                           <strong>{info.articles.toLocaleString()}</strong> (medido)
                         </div>
                         <div>
@@ -434,9 +486,9 @@ export function App() {
                 value={selectedEntity}
                 onChange={(e) => setSelectedEntity(e.target.value)}
               >
-                {CONTEXT_ENTITIES.map((ent) => (
+                {withSelected(CONTEXT_ENTITIES, selectedEntity).map((ent) => (
                   <option key={ent} value={ent}>
-                    {ent}
+                    {topicName(ent)} ({ent})
                   </option>
                 ))}
               </select>
@@ -453,7 +505,14 @@ export function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {contextRing.slice(0, 10).map((row) => (
+                  {contextRing.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="muted">
+                        Sin anillo para este tema en la semana elegida.
+                      </td>
+                    </tr>
+                  )}
+                  {contextRing.map((row) => (
                     <tr key={row.neighbor}>
                       <td>{row.rank}</td>
                       <td>

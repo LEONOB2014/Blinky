@@ -1,5 +1,7 @@
 """Endpoint tests for `api/app.py` against `contracts/api.yaml` on the dev slice."""
 
+import datetime as dt
+
 import polars as pl
 import pytest
 
@@ -7,7 +9,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from agents.llm import Reply
-from api.app import app
+from api.app import _guard_ring, app
 from radar.contracts import validate_records
 
 
@@ -159,3 +161,78 @@ def test_chat_returns_contract_validated_turn_with_scripted_model(client: TestCl
     assert validate_records("view_command", body["view_commands"]) == []
     assert len(body["trace"]) >= 1
     assert validate_records("agent_trace", body["trace"]) == []
+
+
+def _score_row(week, topic_id, rank, label_es):
+    return {
+        "week": week, "topic_id": topic_id, "label_es": label_es, "subtopics": ["chips_infra"],
+        "primary_subtopic": "chips_infra", "emergence_pct": 70.0, "stage": "emergente",
+        "saturation": 0.3, "audience_fit": 0.6, "outperformance": None,
+        "emotional_charge_pct": 50.0, "framing_angle": "oportunidad ejecutiva",
+        "window": {"state": "sin_estimacion", "days_left": None, "typical_lag_days": None,
+                   "n_onsets": 0},
+        "priority": 1.0 - rank / 10, "rank": rank, "decision": "preparar",
+        "why": ["Crecimiento semanal medido en GDELT"], "evidence_ids": [],
+        "has_wikipedia_es_pt": True, "profile": "dev",
+    }  # fmt: skip
+
+
+def _gold_at(monkeypatch, tmp_path, tables):
+    paths = {}
+    for name, df in tables.items():
+        paths[name] = tmp_path / f"{name}.parquet"
+        df.write_parquet(paths[name])
+    monkeypatch.setattr(
+        "api.app.gold", lambda name: paths.get(name, tmp_path / f"missing_{name}.parquet")
+    )
+
+
+@pytest.mark.unit
+def test_radar_never_returns_a_deny_listed_org(client: TestClient, tmp_path, monkeypatch):
+    # org:reuters is on the taxonomy's ranked_universe.org_deny list and ranked first here.
+    rows = [
+        _score_row("2026-W42", "org:reuters", 1, "Reuters"),
+        _score_row("2026-W42", "org:nvidia", 2, "Nvidia"),
+        _score_row("2026-W42", "chips_infra", 3, "chips_infra"),
+        _score_row("2026-W41", "org:nvidia", 1, "Nvidia"),
+    ]
+    _gold_at(monkeypatch, tmp_path, {"topic_scores_weekly": pl.DataFrame(rows)})
+    body = client.get("/api/radar").json()  # default: the latest scored week
+    assert [r["topic_id"] for r in body] == ["org:nvidia", "chips_infra"]
+    assert {r["week"] for r in body} == {"2026-W42"}
+    assert body[1]["label_es"] == "Chips e infraestructura"  # subtopic label from the taxonomy
+    assert validate_records("topic_scores_weekly", body) == []
+    assert [r["week"] for r in client.get("/api/radar?week=2026-W41").json()] == ["2026-W41"]
+
+
+@pytest.mark.unit
+def test_context_never_returns_a_person_neighbour(client: TestClient, tmp_path, monkeypatch):
+    ring = pl.DataFrame(
+        {
+            "wk": [dt.date(2026, 10, 12)] * 3,
+            "topic_id": ["org:nvidia"] * 3,
+            "neighbor": ["per:jensen huang", "org:tsmc", "thm:TECH_AUTOMATION"],
+            "rank": [1, 2, 3],
+            "n": [40, 30, 20],
+            "npmi": [0.6, 0.5, 0.4],
+            "neighbor_segment": [None, None, None],
+            "neighbor_domain": [None, None, None],
+        },
+        schema_overrides={"neighbor_segment": pl.Utf8, "neighbor_domain": pl.Utf8},
+    )
+    _gold_at(monkeypatch, tmp_path, {"topic_context_1hop": ring})
+    body = client.get("/api/topic/org:nvidia/context?week=2026-W42").json()
+    assert [r["neighbor"] for r in body] == ["org:tsmc", "thm:TECH_AUTOMATION"]
+    assert [r["rank"] for r in body] == [1, 2]
+    assert validate_records("topic_context_1hop", body) == []
+    assert client.get("/api/topic/per:jensen huang/context").json() == []
+    assert client.get("/api/topic/per:jensen huang/timeline").json() == []
+
+
+@pytest.mark.unit
+def test_guard_ring_drops_persons_the_sql_missed():
+    rows = [
+        {"neighbor": "PER:Someone", "rank": 1},
+        {"neighbor": "org:tsmc", "rank": 2},
+    ]
+    assert _guard_ring(rows) == [{"neighbor": "org:tsmc", "rank": 1}]
