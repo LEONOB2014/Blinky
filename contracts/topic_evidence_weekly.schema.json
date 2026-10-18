@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LEONOB2014/Blinky/contracts/topic_evidence_weekly.schema.json",
+  "title": "Up to 5 representative ring-1 articles behind one ranked topic in one week",
+  "description": "BigQuery radar.topic_evidence_weekly from radar.gkg_ai + radar.article_segment for the top 30 ranked topics of each recent week -> lake/gold/topic_evidence_weekly.parquet. Titles and URLs are public news metadata: they live in the lake and on the deployed site only, never in git, so this contract is never mocked.",
+  "type": "object",
+  "x-owner": "WS1",
+  "x-mock": "private",
+  "properties": {
+    "week": {"type": "string", "format": "date", "description": "Monday of the ISO week"},
+    "topic_id": {"type": "string"},
+    "evidence_rank": {"type": "integer", "minimum": 1, "maximum": 5},
+    "gkg_id": {"type": "string"},
+    "dt": {"type": "string", "format": "date"},
+    "source": {"type": "string", "description": "the outlet's domain"},
+    "lang_bucket": {"enum": ["eng", "spa", "por", "other"]},
+    "title": {"type": ["string", "null"]},
+    "url": {"type": "string", "pattern": "^https?://"},
+    "tone": {"type": ["number", "null"]},
+    "why_selected": {"type": "string", "description": "the stated rule that picked it, for example 'most of the week's top co-mentioned entities, distinct source'"}
+  },
+  "required": ["week", "topic_id", "evidence_rank", "gkg_id", "dt", "source", "lang_bucket", "url", "why_selected"],
+  "additionalProperties": false
+}

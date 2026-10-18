@@ -64,3 +64,4 @@ ts_utc,job_id,script,workstream,dry_run_bytes,billed_bytes,cap_gib,note
 2026-10-18T03:53:27Z,radar_sample_20261018T035232_c91f93,sample.sql,WS2,9334569319,9335472128,30,WS2b stratified sample Aug-Oct 2026 + active learning pool (measured)
 2026-10-18T06:25:55Z,radar_s13_topic_sources_weekly_20261018T062359_604a2e,s13_topic_sources_weekly.sql,WS1,1356563503,1356857344,10,"WS1c topic_sources_weekly, full span (measured)"
 2026-10-18T06:28:55Z,radar_s13_topic_sources_weekly_20261018T062721_5a8757,s13_topic_sources_weekly.sql,WS1,1356563503,1356857344,10,WS1c v2: pattern over specific entities (<=10% week share) (measured)
+2026-10-18T08:04:13Z,radar_s14_topic_evidence_weekly_20261018T080357_7e5b0e,s14_topic_evidence_weekly.sql,WS1,3840,1205862400,15,"WS1d topic_evidence_weekly, top 30 x last 8 weeks (measured)"

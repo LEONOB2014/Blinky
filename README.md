@@ -39,21 +39,23 @@ The full plan is in [docs/plan/MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf), and 
 
 ## Status
 
-<sub>Updated 2026-10-18 01:00 UTC-5. Every number is measured unless marked otherwise.</sub>
+<sub>Updated 2026-10-18 03:30 UTC-5. Every number is measured unless marked otherwise.</sub>
 
 | Part | State | Evidence |
 |---|---|---|
 | GDELT loop (WS1) | Done for 2025-11 → 2026-10-18 | 4.03M AI/IT/domain articles segmented; 367.5 GB billed over 62 BigQuery jobs ([ledger](reports/bq_ledger.csv)), inside the 1 TB free tier |
 | Graph metrics, 1-hop ring (WS3) | Done, 51 weeks | 473,275 node-weeks; 4,773,204 ring rows, no persons |
 | Link-prediction baselines (WS7) | Done | EdgeBank MRR 0.0050 on new edges, persistence 0.0123 on all ([report](reports/tgnn.md)) |
-| Scores, window, decision (WS4) | Topic scores in the lake; eligibility gate in progress (the public top 10 still shows GKG name fragments) | 17,285 topic-weeks, median 376 ranked topics a week |
-| Backtest (WS4) | Waiting on the Wikipedia label | — |
-| Wikipedia resolution and pageviews (WS6) | Running | 2,675 topics resolved; pageviews not yet written |
+| Scores, window, decision (WS4) | Merged, with an eligibility gate and a syndication guard | 16,904 topic-weeks; a topic headlines only if established or an exact Wikidata match, with >= 5 sources, no outlet above 50% and no single copy pattern above 90% (thresholds estimated from the data) |
+| Backtest (WS4) | Secondary label done; primary label near full coverage | Secondary label (es+pt GDELT growth, 43 weeks): precision@10 13.3% (9.5-17.2) vs base rate 6.7%, persistence 12.8% (a tie) and raw-count growth 0.2%; the guard adds +5.8 points (2.8-9.1). The primary label (Wikipedia es+pt pageviews, exact matches) is reported once every ranker passes 90% coverage ([report](reports/backtest.md)) |
+| Wikipedia resolution and pageviews (WS6) | Fetching the last topics | 11,060 topics resolved (1,916 exact); es+pt daily pageviews for the backtest's topics; 0 rate-limit errors at one request per 6.5 s |
 | Article classifier cascade (WS2b) | Merged; human labels next (04:00) | Teacher panel (Qwen3-235B, DeepSeek-V4-Pro) agrees 96.8% on "is AI"; local student F1 0.964 on a frozen test split; on 300 sheet rows the GDELT rule's precision is 0.75 against the student's 0.94, subtopic agreement 0.11 (regex) against 0.54. Reference is the teacher panel until the human labels land. Jev spend $0.044 over 981 calls ([report](reports/label_quality.md)) |
 | API and UI (WS5, WS5b) | Merged, on the full lake | 5 of 5 endpoints; privacy guards for persons and deny-listed orgs; 10 API tests |
-| Agents | Merged, working on the full lake | 8 agents; Qwen3-30B on Nebius; traces saved per turn |
-| Graph views (GPU, temporal) | Smoke test merged; full build last | cosmos.gl temporal sweep: 2,000 nodes, 1.87M week-edges over 13 weeks; sigma.js story view; both render on the laptop GPU, nothing uploaded |
-| Deploy | Live and public | UI on Netlify ([radar-senal-temprana.netlify.app](https://radar-senal-temprana.netlify.app)), API and agents on Google Cloud Run; warm `/api/radar` 0.3 s, one chat turn 10.3 s; static fallback for every panel except chat |
+| Agents | Merged, traced and evaluated | 8 agents on Qwen3-30B; LangSmith traces per turn; frozen 25-question set, 3 repetitions: grounding 1.00, routing 1.00, usefulness (judge that sees the data) 0.383 -> 0.567 after the quality work |
+| Graph views (GPU, temporal) | Lenses and full screen being fixed after review | cosmos.gl temporal sweep and sigma story view work; split view, full screen and question-driven lenses (decision, ring, bridge, momentum, novelty, tone, window) are being fixed after a code review found the lens was not applied |
+| Deploy | Live and public, redeployed after the guard | UI on Netlify ([radar-senal-temprana.netlify.app](https://radar-senal-temprana.netlify.app)), API and agents on Cloud Run; public chat rate-limited; the static fallback carries the evidence and trust numbers; one command redeploys everything |
+| Evidence articles (WS1d) | Merged | up to 5 representative articles per top topic-week, one per outlet, Spanish and Portuguese first; titles and URLs only on the deployed site, never in git |
+| Spanish briefs | In progress | one Auditor-checked brief per top-10 topic: what happened, why it matters in LatAm, angle, hook, format |
 
 ## Architecture
 

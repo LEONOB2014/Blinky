@@ -28,7 +28,13 @@ MAX_ROUNDS = 3
 SPECIALISTS: dict[str, dict[str, Any]] = {
     "signal_analyst": {
         "name_es": "Analista de señales",
-        "tools": ["list_subtopic_trends", "get_topic_series", "get_top10", "get_topic_scores"],
+        "tools": [
+            "list_subtopic_trends",
+            "get_topic_series",
+            "get_top10",
+            "get_topic_scores",
+            "get_topic_evidence",
+        ],
         "role": "Mides qué temas de IA crecen, en qué etapa están y su carga emocional, con las "
         "señales normalizadas de GDELT (participación del día, z_7d, crecimiento, tono, controversia). "
         "Empieza por get_top10; si dice que no está disponible, usa list_subtopic_trends y "
@@ -48,9 +54,9 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     },
     "editor": {
         "name_es": "Editor",
-        "tools": ["get_topic_series", "get_context_1hop"],
+        "tools": ["get_topic_brief", "get_topic_evidence", "get_topic_series", "get_context_1hop"],
         "role": "Propones formato, dos ganchos y un guion de 30-45 s en español, apoyado solo en los "
-        "datos que consultas.",
+        "datos que consultas. Si existe el brief ya escrito del tema, parte de él.",
     },
     "scout": {
         "name_es": "Explorador",
@@ -469,14 +475,22 @@ def decision_line(turn: Turn, entity: str | None, question: str) -> str:
 
 
 _WORD = re.compile(r"[\wáéíóúñü&.-]+", re.I)
+_NON_NAME = re.compile(r"[^\w&.-]+")
 
 
 def _entity_in_question(question: str, week: str | None) -> str | None:
     """The graph topic a question names: a full node name in the text ('google' -> 'org:google'),
     else the longest 1-3 word phrase that resolves to one ('OpenAI' -> GDELT's 'org:openai inc')."""
-    q = question.lower()
+    # whole words only: a plain substring test found 'org:a co' inside "ha costado"
+    padded = f" {_NON_NAME.sub(' ', question.lower())} "
     names = tools.graph_nodes(week)
-    hits = [n for n in names if len(n.split(":", 1)[1]) > 3 and n.split(":", 1)[1] in q]
+    hits = [
+        n
+        for n in names
+        if len(n.split(":", 1)[1].replace(" ", "")) > 3
+        and n.split(":", 1)[1] not in labels_stop()
+        and f" {n.split(':', 1)[1]} " in padded
+    ]
     if hits:
         return max(hits, key=len)
     words = _WORD.findall(question)
@@ -521,6 +535,10 @@ def labels_stop() -> frozenset[str]:
             "muéstrame",
             "muestrame",
             "ahora",
+            # 'el tema principal' is not 'org:principal group'; LinkedIn is where 30X publishes,
+            # not the topic of the question
+            "principal",
+            "linkedin",
         ]
     )
 
@@ -555,7 +573,8 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     week, leader, entity = ctx["week"], ctx["leader"], ctx["entity"]
     calls: list[tuple[str, dict[str, Any]]] = {
         "signal_analyst": [("get_topic_series", {"topic": entity or leader or "ai_all"})]
-        + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else []),
+        + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else [])
+        + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
@@ -563,9 +582,14 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
         "cartographer": [("get_context_1hop", {"entity": entity or leader, "week": week})]
         if (entity or (leader and ":" in leader))
         else [],
-        "editor": [
-            ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa", "weeks": 4})
-        ],
+        # the pre-written, Auditor-checked brief first when it exists (agents/briefs.py)
+        "editor": (
+            [("get_topic_brief", {"topic_id": entity or leader, "week": week})]
+            if tools.brief_available() and (entity or leader)
+            else []
+        )
+        + [("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa", "weeks": 4})]
+        + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
         "scout": [("get_freshness", {}), ("get_cost_ledger", {})],
         "curator": [("get_segment_mix", {"week": week}), ("get_filter_quality", {})],
         "auditor": [("get_backtest", {}), ("get_filter_quality", {}), ("get_cost_ledger", {})],
@@ -687,9 +711,9 @@ def run_turn(
     turn = Turn(conversation_id or uuid.uuid4().hex[:12])
     if refusal := out_of_scope(question):
         turn.log("media_master", "answer", result_summary="fuera de alcance (ruta por código)")
-        answer, bad, decision_vetoed = _audit(turn, refusal, question)
+        answer, bad, decision_vetoed = _audit(turn, refusal, question, [])
         turn.answer_es = answer
-        response = turn.as_response()
+        response = turn.as_response() | {"trace_id": _trace_id()}
         _tag_run(["out_of_scope"], bad, decision_vetoed, week)
         _save_trace(question, response)
         return response
@@ -708,7 +732,12 @@ def run_turn(
             [_delegate_spec(a) for a in SPECIALISTS],
         )
     else:
-        turn.log("media_master", "delegate", result_summary=f"ruta por código: {', '.join(needed)}")
+        turn.log(
+            "media_master",
+            "delegate",
+            arguments={"entity": entity},  # the topic the question names (None when none)
+            result_summary=f"ruta por código: {', '.join(needed)}",
+        )
         signals = _run_tool(turn, "signal_analyst", "get_top10", week=week)
         ctx = {
             "week": week,
@@ -766,17 +795,17 @@ def run_turn(
         )
         body = (reply.content or "").strip()
         answer = f"{line}\n\n{body}" if line else body
-    answer, bad, decision_vetoed = _audit(turn, answer, question)
-    turn.answer_es = answer
     # cards only when the question is about what to publish, not about cost or freshness
     turn.decision_cards = (
         cards_from_scores(turn)
         if {"signal_analyst", "audience_strategist", "editor"} & set(needed or SPECIALISTS)
         else []
     )
+    answer, bad, decision_vetoed = _audit(turn, answer, question, turn.decision_cards)
+    turn.answer_es = answer
     for card in turn.decision_cards:
         card["auditor_ok"] = not bad
-    response = turn.as_response()
+    response = turn.as_response() | {"trace_id": _trace_id()}
     _tag_run(needed, bad, decision_vetoed, week)
     _save_trace(question, response)
     return response
@@ -788,14 +817,35 @@ def run_turn(
     process_inputs=lambda i: {"answer": i["answer"], "question": i["question"]},
     process_outputs=lambda o: {"answer": o[0], "untraced_numbers": o[1], "decision_vetoed": o[2]},
 )
-def _audit(turn: Turn, answer: str, question: str) -> tuple[str, list[str], bool]:
-    """The deterministic Auditor: veto decisions no code computed, flag numbers no tool returned."""
-    decision_vetoed = not _decisions_by_code(turn) and bool(_DECISION_WORDS.search(answer))
+def _decision_code(phrase: str) -> str:
+    p = phrase.lower()
+    if p.startswith("publicar"):
+        return "publicar_ahora"
+    if p.startswith("no es"):
+        return "no_es_tema_caliente"
+    return "preparar"
+
+
+def _audit(
+    turn: Turn, answer: str, question: str, cards: list[dict[str, Any]]
+) -> tuple[str, list[str], bool]:
+    """The deterministic Auditor: veto decisions no card carries, flag numbers no tool returned.
+
+    A decision phrase stands only when this turn emits a decision card with that decision; a
+    decision in the scores that no card shows (q22: "No se recomienda publicar ahora" on a trust
+    question) is replaced by "decisión pendiente".
+    """
+    shown = {c["decision"] for c in cards}
+    checked = _DECISION_WORDS.sub(
+        lambda m: m.group(0) if _decision_code(m.group(0)) in shown else "decisión pendiente",
+        answer,
+    )
+    decision_vetoed = checked != answer
     if decision_vetoed:
         turn.log(
-            "auditor", "veto", result_summary="decisión sin cálculo de código: se marca pendiente"
+            "auditor", "veto", result_summary="decisión sin tarjeta de decisión: se marca pendiente"
         )
-        answer = _DECISION_WORDS.sub("decisión pendiente", answer)
+        answer = checked
     bad = untraced_numbers(answer, turn.tool_results, question)
     if bad:
         turn.log("auditor", "veto", result_summary=f"números sin fuente: {', '.join(bad)}")
@@ -820,6 +870,12 @@ def _git_sha() -> str:
         [git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False
     )
     return out.stdout.strip() or "unknown"
+
+
+def _trace_id() -> str | None:
+    """The LangSmith trace of this turn, so a reader's thumbs up or down lands on it; None if off."""
+    run = get_current_run_tree()
+    return str(run.trace_id) if run is not None else None
 
 
 def _tag_run(needed: list[str], bad: list[str], decision_vetoed: bool, week: str | None) -> None:

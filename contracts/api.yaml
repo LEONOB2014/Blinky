@@ -68,7 +68,25 @@ paths:
                 required: [conversation_id, answer_es, decision_cards, view_commands, trace]
                 properties:
                   conversation_id: {type: string}
+                  trace_id: {type: [string, "null"], description: "the turn's LangSmith trace, for POST /api/feedback; null when tracing is off"}
                   answer_es: {type: string}
                   decision_cards: {type: array, items: {$ref: "decision_card.schema.json"}}
                   view_commands: {type: array, items: {$ref: "view_command.schema.json"}}
                   trace: {type: array, items: {$ref: "agent_trace.schema.json"}}
+  /api/feedback:
+    post:
+      summary: A reader's thumbs up or down on one chat turn (recorded on its LangSmith trace)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trace_id, score]
+              properties:
+                trace_id: {type: string, description: "trace_id from the /api/chat response"}
+                score: {type: integer, enum: [0, 1]}
+                comment: {type: string, maxLength: 500}
+      responses:
+        "202": {description: Recorded}
+        "429": {description: Rate limited (shares the chat quota)}
+        "503": {description: Feedback is not configured (no LangSmith key on the server)}

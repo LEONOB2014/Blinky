@@ -475,6 +475,41 @@ def client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+class FeedbackRequest(BaseModel):
+    trace_id: str = Field(
+        ..., pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    )
+    score: int = Field(..., ge=0, le=1, description="1 = útil, 0 = no útil")
+    comment: str | None = Field(None, max_length=500)
+
+
+def feedback_client() -> Any:
+    """A LangSmith client when tracing is configured, else None (the endpoint answers 503)."""
+    override = getattr(app.state, "feedback_client", None)
+    if override is not None:
+        return override
+    if not os.environ.get("LANGSMITH_API_KEY") or os.environ.get("LANGSMITH_TRACING") != "true":
+        return None
+    from langsmith import Client
+
+    return Client()
+
+
+@app.post("/api/feedback", status_code=202)
+def post_feedback(req: FeedbackRequest, request: Request) -> dict[str, Any]:
+    """A reader's thumbs up or down on one chat turn, recorded on its LangSmith trace."""
+    client = feedback_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="la retroalimentación no está configurada")
+    limits = chat_limits()
+    if chat_quota.admit(client_key(request), limits) is not None:
+        raise HTTPException(status_code=429, detail="demasiadas valoraciones seguidas")
+    client.create_feedback(
+        run_id=req.trace_id, key="user_thumbs", score=req.score, comment=req.comment
+    )
+    return {"recorded": True, "trace_id": req.trace_id}
+
+
 @app.post("/api/chat")
 def post_chat(
     req: ChatRequest,
