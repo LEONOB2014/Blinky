@@ -1782,3 +1782,37 @@ body {
 .workspace .empty-state p {
   font-size: 14px;
 }
+
+/* Rail: "Despegando" (emergence) vs "Lo más grande" (volume) */
+.rail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.rail-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+.rail-toggle .pill {
+  min-height: 28px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+/* Long AI topic names: the family chip wraps instead of pushing the decision badge out of the rail */
+.rail-name {
+  overflow-wrap: anywhere;
+}
+.rail-name .family-chip {
+  white-space: normal;
+  max-width: 100%;
+}
+.rail-row .decision-badge {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.workspace-rail .topic-card {
+  overflow: hidden;
+}
