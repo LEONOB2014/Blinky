@@ -31,6 +31,8 @@ GEMINI.local.md
 # Committed exceptions: the BigQuery cost ledger, small reviewed tables and the real dev slice
 !reports/*.csv
 !fixtures/dev/*.parquet
+# header-only templates (a test fails if one ever holds a data row)
+!templates/*.csv
 
 # Models and caches
 *.pkl

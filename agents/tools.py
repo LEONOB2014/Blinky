@@ -136,8 +136,36 @@ def resolve_topic(name: str) -> str:
         if prefix + low in topics:
             return prefix + low
     body = low.split(":", 1)[1] if low.startswith(("org:", "thm:")) else low
-    starts = [t for t in topics if t.startswith("org:") and t[4:].startswith(body + " ")]
+    # only a company suffix may follow ('openai' -> 'openai inc'), never more words: GDELT has
+    # artefacts like 'org:altman to microsoft corp' that would drag a person's name in
+    starts = [
+        t
+        for t in topics
+        if t.startswith("org:" + body + " ") and t[4 + len(body) + 1 :] in _ORG_SUFFIXES
+    ]
     return min(starts, key=len) if starts else raw
+
+
+_ORG_SUFFIXES = frozenset(
+    [
+        "inc",
+        "corp",
+        "corporation",
+        "co",
+        "company",
+        "group",
+        "ltd",
+        "llc",
+        "plc",
+        "sa",
+        "ag",
+        "holdings",
+        "technologies",
+        "platforms",
+        "labs",
+        "ai",
+    ]
+)
 
 
 # --- Signal analyst ---------------------------------------------------------------------------
