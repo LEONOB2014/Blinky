@@ -1,9 +1,35 @@
 # WS4 status
 
-READY FOR REDEPLOY (00:52 UTC-5): `lake/gold/topic_scores_weekly.parquet` was rebuilt with the
-Addendum 3 eligibility gate, the decision fix and the alias dedupe (17,154 rows, 46 weeks, 4,943
-topics, 0 contract violations, measured). `subtopic_scores_weekly.parquet` was rebuilt too (552
-rows).
+## Addendum 4 (01:21 UTC-5): secondary backtest done; primary waits on labels
+
+- **Action needed (orchestrator / WS6):** the primary backtest needs 590 topics: each week's
+  top 10 among *mapped* topics (those with an es/pt article), for both radars and raw-count growth.
+  336 of them are not in WS6's `lake/labels/backtest_priority_topics.parquet`, which takes top 10s
+  over all topics (measured). Without them, primary coverage cannot reach the 90% threshold.
+  Lists in the lake: `lake/labels/ws4_backtest_needed_topics.parquet` (590) and
+  `ws4_backtest_needed_missing.parquet` (336).
+- **Secondary-label backtest** (`reports/backtest.md`, es+pt GDELT article growth; 43 weeks,
+  4,945 ranked topics, measured):
+  - The radar with the gate scores precision@10 7.4% (5.1..10.2) and without it 7.2%. The base
+    rate is 6.7%. Persistence reaches 12.8% (8.8..17.0) and raw-count growth 0.2%.
+  - **The radar does not beat both baselines.** It beats raw-count growth (+7.2 points,
+    4.9..10.0) but loses to persistence (−5.3, −9.1..−1.9). The gate changes nothing (+0.2,
+    −2.3..2.8). Lead time with the gate: median 2.5 weeks (2.0..5.0) over 28 flagged positives.
+  - The report gives the diagnosis. Most topics have no es/pt article, so the base rate is 6.7%,
+    not 25%. Past es/pt growth predicts future es/pt growth better than the emergence-led
+    Priority. The label is not independent of the radar's es+pt inputs.
+  - Bug found and fixed before reporting: ties in label growth were broken by row order, which
+    favoured the radar's own rows (an inflated 87%). Positives are now decided by value only; a
+    test shuffles the rows to check it.
+- **Primary (pageviews), incremental:** `RADAR_PROFILE=full POLARS_MAX_THREADS=4 uv run python
+  -m models.backtest`. It prints the label coverage per ranker first (labelled / needed
+  topic-weeks) and refuses to report precision below 90%. Why 90%: at 90% coverage the missing
+  slots can move pooled precision@10 by at most 10 points, the size of the differences compared.
+  At 01:21: 0/440 (no pageviews in the lake yet). I rerun it at each WS6 write.
+- **Memory:** the scores now build in topic chunks. Measured peaks: build 1.08 GB (was 2.4 GB),
+  backtest 1.34 GB, with POLARS_MAX_THREADS=4.
+
+Earlier: READY FOR REDEPLOY (00:52, Addendum 3, now live as Cloud Run revision 00003).
 
 ## New W42 top 10 (measured; `rank` 1-10 of 430 ranked topics)
 
@@ -49,7 +75,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 00:52 UTC-5 · branch `feat/ws4-scores` · draft PR #6 (into `develop`); local commits not pushed
+2026-10-18 01:21 UTC-5 · branch `feat/ws4-scores` · draft PR #6 (into `develop`); local commits not pushed
 
 ## Done
 

@@ -37,7 +37,7 @@ def key_path(week: str) -> Path:
 
 def lists(week: str = WEEK) -> tuple[list[str], list[str]]:
     """The radar's and the raw-count-growth top 10 among the week's ranked universe."""
-    s, raw, _ = backtest.scored_units()
+    s, raw, _, _ = backtest.scored_units()
     w = s.filter(pl.col("week") == week, pl.col("rank").is_not_null())
     if w.is_empty():
         raise ValueError(f"no scored units for {week}")
