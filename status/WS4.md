@@ -12,6 +12,57 @@ READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.par
 with the syndication guard in the eligibility gate (16,904 rows, 46 weeks, 4,911 topics, 0 contract
 violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060 rows, 1,916 exact).
 
+## AI leaders, the 30X fix and brief coverage (10:05 UTC-5, branch `feat/ws4-ai-leaders`, claude-cacho; committed locally, the orchestrator pushes)
+
+1. **"Lo más grande de la semana":** the AI leaders by volume, alongside the emergence top 10, which
+   leaves the giants out by design (OpenAI ranks 58 in W42).
+   - **`agents.tools.get_leaders`:** the top 15 `ai:` topics by articles that week (all
+     languages), from `topic_ai_daily`. Per topic:
+     - the change vs the previous week, per day with data (`is_missing` days left out; W42 has 6
+       days, W41 7);
+     - the es+pt share;
+     - family and stance (lexicon);
+     - emergence rank and decision (`topic_ai_scores_weekly`).
+   - **`GET /api/leaders`:** under `RADAR_SOURCE=ai`; empty rows and `X-Radar-Empty-Reason`
+     otherwise. The contract is in `contracts/api.yaml`, and the test validates a response against
+     it. The static export writes `leaders/<week>.json` and `leaders/latest.json`.
+     claude-work's `feat/ws9-deploy-ai` was not on the remote yet, so there was nothing to
+     coordinate.
+   - **Agent tool `get_leaders`** (Signal analyst; also in `contracts/agents.yaml`): "¿qué es lo más
+     grande / lo más importante esta semana?" gets a code-written top 5. It skips the emergence
+     decision line and the coverage line, which would mislead on a volume question.
+   - **W42, *measured*:** 1 Nvidia 4,718 articles (emergence rank 54), 2 OpenAI 2,691 (58),
+     3 Microsoft IA 2,153 (43), 4 Google IA 2,116 (73), 5 Anthropic 1,938 (32), 6 Agentes de IA
+     996, 7 ChatGPT 929…
+2. **Auditor "30X":** `_NUM` now needs a trailing non-word character, so "30X" is no longer read
+   as 30 (the q05 miss in ai-v2). Percentages are still read. Tested.
+3. **Brief coverage claims:** a sentence naming Spanish, Portuguese or LatAm is checked against
+   the brief's own es+pt count. Thresholds are hand-set (*estimate*):
+   - an absolute claim ("no llega", "nadie", "aún no …") needs 0 articles;
+   - "casi nadie" / "no se cuenta mucho" needs less than 10% of the English + es+pt articles.
+   - A contradiction is sent back once; if it survives, code replaces the sentence with the
+     measured coverage line (a headline keeps the topic name).
+   - **Before:** on the 20 briefs written before the check, it flags 8. A 9th
+     ("aún no se cuenta mucho", 3 of 66) was a false positive and fixed before commit.
+   - **Regenerated** W41-W42 AI briefs (*measured*): **Auditor 20/20**, 11 retried, 4 fixed by
+     code, 0 left contradicting, 38,917 tokens.
+
+**Eval rerun** of the affected v2 questions x 3 (`ai-v2-leaders-e2c198f0`, *measured*):
+- grounding 9/9 = 1.000 [1.00-1.00]; routing, decisions and entities 1.000;
+- usefulness v1 1.000, usefulness_v2 0.750 [0.50-0.92].
+- Per question against ai-v2-5ef01c19 (3 runs each):
+  - q05 grounding 2/3 -> 3/3 (the 30X fix);
+  - q18 3/3 -> 3/3, usefulness_v2 1.00 -> 1.00;
+  - q19 3/3 -> 3/3, usefulness_v2 0.67 -> 0.75.
+- No frozen v2 question asks "lo más grande", so the leaders route is covered by unit tests, not by
+  this eval.
+
+- **Pre-existing, not from this branch:** `api/tests/test_app.py::test_chat_returns_a_trace_id_field`
+  fails locally when the whole API suite runs with a `.env` that enables LangSmith tracing. It fails
+  the same way on unmodified develop; CI has no `.env`.
+- **Nebius spend,** *estimate*: agent tokens 168,315 (*measured*: briefs 44,398 + 38,917, eval
+  85,000); judge tokens not recorded; about $0.05 at assumed list rates, under the $0.40 cap.
+
 ## WP2: agents eval v2 on the AI lexicon (09:45 UTC-5, branch `feat/ws4-ai-ranking`, claude-cacho; committed locally, the orchestrator pushes)
 
 - **Question set:** `agents/evals/questions_v2.yaml`, version 2 (LangSmith dataset

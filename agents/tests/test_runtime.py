@@ -358,3 +358,13 @@ def test_without_the_ai_source_named_topics_stay_gdelt_ids(monkeypatch):
     assert runtime._entity_in_question("Muéstrame los vecinos de Google en el grafo", None) == (
         "org:google"
     )
+
+
+@pytest.mark.unit
+def test_auditor_does_not_read_a_number_out_of_30x():
+    from agents.runtime import untraced_numbers
+
+    results = [{"result": {"articles": 44}}]
+    assert untraced_numbers('Enfoque: "Datos del radar de 30X".', results, "") == []
+    assert untraced_numbers("30X vio 44 artículos y 9999 medios.", results, "") == ["9999"]
+    assert untraced_numbers("Subió un 31% esta semana.", results, "") == ["31%"]  # % still read

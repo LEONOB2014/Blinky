@@ -348,6 +348,104 @@ def get_language_coverage(topic: str, week: str | None = None) -> dict[str, Any]
     }
 
 
+@functools.cache
+def ai_lexicon_entries() -> dict[str, dict[str, Any]]:
+    """ai: topic id -> label_es, family (and its Spanish name) and stance, from the lexicon."""
+    lex = yaml.safe_load((REPO_ROOT / "contracts" / "ai_lexicon.yaml").read_text(encoding="utf-8"))
+    families = lex.get("families") or {}
+    return {
+        f"ai:{e['id']}": {
+            "label_es": e["label_es"],
+            "family": e["family"],
+            "family_es": families.get(e["family"], e["family"]),
+            "stance": e.get("stance"),
+        }
+        for e in lex["entries"]
+    }
+
+
+LEADERS_LIMIT = 15
+
+
+def get_leaders(week: str | None = None, limit: int = LEADERS_LIMIT) -> dict[str, Any]:
+    """The week's AI leaders by volume: the `ai:` topics with the most articles (all languages),
+    unlike the emergence top 10, which ranks what is rising and leaves the giants out.
+
+    Per topic: articles, the change vs the previous week per day with data (days flagged missing
+    are left out, never counted as zero), the es+pt share, family and stance (lexicon), and its
+    emergence rank and decision (`topic_ai_scores_weekly`). Reads the AI lexicon run's tables
+    whatever RADAR_SOURCE says; unavailable when they are not in the lake.
+    """
+    daily_path, scores_path = _gold("topic_ai_daily"), _gold("topic_ai_scores_weekly")
+    if not daily_path.exists():
+        return _unavailable("topic_ai_daily")
+    d = pl.read_parquet(daily_path).filter(~pl.col("is_missing"))
+    if d.schema["dt"] == pl.String:
+        d = d.with_columns(pl.col("dt").str.to_date())
+    if week is None:
+        week = (
+            pl.read_parquet(scores_path)["week"].max()
+            if scores_path.exists()
+            else d["dt"].max().strftime("%G-W%V")
+        )
+    label, monday, sunday = week_bounds(week)
+    prev_monday = monday - dt.timedelta(days=7)
+
+    def window(start: dt.date) -> tuple[pl.DataFrame, int]:
+        part = d.filter(pl.col("dt").is_between(start, start + dt.timedelta(days=6)))
+        agg = part.group_by("topic_id").agg(
+            pl.col("n_articles").sum().alias("n"),
+            pl.col("n_articles")
+            .filter(pl.col("lang_bucket").is_in(["spa", "por"]))
+            .sum()
+            .alias("n_espt"),
+        )
+        return agg, part["dt"].n_unique()
+
+    cur, days = window(monday)
+    prev, prev_days = window(prev_monday)
+    if cur.is_empty():
+        return {"available": False, "reason": f"no hay artículos de temas de IA en {label}"}
+    top = cur.sort(["n", "topic_id"], descending=[True, False]).head(limit)
+    top = top.join(prev.select("topic_id", pl.col("n").alias("n_prev")), on="topic_id", how="left")
+    ranks: dict[str, dict[str, Any]] = {}
+    if scores_path.exists():
+        sc = pl.read_parquet(scores_path).filter(pl.col("week") == label)
+        ranks = {r["topic_id"]: r for r in sc.select("topic_id", "rank", "decision").to_dicts()}
+    lex = ai_lexicon_entries()
+    rows = []
+    for i, r in enumerate(top.to_dicts(), start=1):
+        n_prev = r["n_prev"] or 0
+        change = None
+        if n_prev and days and prev_days:
+            change = round((r["n"] / days) / (n_prev / prev_days) - 1, 4)
+        meta = lex.get(r["topic_id"], {})
+        score = ranks.get(r["topic_id"], {})
+        rows.append(
+            {
+                "leader_rank": i,
+                "topic_id": r["topic_id"],
+                "label_es": meta.get("label_es", r["topic_id"].split(":")[-1]),
+                "family": meta.get("family"),
+                "family_es": meta.get("family_es"),
+                "stance": meta.get("stance"),
+                "articles": int(r["n"]),
+                "articles_prev_week": int(n_prev),
+                "change_vs_prev_week": change,
+                "espt_share": round(r["n_espt"] / r["n"], 4) if r["n"] else None,
+                "emergence_rank": score.get("rank"),
+                "decision": score.get("decision"),
+            }
+        )
+    return {
+        "available": True,
+        "week": label,
+        "days_with_data": days,
+        "prev_week_days_with_data": prev_days,
+        "rows": rows,
+    }
+
+
 def get_top10(week: str | None = None) -> dict[str, Any]:
     """The weekly top 10 with the six scores and the decision, from WS4's table."""
     con = _scores_con()
@@ -800,6 +898,14 @@ TOOLS: dict[str, Tool] = {
                 "properties": {"topic_id": {"type": "string"}, "week": WEEK},
                 "required": ["topic_id"],
             },
+        ),
+        Tool(
+            "get_leaders",
+            get_leaders,
+            "Los temas de IA más grandes de la semana por volumen de artículos (todos los "
+            "idiomas): artículos, cambio frente a la semana previa, cuota en español y "
+            "portugués, familia, postura y su puesto en emergencia.",
+            {"type": "object", "properties": {"week": WEEK}},
         ),
         Tool(
             "get_topic_scores",

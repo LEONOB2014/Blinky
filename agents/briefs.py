@@ -67,6 +67,83 @@ _OVERCLAIM = re.compile(
 )
 _DECISIONS_TEXT = {v.lower(): k for k, v in DECISION_ES.items()}
 
+# Coverage claims checked against the brief's own es+pt count (claude-work's review, 2026-10-18:
+# DeepMind "aún no llega al español" next to 18 es/pt articles; ChatGPT "casi nadie lo cuenta en
+# español" with 152). A claim is a phrase within one sentence that names Spanish, Portuguese or
+# LatAm. Hand-set thresholds (estimate): an absolute claim needs 0 es+pt articles that week; a
+# "casi nadie" claim needs es+pt under NEAR_NONE_SHARE of the English + es+pt articles.
+_LANG_WORDS = re.compile(r"español|espanol|portugu[eé]s|latam|latinoam[eé]rica|hispan", re.I)
+_ABSENT = re.compile(
+    r"(?<!casi )\bnadie\b|no llega|"
+    r"a[uú]n no (?:llega|ha llegado|(?:se cuenta|se habla|hay|aparece)(?! mucho))|"
+    r"no hay (?:cobertura|art[ií]culos|notas)|sin cobertura|ninguna cobertura|cero art[ií]culos",
+    re.I,
+)
+_NEAR_ABSENT = re.compile(
+    r"casi nadie|casi no|muy poca cobertura|poca cobertura|apenas (?:se cuenta|se habla|aparece)|"
+    r"no se (?:cuenta|habla) mucho|"
+    r"escasa cobertura",
+    re.I,
+)
+NEAR_NONE_SHARE = 0.10
+_SENTENCES = re.compile(r"(?<=[.!?])\s+")
+
+
+def coverage_line(data: "TopicData") -> str:
+    """The code-written coverage sentence that replaces a contradicted claim."""
+    es, en = (
+        data.facts["articulos_en_espanol_y_portugues_por_semana"][-1],
+        data.facts["articulos_en_ingles_por_semana"][-1],
+    )
+    return f"Esta semana hubo {es} artículos en español y portugués, frente a {en} en inglés."
+
+
+def _headline_coverage(data: "TopicData") -> str:
+    """A headline keeps the topic's name: "ChatGPT: 152 artículos en español y portugués"."""
+    es = data.facts["articulos_en_espanol_y_portugues_por_semana"][-1]
+    name = topic_name(data.row) if getattr(data, "row", None) else "El tema"
+    return f"{name}: {es} artículos en español y portugués esta semana"
+
+
+def coverage_contradictions(fields: dict[str, str], data: "TopicData") -> list[str]:
+    """Sentences whose Spanish/Portuguese coverage claim disagrees with the brief's own count
+    (none when the brief's data has no weekly language counts)."""
+    es_weeks = data.facts.get("articulos_en_espanol_y_portugues_por_semana")
+    en_weeks = data.facts.get("articulos_en_ingles_por_semana")
+    if not es_weeks or not en_weeks:
+        return []
+    es, en = es_weeks[-1], en_weeks[-1]
+    share = es / (es + en) if (es + en) else 0.0
+    bad = []
+    for text in fields.values():
+        for sentence in _SENTENCES.split(text):
+            if not _LANG_WORDS.search(sentence):
+                continue
+            if (_ABSENT.search(sentence) and es > 0) or (
+                _NEAR_ABSENT.search(sentence) and share >= NEAR_NONE_SHARE
+            ):
+                bad.append(sentence.strip())
+    return bad
+
+
+def fix_coverage(fields: dict[str, str], data: "TopicData") -> dict[str, str]:
+    """Replace each contradicted sentence with the code-written coverage line (once per field)."""
+    bad = set(coverage_contradictions(fields, data))
+    out = {}
+    for name, text in fields.items():
+        parts, used = [], False
+        for sentence in _SENTENCES.split(text):
+            if sentence.strip() in bad:
+                if not used:
+                    parts.append(
+                        _headline_coverage(data) if name == "headline_es" else coverage_line(data)
+                    )
+                    used = True
+                continue
+            parts.append(sentence)
+        out[name] = " ".join(parts)
+    return out
+
 
 def humanize(entity: str) -> str:
     """'thm:WB_1649_UNEMPLOYMENT_BENEFITS' -> 'unemployment benefits'; 'org:kroger' -> 'kroger'."""
@@ -215,6 +292,12 @@ def audit(fields: dict[str, str], data: TopicData) -> tuple[list[str], list[str]
     claims = sorted({m.group(0).lower() for m in _OVERCLAIM.finditer(text)})
     if claims:
         style.append("afirma más de lo que muestran los datos (" + ", ".join(claims) + ")")
+    if contradicted := coverage_contradictions(fields, data):
+        es = data.facts["articulos_en_espanol_y_portugues_por_semana"][-1]  # present: it flagged
+        style.append(
+            f"la cobertura en español no coincide con los datos ({es} artículos en español y "
+            f"portugués esta semana): «{contradicted[0]}»"
+        )
     for f, limit in MAX_LEN.items():
         if len(fields[f]) > limit:
             style.append(f"{f} supera {limit} caracteres")
@@ -244,6 +327,7 @@ class Result:
     retried: bool
     tokens: int
     seconds: float
+    coverage_fixed: bool = False
 
 
 def write_brief(model: ChatModel, data: TopicData) -> Result:
@@ -254,7 +338,7 @@ def write_brief(model: ChatModel, data: TopicData) -> Result:
             "content": "Datos del tema:\n" + json.dumps(data.facts, ensure_ascii=False),
         },
     ]
-    tokens, t0, retried = 0, time.perf_counter(), False
+    tokens, t0, retried, coverage_fixed = 0, time.perf_counter(), False, False
     fields: dict[str, str] | None = None
     untraced: list[str] = []
     wrong: list[str] = []
@@ -289,6 +373,10 @@ def write_brief(model: ChatModel, data: TopicData) -> Result:
     if fields is None:  # two unreadable replies: an honest placeholder, flagged
         fields = dict.fromkeys(FIELDS, "Brief no disponible: el modelo no devolvió un JSON válido.")
         untraced, wrong = [], ["sin respuesta válida"]
+    elif coverage_contradictions(fields, data):  # still wrong after the retry: code writes it
+        fields = fix_coverage(fields, data)
+        coverage_fixed = True
+        untraced, wrong, _ = audit(fields, data)
     fields = {f: _clip(v, MAX_LEN[f]) if f in MAX_LEN else v for f, v in fields.items()}
     record = {
         "week": data.week,
@@ -303,7 +391,7 @@ def write_brief(model: ChatModel, data: TopicData) -> Result:
         "model": getattr(model, "model", "scripted"),
         "generated_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    return Result(record, retried, tokens, time.perf_counter() - t0)
+    return Result(record, retried, tokens, time.perf_counter() - t0, coverage_fixed)
 
 
 def latest_weeks(n: int) -> list[str]:
@@ -320,7 +408,8 @@ def run(model: ChatModel, weeks: list[str], limit: int = 10) -> list[Result]:
             r = result.record
             print(
                 f"{week} #{r['rank']:>2} {r['topic_id'][:40]:40} auditor_ok={r['auditor_ok']} "
-                f"retried={result.retried} tokens={result.tokens} {result.seconds:.1f}s",
+                f"retried={result.retried} coverage_fixed={result.coverage_fixed} "
+                f"tokens={result.tokens} {result.seconds:.1f}s",
                 flush=True,
             )
     return results
@@ -359,6 +448,7 @@ def main(argv: list[str] | None = None) -> int:
     ok = sum(r.record["auditor_ok"] for r in results)
     print(
         f"auditor_ok {ok}/{len(results)}, retried {sum(r.retried for r in results)}, "
+        f"coverage fixed by code {sum(r.coverage_fixed for r in results)}, "
         f"tokens {sum(r.tokens for r in results)}, {time.perf_counter() - t0:.0f}s"
     )
     return 0
