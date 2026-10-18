@@ -1,6 +1,7 @@
 import { Graph, type GraphConfig } from "@cosmos.gl/graph";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { browserHasGraphics } from "../graphics";
+import { displayName } from "../publicCopy";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
 import type { TemporalGraphData, TemporalMover, TemporalNodeEntry } from "../types/views";
@@ -191,7 +192,7 @@ export function TemporalGraph({
         candidates.push({
           idx: i,
           id: node.id,
-          text: node.label_es || node.label || node.id,
+          text: displayName(node.label_es || node.label || node.id),
           x: sx,
           y: sy,
           priority,
@@ -1214,7 +1215,7 @@ export function TemporalGraph({
         const oNode = d.nodes[other];
         neighbors.push({
           id: oNode.id,
-          label_es: oNode.label_es || oNode.label || oNode.id,
+          label_es: displayName(oNode.label_es || oNode.label || oNode.id),
           n: wMap.n[e],
           npmi: wMap.npmi[e],
         });
@@ -1529,7 +1530,7 @@ export function TemporalGraph({
                       }}
                     >
                       {m.rank != null ? `#${m.rank} ` : ""}
-                      {m.label_es}
+                      {displayName(m.label_es)}
                     </button>
                     <span className={`decision-badge decision-${dec}`}>
                       {DECISION_LABELS_ES[dec]}
@@ -1587,12 +1588,14 @@ export function TemporalGraph({
           }}
         >
           <div className="tooltip-title">
-            <strong>{hoveredTooltip.node.label_es}</strong>
+            <strong>{displayName(hoveredTooltip.node.label_es)}</strong>
             <span
               className={`badge ring-badge-${hoveredTooltip.node.ring}`}
               title="Sector: IA / TI / otros sectores"
             >
-              {hoveredTooltip.node.ring.toUpperCase()}
+              {hoveredTooltip.node.ring.toUpperCase() === "OTHER"
+                ? "Otros"
+                : hoveredTooltip.node.ring.toUpperCase()}
             </span>
           </div>
           <div className="tooltip-sub">

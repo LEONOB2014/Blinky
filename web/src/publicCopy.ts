@@ -33,3 +33,13 @@ export function publicLine(text: string): string {
 export function markForKind(kind: string | undefined): string {
   return kind === "estimate" || kind === "estimado" ? "○" : "●";
 }
+
+/** Title-case a lowercase GDELT name. A name that already has capitals stays. */
+export function displayName(name: string): string {
+  const visible = name.includes(":") ? name.slice(name.indexOf(":") + 1).trim() : name.trim();
+  if (!visible) return name;
+  if (/[A-ZÁÉÍÓÚÜÑ]/.test(visible)) return visible;
+  return visible.replace(/(^|[\s/-])(\p{L})/gu, (_match, lead: string, letter: string) =>
+    `${lead}${letter.toUpperCase()}`,
+  );
+}

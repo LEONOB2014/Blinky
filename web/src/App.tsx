@@ -11,7 +11,7 @@ import { StoryGraph } from "./components/StoryGraph";
 import { TemporalGraph } from "./components/TemporalGraph";
 import { TrustPanel } from "./components/TrustPanel";
 import { type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
-import { publicLine } from "./publicCopy";
+import { displayName, publicLine } from "./publicCopy";
 import { placeNamedTopic, type StoryPlacement } from "./temporalNodes";
 import type {
   AgentTraceStep,
@@ -89,10 +89,23 @@ function namedTopicView(
 /** Card title: the taxonomy label for subtopics, the name for org:/thm: topics. */
 function topicName(topicId: string, labelEs?: string | null): string {
   if (SUBTOPIC_LABELS[topicId]) return SUBTOPIC_LABELS[topicId];
-  if (labelEs && labelEs !== topicId) return labelEs;
+  if (labelEs && labelEs !== topicId) return displayName(labelEs);
   const idx = topicId.indexOf(":");
-  return idx >= 0 ? topicId.slice(idx + 1) : topicId;
+  return displayName(idx >= 0 ? topicId.slice(idx + 1) : topicId);
 }
+
+function weekOptionLabel(isoWeek: string): string {
+  const match = /^(\d{4})-W(\d{2})$/.exec(isoWeek);
+  if (!match) return isoWeek;
+  return `Semana ${Number(match[2])} · ${match[1]}`;
+}
+
+const LANG_LABELS: Record<LangBucket, string> = {
+  eng: "ENG",
+  spa: "SPA",
+  por: "POR",
+  other: "Otros",
+};
 
 /** Options for a topic selector: the fixed list plus the selected topic when it is not in it. */
 function withSelected(ids: string[], selected: string): string[] {
@@ -329,6 +342,7 @@ export function App() {
   const [radarEmptyReason, setRadarEmptyReason] = useState<string | null>(null);
   // ISO week ("2026-W42") of the radar; empty until freshness gives the latest scored week.
   const [radarWeek, setRadarWeek] = useState<string>("");
+  const [scoredWeeks, setScoredWeeks] = useState<string[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>("regulation_policy");
   const [timeline, setTimeline] = useState<TopicDaily[]>([]);
   const [timelineLoading, setTimelineLoading] = useState<boolean>(false);
@@ -417,6 +431,15 @@ export function App() {
         console.error(err);
         setRadarWeek("latest");
       });
+    void fetch(`${import.meta.env.BASE_URL}data/radar/weeks.json`)
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data: unknown) => {
+        if (!data || typeof data !== "object" || !("weeks" in data)) return;
+        const weeks = (data as { weeks: unknown }).weeks;
+        if (!Array.isArray(weeks)) return;
+        setScoredWeeks(weeks.filter((week): week is string => typeof week === "string"));
+      })
+      .catch(() => undefined);
     void fetch(`${import.meta.env.BASE_URL}data/coverage.json`)
       .then((resp) => (resp.ok ? resp.json() : null))
       .then((data: unknown) => {
@@ -615,13 +638,26 @@ export function App() {
         <div className="header-actions">
           <label className="week-picker">
             Semana{" "}
-            <input
-              type="week"
-              aria-label="Semana ISO del radar"
-              value={radarWeek === "latest" ? "" : radarWeek}
-              max={freshness?.tables.topic_scores_weekly ?? undefined}
-              onChange={(e) => setRadarWeek(e.target.value || "latest")}
-            />
+            <select
+              aria-label="Semana puntuada"
+              value={
+                scoredWeeks.includes(radarWeek)
+                  ? radarWeek
+                  : (scoredWeeks.at(-1) ?? (radarWeek === "latest" ? "" : radarWeek))
+              }
+              onChange={(e) => setRadarWeek(e.target.value)}
+            >
+              {(scoredWeeks.length > 0
+                ? scoredWeeks
+                : radarWeek && radarWeek !== "latest"
+                  ? [radarWeek]
+                  : []
+              ).map((week) => (
+                <option key={week} value={week}>
+                  {weekOptionLabel(week)}
+                </option>
+              ))}
+            </select>
           </label>
           <button
             type="button"
@@ -1123,7 +1159,7 @@ function TopicSeries({
                 <div key={lang} className="lang-stat-card">
                   <div className="lang-stat-header">
                     <span className="lang-dot" style={{ backgroundColor: LANG_COLORS[lang] }} />
-                    <strong>{lang.toUpperCase()}</strong>
+                    <strong>{LANG_LABELS[lang]}</strong>
                   </div>
                   <div>
                     Artículos (serie completa): <strong>{info.articles.toLocaleString()}</strong> ●
@@ -1133,13 +1169,13 @@ function TopicSeries({
                     <strong>
                       {info.latestShare !== null
                         ? `${(info.latestShare * 100).toFixed(3)}%`
-                        : "NULL"}
+                        : "—"}
                     </strong>{" "}
                     ●
                   </div>
                   <div>
                     Tono medio:{" "}
-                    <strong>{info.meanTone !== null ? info.meanTone.toFixed(2) : "NULL"}</strong> ●
+                    <strong>{info.meanTone !== null ? info.meanTone.toFixed(2) : "—"}</strong> ●
                   </div>
                 </div>
               );
@@ -1257,7 +1293,7 @@ function TimelineChart({
           )),
         )}
         <text x={padX} y={14} fontSize="11" fill="#475569">
-          Máx diario: {maxArticles} artículos (días is_missing quedan NULL)
+          Máx diario: {maxArticles} artículos (los días sin datos quedan en —)
         </text>
         <text x={padX} y={height - 4} fontSize="10" fill="#64748b">
           {dates[0]}

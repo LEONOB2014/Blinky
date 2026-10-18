@@ -406,6 +406,15 @@ li {
   align-items: center;
 }
 
+.week-picker select {
+  font: inherit;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.2rem 0.35rem;
+}
+
 .topic-id {
   font-size: 0.7rem;
   font-weight: 400;

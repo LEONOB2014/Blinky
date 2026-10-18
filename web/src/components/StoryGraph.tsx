@@ -2,6 +2,7 @@ import Graph from "graphology";
 import Sigma from "sigma";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { browserHasGraphics } from "../graphics";
+import { displayName } from "../publicCopy";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
 import type {
@@ -59,8 +60,12 @@ const EXTRA_THEME_LABELS_ES: Record<string, string> = {
 
 function cleanSpanishLabel(id: string, rawEs?: string | null): string {
   if (EXTRA_THEME_LABELS_ES[id]) return EXTRA_THEME_LABELS_ES[id];
-  if (rawEs && rawEs.trim()) return rawEs;
-  return id;
+  if (rawEs && rawEs.trim()) return displayName(rawEs);
+  return displayName(id);
+}
+
+function sectorBadge(ring: string): string {
+  return ring.toUpperCase() === "OTHER" ? "Otros" : ring.toUpperCase();
 }
 
 function resolveStoryEntry(
@@ -182,13 +187,13 @@ export function StoryGraph({
     const wkLabel = indexData._meta?.week ?? "2026-W42";
     if (!exactMatch && requestedClean) {
       setUnmatchedTopicNotice(
-        `El tema "${requestedClean}" no está entre las 10 historias priorizadas de ${wkLabel}. Mostrando #1 (${entry.label_es}).`,
+        `El tema "${requestedClean}" no está entre las 10 historias priorizadas de ${wkLabel}. Mostrando #1 (${displayName(entry.label_es)}).`,
       );
     } else if (!entry.in_top10) {
       const rankInfo =
         entry.rank != null ? `puesto #${entry.rank}` : "sin rango Top-10";
       setUnmatchedTopicNotice(
-        `Nota: "${entry.label_es}" no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}, decisión: ${entry.decision ?? "referencia"}); abajo se muestra su anillo de 1 salto ●.`,
+        `Nota: "${displayName(entry.label_es)}" no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}, decisión: ${entry.decision ?? "referencia"}); abajo se muestra su anillo de 1 salto ●.`,
       );
     } else {
       setUnmatchedTopicNotice(null);
@@ -436,7 +441,7 @@ export function StoryGraph({
       <div className="graph-lens-banner">
         <div className="lens-banner-left">
           <span className="lens-current-badge">
-            Historia de 1 salto: <strong>{storyData?._meta?.label_es ?? "Cargando..."}</strong>
+            Historia de 1 salto: <strong>{storyData?._meta?.label_es ? displayName(storyData._meta.label_es) : "Cargando..."}</strong>
             {" · "}
             Lente: <strong>{LENS_NAMES[activeLens]}</strong>
           </span>
@@ -501,7 +506,7 @@ export function StoryGraph({
                 onSelectTopic?.(s.topic_id);
               }}
             >
-              #{s.rank} {s.label_es}
+              #{s.rank} {displayName(s.label_es)}
             </button>
           ))}
         </div>
@@ -523,12 +528,12 @@ export function StoryGraph({
                   const rankInfo =
                     s.rank != null ? `puesto #${s.rank}` : "sin rango Top-10";
                   setUnmatchedTopicNotice(
-                    `Nota: "${s.label_es}" no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}); viendo su anillo de 1 salto ●.`,
+                    `Nota: "${displayName(s.label_es)}" no está en las 10 historias priorizadas de ${wkLabel} (${rankInfo}); viendo su anillo de 1 salto ●.`,
                   );
                   onSelectTopic?.(s.topic_id);
                 }}
               >
-                {s.label_es}
+                {displayName(s.label_es)}
               </button>
             ))}
           </div>
@@ -562,7 +567,7 @@ export function StoryGraph({
                 : "Referencia"}
           </span>
           <span className="topic-title-lg">
-            {storyData._meta.label_es}
+            {displayName(storyData._meta.label_es)}
           </span>
           {scores?.decision && (
             <span className={`decision-badge decision-${scores.decision}`}>
@@ -654,7 +659,7 @@ export function StoryGraph({
                       className={`badge ring-badge-${a.ring ?? "ai_domain"}`}
                       title="Sector: IA / TI / otros sectores"
                     >
-                      {(a.ring ?? "ai_domain").toUpperCase()}
+                      {sectorBadge(a.ring ?? "ai_domain")}
                     </span>
                   </div>
                   <div className="story-neighbor-meta">
