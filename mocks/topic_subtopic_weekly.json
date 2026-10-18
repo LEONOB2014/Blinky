@@ -1,0 +1,58 @@
+[
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "subtopic": null,
+  "n_articles": 2391,
+  "n_topic_articles": 7747
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "subtopic": "agents",
+  "n_articles": 49,
+  "n_topic_articles": 7747
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "subtopic": "business_adoption",
+  "n_articles": 36,
+  "n_topic_articles": 7747
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "subtopic": "chips_infra",
+  "n_articles": 2661,
+  "n_topic_articles": 7747
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "subtopic": "creative_media",
+  "n_articles": 152,
+  "n_topic_articles": 7747
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "subtopic": "education",
+  "n_articles": 12,
+  "n_topic_articles": 7747
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "subtopic": "energy_climate",
+  "n_articles": 1609,
+  "n_topic_articles": 7747
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "subtopic": "funding_markets",
+  "n_articles": 2440,
+  "n_topic_articles": 7747
+ }
+]
