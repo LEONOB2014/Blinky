@@ -3,7 +3,8 @@
 # Reto 30X "Radar de contenido"
 # ==============================================================================
 
-.PHONY: help setup sync test test-ws lint format check worktree clean ask api-dev web-dev
+.PHONY: help setup sync test test-ws lint format check worktree clean ask api-dev web-dev \
+	deploy-push-lake deploy-serve deploy-api deploy-static deploy-web
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -52,6 +53,24 @@ api-dev: ## Run the FastAPI server on port 8000 (RADAR_PROFILE=dev by default)
 
 web-dev: ## Run the Vite dev server in web/ (bun)
 	cd web && bun run dev
+
+# ==============================================================================
+# Deploy (WS8): deploy/README.md has the full order. Paid or public steps need the maintainer.
+# ==============================================================================
+deploy-push-lake: ## Upload the API's lake tables to the Modal Volume radar-lake
+	RADAR_PROFILE=full uv run --extra deploy python deploy/push_lake.py
+
+deploy-serve: ## Temporary Modal URL for the API (no secret: /api/chat answers 503)
+	RADAR_NEBIUS_SECRET=0 uv run --extra deploy modal serve deploy/modal_app.py
+
+deploy-api: ## Deploy the API on Modal (needs the radar-nebius secret; maintainer's approval)
+	uv run --extra deploy modal deploy deploy/modal_app.py
+
+deploy-static: ## Write the static fallback to web/public/data/ from the full lake
+	RADAR_PROFILE=full uv run --extra api python deploy/export_static.py
+
+deploy-web: ## Build web/dist with API_URL (empty = static only)
+	cd web && bun install && VITE_API_BASE_URL="$(API_URL)" bun run build
 
 # ==============================================================================
 # Worktrees: make worktree BRANCH=feat/ws1-run-bq
