@@ -1,4 +1,4 @@
-PLATFORM CHANGE (2026-10-18 00:40 UTC-5, approved by the maintainer in chat): the API moves from
+PLATFORM CHANGE (2026-10-18, shortly after 00:00 UTC-5, approved by the maintainer in chat): the API moves from
 Modal to **Google Cloud Run**, in the GCP project that already runs BigQuery (billing enabled,
 measured; Cloud Run, Cloud Build and Artifact Registry APIs enabled). Modal stays as an alternative:
 its workspace starts no container (no payment method or billing paused), and that blocker is now
@@ -12,7 +12,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 01:30 UTC-5 · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
+2026-10-18 00:57 UTC-5 (clock checked; earlier versions of this line were mis-stamped) · branch `feat/ws8-deploy` (origin/develop merged, PR #14 included) ·
 committed locally, the orchestrator pushes.
 
 ## Done
@@ -140,6 +140,17 @@ committed locally, the orchestrator pushes.
     (core + `api` extra), so the redeploy carries it.
 - Addendum 01:20 (memory): the redeploy built with Cloud Build (`gcloud run deploy --source`, 2 min
   29 s) and Docker Desktop was quit. The two local container tests ran before I read the addendum.
+
+- **Redeploy on WS4's signal (READY FOR REDEPLOY, 00:52).** Built with Cloud Build, no local Docker.
+  - Revision `radar-api-00002` (00:51) was staged one minute before WS4 wrote its final
+    `topic_scores_weekly` (00:50:27), so it carried an intermediate file (checksums differed).
+  - Revision `radar-api-00003` (00:55, 1 min 52 s) was built from the final file (checksum checked).
+  - The static export (7.10 MiB) and Netlify production deploy (16 s) ran on the final file too.
+  - Checked at 00:56 (measured): the public W42 top 10 is identical on Cloud Run `/api/radar` and in
+    Netlify's `/data/radar/latest.json`: marsh mclennan, euronext, adani enterprises, rocket lab,
+    national stock exchange, ministry of science, kioxia holdings, sterling, citigroup, yahoo.
+    `org:scam centre` and `org:capital markets department` are gone from both. The site answers 200.
+  - Lesson: stage the image only after WS4's signal and check the scores checksum against the lake.
 
 ## Waits for approval or for the maintainer
 

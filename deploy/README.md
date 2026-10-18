@@ -1,6 +1,6 @@
 # Deploy (WS8): the API on Cloud Run, the UI on Netlify, a static fallback
 
-**Platform (2026-10-18 00:40 UTC-5, approved by the maintainer):** the API runs on **Google Cloud
+**Platform (2026-10-18, approved by the maintainer):** the API runs on **Google Cloud
 Run** in the GCP project that already runs BigQuery (billing enabled, measured). Modal stays as an
 alternative (`modal_app.py`), but the Modal workspace starts no container until its billing is fixed.
 
@@ -54,7 +54,9 @@ npx netlify deploy --dir web/dist --site <site-id> # draft URL to check
 npx netlify deploy --dir web/dist --site <site-id> --prod
 ```
 
-Re-run `make deploy-cloudrun` (it re-stages the lake tables) and step 3 whenever the lake is rebuilt.
+Re-run `make deploy-cloudrun` (it re-stages the lake tables) and step 3 whenever the lake is rebuilt,
+and only after the lake writer has finished: a table rewritten mid-stage ships an old copy
+(compare `md5 lake/gold/topic_scores_weekly.parquet build/cloudrun/lake/gold/topic_scores_weekly.parquet`).
 
 ### Modal (alternative, blocked by the workspace's billing on 2026-10-18)
 
