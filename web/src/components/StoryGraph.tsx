@@ -1,6 +1,7 @@
 import Graph from "graphology";
 import Sigma from "sigma";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { familyEntry, stanceEntry } from "../aiLexicon";
 import { browserHasGraphics } from "../graphics";
 import { displayName } from "../publicCopy";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
@@ -305,6 +306,10 @@ export function StoryGraph({
         nodeColor = attr.cross_ring_share >= 0.5 ? "#f59e0b" : "#3b82f6";
       } else if (activeLens === "momentum" && attr.momentum !== undefined && attr.momentum !== null) {
         nodeColor = attr.momentum >= 0.8 ? "#ef4444" : attr.momentum >= 0.5 ? "#f97316" : "#60a5fa";
+      } else if (activeLens === "family" && attr.family) {
+        nodeColor = familyEntry(attr.family)?.color ?? "#64748b";
+      } else if (activeLens === "postura" && attr.stance) {
+        nodeColor = stanceEntry(attr.stance).color;
       }
 
       if (isHighlighted) {

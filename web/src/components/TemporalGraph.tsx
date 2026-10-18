@@ -1,5 +1,6 @@
 import { Graph, type GraphConfig } from "@cosmos.gl/graph";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FAMILY_PALETTE, STANCE_PALETTE, familyEntry, stanceEntry } from "../aiLexicon";
 import { browserHasGraphics } from "../graphics";
 import { displayName } from "../publicCopy";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
@@ -198,6 +199,11 @@ function formatDegreeGrowth(logGrowth: number): string {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
 }
 
+function rgbOf(hex: string): [number, number, number] {
+  const n = Number.parseInt(hex.replace("#", ""), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
 const COMMUNITY_COLORS: Array<[number, number, number]> = [
   [56, 189, 248], // sky blue
   [251, 146, 60], // orange
@@ -236,6 +242,10 @@ export function TemporalGraph({
   const activeLens = graphLensFromColorBy(colorBy);
   const activeLensRef = useRef(activeLens);
   activeLensRef.current = activeLens;
+  const colorByRef = useRef(colorBy);
+  colorByRef.current = colorBy;
+  const onLensChangeRef = useRef(onLensChange);
+  onLensChangeRef.current = onLensChange;
   const reheatRef = useRef<() => void>(() => {});
   const reheatTokenRef = useRef(0);
   // Null until the first time a live graph sees a lens. That pass stays frozen.
@@ -679,6 +689,30 @@ export function TemporalGraph({
             }
             break;
           }
+
+          case "family": {
+            const fam = familyEntry(node.family);
+            if (fam) {
+              const [fr, fg, fb] = rgbOf(fam.color);
+              r = fr / 255;
+              gCol = fg / 255;
+              b = fb / 255;
+              a = 0.94;
+            }
+            break;
+          }
+
+          case "postura": {
+            const stance = stanceEntry(node.stance);
+            const [sr, sg, sb] = rgbOf(stance.color);
+            r = sr / 255;
+            gCol = sg / 255;
+            b = sb / 255;
+            a = node.stance === "critic" ? 0.98 : 0.88;
+            const toneAbs = Math.abs(node.tone?.[w] ?? 0);
+            sz = 3.4 + Math.min(14, toneAbs * 3.2);
+            break;
+          }
         }
 
         sizes[i] = sz;
@@ -824,6 +858,47 @@ export function TemporalGraph({
             } else {
               strength = 0.1;
               alpha *= 0.4;
+            }
+            break;
+          }
+
+          case "family": {
+            const fu = d.nodes[u].family;
+            const fv = d.nodes[v].family;
+            if (fu && fu === fv) {
+              strength = 1.05;
+              width = Math.max(width, 1.5);
+              alpha = Math.max(alpha, 0.7);
+              const fam = familyEntry(fu);
+              if (fam) {
+                const [fr, fg, fb] = rgbOf(fam.color);
+                lr = fr / 255;
+                lg = fg / 255;
+                lb = fb / 255;
+              }
+            } else {
+              strength = 0.12;
+              alpha = 0.08;
+            }
+            break;
+          }
+
+          case "postura": {
+            const su = d.nodes[u].stance;
+            const sv = d.nodes[v].stance;
+            if (su === "critic" && sv === "critic") {
+              strength = 1.2;
+              width = Math.max(width, 1.8);
+              alpha = Math.max(alpha, 0.85);
+              lr = 194 / 255;
+              lg = 65 / 255;
+              lb = 12 / 255;
+            } else if (su && su === sv) {
+              strength = 0.7;
+              alpha = Math.max(alpha, 0.45);
+            } else {
+              strength = 0.1;
+              alpha *= 0.35;
             }
             break;
           }
@@ -1071,6 +1146,13 @@ export function TemporalGraph({
         };
         dataRef.current = parsed;
         setData(parsed);
+        const suggested = parsed._meta.default_color_by;
+        if (
+          (suggested === "family" || suggested === "postura") &&
+          colorByRef.current === "decision"
+        ) {
+          onLensChangeRef.current?.(suggested);
+        }
 
         let defaultIdx = isoWeeks.length - 1;
         if (week) {
@@ -1718,6 +1800,36 @@ export function TemporalGraph({
                 <span className="legend-item">
                   <span className="legend-dot legend-win-es" /> Ya en español
                 </span>
+              </>
+            )}
+            {activeLens === "family" &&
+              (data?._meta.family_legend ??
+                FAMILY_PALETTE.map((entry) => ({
+                  id: entry.id,
+                  label_es: entry.label,
+                  color: entry.color,
+                }))
+              ).map((entry) => (
+                <span key={entry.id} className="legend-item">
+                  <span className="legend-dot" style={{ background: entry.color }} />{" "}
+                  {entry.label_es}
+                </span>
+              ))}
+            {activeLens === "postura" && (
+              <>
+                {(data?._meta.stance_legend ??
+                  STANCE_PALETTE.map((entry) => ({
+                    id: entry.id,
+                    label_es: entry.label,
+                    color: entry.color,
+                  }))
+                ).map((entry) => (
+                  <span key={entry.id} className="legend-item">
+                    <span className="legend-dot" style={{ background: entry.color }} />{" "}
+                    {entry.label_es}
+                  </span>
+                ))}
+                <span className="legend-item">Tamaño = tono absoluto</span>
               </>
             )}
           </div>

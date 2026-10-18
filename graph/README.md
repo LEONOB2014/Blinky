@@ -10,6 +10,8 @@ Plan: [MASTER_PLAN §15.1](../docs/plan/MASTER_PLAN.pdf). Status: [status/WS3.md
 (git-ignored), copies `graph/views/temporal.html` and `story.html` next to the JSON, and copies
 `*.json` to `web/public/data/views/` (also git-ignored) for the React UI. Persons (`per:`) and
 deny-listed wire services (`ranked_universe.org_deny`) are dropped.
+`--ai` reads `edges_ai_weekly` (the `all` language total, not the per-language rows),
+`topic_ai_daily` and `topic_ai_scores_weekly`, and labels nodes from `contracts/ai_lexicon.yaml`.
 
 ### `temporal.json` (cosmos.gl, `TemporalGraph` / `temporal.html`)
 

@@ -2,6 +2,7 @@
 
 Implements every path in `contracts/api.yaml`:
 - `GET /api/radar`
+- `GET /api/community`
 - `GET /api/leaders`
 - `GET /api/topic/{topic_id}/timeline`
 - `GET /api/topic/{topic_id}/context`
@@ -51,6 +52,14 @@ app.add_middleware(
 )
 
 _SCORE_PROPS = frozenset(load_schema("topic_scores_weekly")["properties"].keys())
+_COMMUNITY_FIELDS = (
+    "topic_id",
+    "week",
+    "category",
+    "n_items",
+    "n_sources",
+    "score",
+)
 _WINDOW_PROPS = frozenset(
     load_schema("topic_scores_weekly")["properties"]["window"]["properties"].keys()
 )
@@ -154,12 +163,13 @@ def get_radar(
     week: Annotated[str | None, Query(pattern=r"^[0-9]{4}-W[0-9]{2}$")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> list[dict[str, Any]]:
-    """Weekly top ranked topics from WS4's `topic_scores_weekly` table.
+    """Weekly top ranked topics.
 
-    Rows may be subtopics (``agents``) or ``org:``/``thm:`` topics. Deny-listed orgs from the
-    taxonomy's ``ranked_universe.org_deny`` are never returned. The table is small and DuckDB
-    1.5.6 cannot filter the Polars-written file ("PlainSkip not implemented"), so it is scanned
-    with Polars and the week filter pushed down.
+    The ranked unit is the AI lexicon when ``topic_ai_scores_weekly`` is present, and the
+    v0.2 org and subtopic table otherwise. Rows stay inside ``topic_scores_weekly`` (no
+    community fields). Deny-listed orgs from ``ranked_universe.org_deny`` are never returned.
+    The table is small and DuckDB 1.5.6 cannot filter the Polars-written file ("PlainSkip
+    not implemented"), so it is scanned with Polars and the week filter pushed down.
     """
     table = _lake_table("topic_scores_weekly")
     path = gold(table)
@@ -195,6 +205,47 @@ def get_radar(
         row = _normalize_score_row({k: _clean_value(v) for k, v in raw.items()})
         if row.get("topic_id") in labels:
             row["label_es"] = labels[row["topic_id"]]
+        rows.append(row)
+    return rows
+
+
+@app.get("/api/community")
+def get_community(
+    response: Response,
+    week: Annotated[str | None, Query(pattern=r"^[0-9]{4}-W[0-9]{2}$")] = None,
+) -> list[dict[str, Any]]:
+    """One week of ``community_topic_weekly``.
+
+    Unvalidated sensor. It is not merged into ``/api/radar``. A missing parquet is an empty
+    list plus the same empty-state headers the radar uses.
+    """
+    path = gold("community_topic_weekly")
+    if not path.exists():
+        reason = (
+            f"community_topic_weekly not available yet in profile {profile()} "
+            "(pending the community sensor)"
+        )
+        response.headers["X-Radar-Empty-Reason"] = reason
+        response.headers["X-Radar-Status"] = "pending-community"
+        return []
+
+    lf = pl.scan_parquet(path)
+    if week is None:
+        week = lf.select(pl.col("week").max()).collect().item()
+    df = (
+        lf.filter((pl.col("week") == week) & pl.col("topic_id").str.starts_with("ai:"))
+        .select([pl.col(name) for name in _COMMUNITY_FIELDS])
+        .sort(["topic_id", "category"])
+        .collect()
+    )
+    if df.is_empty():
+        response.headers["X-Radar-Empty-Reason"] = f"no community rows for week {week}"
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw in df.to_dicts():
+        row = {key: _clean_value(raw[key]) for key in _COMMUNITY_FIELDS}
+        row["n_items"] = int(row["n_items"])
+        row["n_sources"] = int(row["n_sources"])
         rows.append(row)
     return rows
 

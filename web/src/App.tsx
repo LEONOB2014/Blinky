@@ -1,5 +1,15 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type CommunitySignal,
+  type CommunityTopicRow,
+  communityFromRows,
+  communityLine,
+  familyForTopic,
+} from "./aiLexicon";
+import {
+  fetchCommunity,
+  fetchLeaders,
+  type LeaderRow,
   fetchFreshness,
   fetchRadar,
   fetchTopicContext,
@@ -233,6 +243,35 @@ function shortWindow(w: TopicWindow): string {
   }
 }
 
+function FamilyChip({
+  topicId,
+  family,
+  familyEs,
+}: {
+  topicId: string;
+  family?: string | null;
+  familyEs?: string | null;
+}) {
+  const entry = familyForTopic(topicId, family);
+  if (!entry) return null;
+  return (
+    <span className="family-chip" style={{ color: entry.color, borderColor: entry.color }}>
+      {familyEs || entry.label}
+    </span>
+  );
+}
+
+function CommunityNote({
+  topicId,
+  signal,
+}: {
+  topicId: string;
+  signal: CommunitySignal | null;
+}) {
+  if (!topicId.startsWith("ai:")) return null;
+  return <p className="community-line">{communityLine(signal)}</p>;
+}
+
 function RowSignals({ card }: { card: TopicScoreWeekly }) {
   return (
     <span className="rail-signals">
@@ -335,6 +374,62 @@ function getInitialViewFromUrl(): ViewCommand {
   return DEFAULT_TEMPORAL_VIEW;
 }
 
+
+/** The week's AI leaders by volume (`/api/leaders`): what is biggest, next to what is rising. */
+function LeadersList({
+  rows,
+  note,
+  onOpen,
+}: {
+  rows: LeaderRow[];
+  note: string | null;
+  onOpen: (row: LeaderRow) => void;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="empty-state">
+        <p>{note ?? "Sin líderes para esta semana."}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="cards-grid rail-list">
+      {rows.slice(0, 10).map((row) => {
+        const change = row.change_vs_prev_week;
+        const changeText =
+          change === null || change === undefined
+            ? null
+            : `${change >= 0 ? "+" : ""}${Math.round(change * 100)}% vs. semana previa`;
+        const espt =
+          row.espt_share === null || row.espt_share === undefined
+            ? null
+            : `${Math.round(row.espt_share * 1000) / 10}% en español y portugués`;
+        const decision = row.decision as DecisionValue | null | undefined;
+        return (
+          <article key={row.topic_id} className="topic-card" data-testid={`leader-${row.leader_rank}`}>
+            <button type="button" className="rail-row" onClick={() => onOpen(row)}>
+              <span className="rank-badge">#{row.leader_rank}</span>
+              <span className="rail-name">
+                {row.label_es}
+                <FamilyChip topicId={row.topic_id} family={row.family} familyEs={row.family_es} />
+              </span>
+              {decision && decision !== "no_es_tema_caliente" && DECISION_LABELS[decision] && (
+                <span className={`decision-badge decision-${decision}`}>{DECISION_LABELS[decision]}</span>
+              )}
+              <span className="rail-signals">
+                <span>{row.articles.toLocaleString("es")} artículos</span>
+                {changeText && <span>{changeText}</span>}
+                {espt && <span>{espt}</span>}
+                {row.emergence_rank ? <span>Despegando: #{row.emergence_rank}</span> : null}
+              </span>
+            </button>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 export function App() {
   const [freshness, setFreshness] = useState<FreshnessResponse | null>(null);
   const [coverage, setCoverage] = useState<CoverageSpan | null>(null);
@@ -342,11 +437,17 @@ export function App() {
   const [radarEmptyReason, setRadarEmptyReason] = useState<string | null>(null);
   // ISO week ("2026-W42") of the radar; empty until freshness gives the latest scored week.
   const [radarWeek, setRadarWeek] = useState<string>("");
+  const [communityWeek, setCommunityWeek] = useState<string | null>(null);
+  const [communityRows, setCommunityRows] = useState<CommunityTopicRow[]>([]);
   const [scoredWeeks, setScoredWeeks] = useState<string[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>("regulation_policy");
   const [timeline, setTimeline] = useState<TopicDaily[]>([]);
   const [timelineLoading, setTimelineLoading] = useState<boolean>(false);
   const [selectedEntity, setSelectedEntity] = useState<string>(CONTEXT_ENTITIES[0]);
+  // Rail: the emergence top 10 ("Despegando") or the week's AI leaders by volume ("Lo más grande").
+  const [railMode, setRailMode] = useState<"rising" | "leaders">("rising");
+  const [leaders, setLeaders] = useState<LeaderRow[]>([]);
+  const [leadersNote, setLeadersNote] = useState<string | null>(null);
   const [contextRing, setContextRing] = useState<TopicContext1Hop[]>([]);
 
   const [chatInput, setChatInput] = useState<string>(QUICK_QUESTIONS[0]);
@@ -496,6 +597,51 @@ export function App() {
         setRadarItems([]);
       });
   }, [radarWeek]);
+
+  useEffect(() => {
+    if (!radarWeek) return;
+    const week = radarWeek === "latest" ? undefined : radarWeek;
+    void fetchCommunity(week)
+      .then((res) => {
+        const rows = week ? res.items.filter((row) => row.week === week) : res.items;
+        setCommunityRows(rows);
+        setCommunityWeek(rows[0]?.week ?? week ?? null);
+      })
+      .catch((err: unknown) => {
+        console.error(err);
+        setCommunityRows([]);
+        setCommunityWeek(week ?? null);
+      });
+  }, [radarWeek]);
+
+  useEffect(() => {
+    if (!radarWeek) return;
+    const week = radarWeek === "latest" ? undefined : radarWeek;
+    void fetchLeaders(week)
+      .then((res) => {
+        setLeaders(res.rows);
+        setLeadersNote(res.emptyReason);
+      })
+      .catch((err: unknown) => {
+        console.error(err);
+        setLeaders([]);
+        setLeadersNote("no se pudo cargar la lista de líderes");
+      });
+  }, [radarWeek]);
+
+  // The context ring starts on the radar's #1 when the radar ranks AI-lexicon topics: the v0.2
+  // GDELT entities in CONTEXT_ENTITIES have no rows under the AI source.
+  useEffect(() => {
+    const first = radarItems[0]?.topic_id;
+    if (first?.startsWith("ai:") && !selectedEntity.startsWith("ai:")) {
+      setSelectedEntity(first);
+    }
+  }, [radarItems, selectedEntity]);
+
+  function communitySignalFor(card: TopicScoreWeekly): CommunitySignal | null {
+    if (communityWeek !== card.week) return null;
+    return communityFromRows(card.topic_id, card.week, communityRows);
+  }
 
   function selectTopic(topicId: string) {
     setSelectedTopic(topicId);
@@ -743,10 +889,43 @@ export function App() {
       <div className="workspace-body">
         <aside className="workspace-rail" aria-labelledby="top10-heading">
           <div className="panel-header rail-header">
-            <h2 id="top10-heading">Top 10 semanal</h2>
+            <h2 id="top10-heading">
+              {railMode === "rising" ? "Top 10 semanal" : "Lo más grande de la semana"}
+            </h2>
+            {leaders.length > 0 && (
+              <div className="rail-toggle" role="group" aria-label="Qué lista mostrar">
+                <button
+                  type="button"
+                  aria-pressed={railMode === "rising"}
+                  className={railMode === "rising" ? "pill pill-active" : "pill"}
+                  onClick={() => setRailMode("rising")}
+                  title="Los temas que más crecen frente a su propia historia (emergencia)"
+                >
+                  Despegando
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={railMode === "leaders"}
+                  className={railMode === "leaders" ? "pill pill-active" : "pill"}
+                  onClick={() => setRailMode("leaders")}
+                  title="Los temas de IA con más artículos esta semana (volumen)"
+                >
+                  Lo más grande
+                </button>
+              </div>
+            )}
           </div>
 
-          {radarItems.length === 0 ? (
+          {railMode === "leaders" ? (
+            <LeadersList
+              rows={leaders}
+              note={leadersNote}
+              onOpen={(row) => {
+                setDetailTopicId(row.topic_id);
+                void openNamedTopic(row.topic_id, radarItems[0]?.week ?? null, row.label_es, false);
+              }}
+            />
+          ) : radarItems.length === 0 ? (
             <div className="empty-state" data-testid="radar-empty-notice">
               <p>
                 <strong>Sin temas puntuados para esta semana.</strong>
@@ -799,6 +978,17 @@ export function App() {
                       <span className="rank-badge">#{card.rank ?? "-"}</span>
                       <span className="rail-name">
                         {topicName(card.topic_id, card.label_es)}
+                        <FamilyChip
+                          topicId={card.topic_id}
+                          family={card.family}
+                          familyEs={card.family_es}
+                        />
+                        {card.topic_id.startsWith("ai:") &&
+                          (communitySignalFor(card)?.categories.length ?? 0) > 0 && (
+                            <span className="community-line">
+                              {communityLine(communitySignalFor(card))}
+                            </span>
+                          )}
                       </span>
                       <span className={`decision-badge decision-${card.decision}`}>
                         {DECISION_LABELS[card.decision]}
@@ -814,6 +1004,7 @@ export function App() {
                         contextRing={contextRing}
                         selectedTopic={selectedTopic}
                         onSelectTopic={selectTopic}
+                        communitySignal={communitySignalFor(card)}
                       />
                     )}
                   </article>
@@ -952,6 +1143,11 @@ export function App() {
                     </div>
                     <div className="drawer-card-name">
                       {topicName(card.topic_id, card.label_es)}
+                      {card.topic_id.startsWith("ai:") && (
+                        <span className="community-line">
+                          {communityLine(communitySignalFor(card))}
+                        </span>
+                      )}
                     </div>
                     <RowSignals card={card} />
                   </div>
@@ -1113,6 +1309,7 @@ function TopicDetail({
   contextRing,
   selectedTopic,
   onSelectTopic,
+  communitySignal,
 }: {
   card: TopicScoreWeekly;
   timelineLoading: boolean;
@@ -1124,6 +1321,7 @@ function TopicDetail({
   contextRing: TopicContext1Hop[];
   selectedTopic: string;
   onSelectTopic: (topicId: string) => void;
+  communitySignal: CommunitySignal | null;
 }) {
   return (
     <div className="rail-detail">
@@ -1145,7 +1343,9 @@ function TopicDetail({
           </span>
         )}
         {card.framing_angle && <span className="chip">Ángulo: {card.framing_angle}</span>}
+        <FamilyChip topicId={card.topic_id} family={card.family} familyEs={card.family_es} />
       </div>
+      <CommunityNote topicId={card.topic_id} signal={communitySignal} />
       {card.why.length > 0 && (
         <ul className="why-list">
           {card.why.map((reason, idx) => (

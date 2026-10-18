@@ -10,6 +10,8 @@ export const GRAPH_LENSES = [
   "community",
   "tone",
   "window",
+  "family",
+  "postura",
 ] as const;
 
 export type GraphLens = (typeof GRAPH_LENSES)[number];
@@ -23,6 +25,8 @@ export const LENS_NAMES: Record<GraphLens, string> = {
   community: "Comunidades (Leiden)",
   tone: "Emoción (Tono)",
   window: "Ventana (Horizonte)",
+  family: "Familia",
+  postura: "Postura",
 };
 
 const GRAPH_LENS_SET: ReadonlySet<string> = new Set(GRAPH_LENSES);
@@ -40,6 +44,7 @@ export function graphLensFromColorBy(colorBy: string | null | undefined): GraphL
 
 // Same order as agents/runtime.py view_lens, so a click and a chat answer pick one lens.
 const TONE_Q = /tono|emoci|sentimiento|[aá]nimo|negativ|positiv/i;
+const POSTURA_Q = /qui[eé]n se opone|se oponen|opositor|cr[ií]tic|regulaci[oó]n|postura/i;
 const WINDOW_Q = /ventana|espa[nñ]ol|portugu|llega|a punto|d[ií]as quedan/i;
 const NOVELTY_Q =
   /nuev[oa]s? (conexion|relacion|v[ií]nculo)|(conexion|relacion|v[ií]nculo)\w* nuev|qu[eé] cambi/i;
@@ -49,6 +54,7 @@ const BRIDGE_Q =
 
 export function lensForQuestion(message: string, entity: string | null): GraphLens {
   if (TONE_Q.test(message)) return "tone";
+  if (POSTURA_Q.test(message)) return "postura";
   if (WINDOW_Q.test(message)) return "window";
   if (NOVELTY_Q.test(message)) return "novelty";
   if (MOMENTUM_Q.test(message)) return "momentum";

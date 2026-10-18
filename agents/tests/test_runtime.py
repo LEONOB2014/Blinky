@@ -252,6 +252,9 @@ def test_the_route_records_the_resolved_entity():
         ("¿Qué temas conectan la IA con el clima?", None, "bridge"),
         ("¿Qué tema está ganando más fuerza?", None, "momentum"),
         ("¿Qué conexiones nuevas aparecieron esta semana?", None, "novelty"),
+        ("¿Quién se opone?", None, "postura"),
+        ("¿Dónde están los críticos?", None, "postura"),
+        ("¿Qué dice la regulación?", None, "postura"),
     ],
 )
 def test_the_question_picks_the_graph_lens(question, entity, lens):
@@ -266,9 +269,17 @@ def test_lens_values_are_in_the_contract():
     from radar.paths import REPO_ROOT
 
     schema = json.loads((REPO_ROOT / "contracts" / "view_command.schema.json").read_text())
-    assert {"decision", "segment", "tone", "window", "bridge", "momentum", "novelty"} <= set(
-        schema["properties"]["color_by"]["enum"]
-    )
+    assert {
+        "decision",
+        "segment",
+        "tone",
+        "window",
+        "bridge",
+        "momentum",
+        "novelty",
+        "family",
+        "postura",
+    } <= set(schema["properties"]["color_by"]["enum"])
 
 
 def test_auditor_matches_shares_only_for_percentages():
