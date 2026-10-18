@@ -3,7 +3,7 @@
 # Reto 30X "Radar de contenido"
 # ==============================================================================
 
-.PHONY: help setup sync test test-ws lint format check worktree clean
+.PHONY: help setup sync test test-ws lint format check worktree clean ask
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -37,6 +37,12 @@ format: ## Format
 
 check: ## Every pre-commit hook on every file (identical to CI)
 	uv run pre-commit run --all-files
+
+# ==============================================================================
+# Agents: make ask Q="¿Qué tema de IA sube esta semana y por qué?"
+# ==============================================================================
+ask: ## Ask the Media Master (Qwen3-30B via Nebius; NEBIUS_API_KEY in .env)
+	uv run python -m agents "$(Q)"
 
 # ==============================================================================
 # Worktrees: make worktree BRANCH=feat/ws1-run-bq

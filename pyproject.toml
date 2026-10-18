@@ -21,6 +21,7 @@ dependencies = [
     "jsonschema>=4.23.0",
     "pyyaml>=6.0.2",
     "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",  # agents/: OpenAI-compatible chat (Nebius)
 ]
 
 # One extra per workstream, so an agent installs only what its directory needs:
@@ -44,12 +45,12 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/radar"]
+packages = ["src/radar", "agents"]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["src", "tests", "pipelines", "graph", "models", "entity", "crosssource", "api"]
+src = ["src", "tests", "agents", "pipelines", "graph", "models", "entity", "crosssource", "api"]
 
 [tool.ruff.lint]
 select = [
@@ -79,16 +80,21 @@ ignore = [
 "bq_sql/**" = ["E401", "E501", "BLE001", "S608"]
 # Pipeline and model jobs build SQL from fixed table and column names in code, never from input.
 "pipelines/**" = ["S608"]
-"models/**" = ["N803", "N806"]
+"models/**" = ["N803", "N806"]  # math-style names (X, y_hat) are normal in model code
 # Orchestrator scripts call the bq CLI with fixed arguments, build SQL from constants in code (never
 # from input) and print what they wrote.
-"scripts/**" = ["S603", "S607", "S608", "T201"]  # math-style names (X, y_hat) are normal in model code
+"scripts/**" = ["S603", "S607", "S608", "T201"]
+# Agents: Spanish prompts and SQL run long; tools build SQL from table paths resolved in code and bind
+# every user value as a parameter; the CLI prints the answer and its trace.
+"agents/**" = ["E501"]
+"agents/tools.py" = ["E501", "S608"]
+"agents/__main__.py" = ["E501", "T201"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["radar"]
+known-first-party = ["radar", "agents"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "pipelines", "graph", "models", "entity", "crosssource", "api"]
+testpaths = ["tests", "agents", "pipelines", "graph", "models", "entity", "crosssource", "api"]
 addopts = "-q --tb=short"
 markers = [
     "unit: fast tests with no network or data",
