@@ -58,8 +58,8 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
         "name_es": "Editor",
         "tools": ["get_topic_brief", "get_topic_evidence", "get_topic_series", "get_context_1hop"],
         "role": "Propones formato, dos ganchos y un guion breve en español, apoyado solo en los "
-        "datos que consultas. El formato sale del brief ya escrito del tema (format_es) cuando "
-        "existe; no inventes duraciones.",
+        "datos que consultas. El formato sale del brief ya escrito del tema cuando existe; no "
+        "inventes duraciones.",
     },
     "scout": {
         "name_es": "Explorador",

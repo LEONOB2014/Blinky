@@ -324,3 +324,4 @@ def test_no_role_or_instruction_gives_the_model_a_video_duration():
     prompt = runtime.master_prompt()
     assert "30-45" not in prompt and " s en español" not in prompt
     assert "no inventes duraciones" in runtime.SPECIALISTS["editor"]["role"]
+    assert "format_es" not in prompt  # field names leak into answers
