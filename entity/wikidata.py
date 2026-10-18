@@ -419,10 +419,8 @@ TOPIC_FIELDS = (
 )
 
 
-def load_priority_ids() -> list[str]:
-    """Topics the backtest actually scores: each method's weekly top 10."""
-    path = lake() / "labels" / "backtest_priority_topics.parquet"
-    frame = pl.read_parquet(path, columns=["topic_id"])
+def _ids_from_label(name: str) -> list[str]:
+    frame = pl.read_parquet(lake() / "labels" / name, columns=["topic_id"])
     seen: set[str] = set()
     ids: list[str] = []
     for topic_id in frame["topic_id"].to_list():
@@ -430,6 +428,22 @@ def load_priority_ids() -> list[str]:
             seen.add(topic_id)
             ids.append(topic_id)
     return ids
+
+
+def load_priority_ids() -> list[str]:
+    """Topics the backtest actually scores: each method's weekly top 10."""
+    return _ids_from_label("backtest_priority_topics.parquet")
+
+
+def load_needed_ids() -> list[str]:
+    """Topics the primary backtest still lacks after the priority list."""
+    return _ids_from_label("ws4_backtest_needed_missing.parquet")
+
+
+def order_exact_first(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Exact matches, then aliases. Order inside each class stays as it was."""
+    rank = {"exact": 0, "alias": 1}
+    return sorted(records, key=lambda record: rank.get(str(record.get("match")), 2))
 
 
 def topic_from_id(topic_id: str, subtopics: dict[str, Any]) -> Topic | None:
@@ -837,6 +851,135 @@ def run_priority(
     return merged, pageview_rows, devcut_rows, pageview_end, note, hold["extra"]
 
 
+def _needed_lines(
+    needed_ids: list[str],
+    needed_records: list[dict[str, Any]],
+    page_stats: dict[str, int],
+    client: WikimediaClient,
+    writes: list[str],
+) -> list[str]:
+    counts = summary(needed_records)
+    return [
+        f"- ws4 missing topics: {len(needed_ids)} (measured)",
+        (
+            f"- ws4 missing exact / alias / none: {counts['exact']} / "
+            f"{counts['alias']} / {counts['none']} (measured)"
+        ),
+        (
+            "- ws4 missing articles found, es / pt / en: "
+            f"{counts['article_es']} / {counts['article_pt']} / {counts['article_en']} (measured)"
+        ),
+        (
+            "- ws4 missing pageview articles attempted / HTTP 200: "
+            f"{page_stats.get('attempted', 0)} / {page_stats.get('ok', 0)} (measured)"
+        ),
+        "- ws4 missing pageviews: exact matches first, then aliases; es and pt only",
+        "- ws4 missing window: 2025-10-01 .. 2026-10-18",
+        f"- HTTP 429: {client.stats['http_429']} (measured)",
+        "- write times:",
+        *[f"  - {line} (measured)" for line in writes],
+    ]
+
+
+def run_needed(
+    client: WikimediaClient,
+    dev_ids: set[str],
+    hold: dict[str, Any],
+) -> tuple[list[dict[str, Any]], int | None, int | None, str | None, str, list[str]]:
+    """Pageviews for the 336 topics, exact matches first. Existing gold rows stay."""
+    from crosssource.pageviews import fetch_and_write
+
+    needed_ids = load_needed_ids()
+    by_id = {record["topic_id"]: _clean_record(record) for record in _records_from_gold()}
+    needed_records = order_exact_first(
+        [by_id[topic_id] for topic_id in needed_ids if topic_id in by_id]
+    )
+    merged = list(by_id.values())
+    absent = len(needed_ids) - len(needed_records)
+    log.info(
+        "ws4 missing topics %s ordered %s absent %s",
+        len(needed_ids),
+        summary(needed_records),
+        absent,
+    )
+    write_topic_tables(merged, dev_ids)
+    stamp = datetime.now(BOGOTA).strftime("%Y-%m-%d %H:%M UTC-5")
+    writes = [f"{stamp} topic_wikidata rows {len(merged)}"]
+    log.info("wrote topic_wikidata rows %s at %s", len(merged), stamp)
+    page_stats: dict[str, int] = {}
+
+    def publish(
+        *,
+        done_flag: bool,
+        note_text: str,
+        rows: int | None,
+        dev_rows: int | None,
+        end: str | None,
+    ) -> None:
+        hold["records"] = merged
+        hold["pageview_rows"] = rows
+        hold["devcut_rows"] = dev_rows
+        hold["pageview_end"] = end
+        hold["done"] = done_flag
+        hold["note"] = note_text
+        hold["extra"] = _needed_lines(needed_ids, needed_records, page_stats, client, writes)
+
+    publish(
+        done_flag=False,
+        note_text="WS4 missing es/pt pageviews have not started.",
+        rows=None,
+        dev_rows=None,
+        end=None,
+    )
+
+    def on_checkpoint(total: int, dev_total: int, end: date) -> None:
+        written = datetime.now(BOGOTA).strftime("%Y-%m-%d %H:%M UTC-5")
+        line = (
+            f"{written} wiki_pageviews_daily rows {total} "
+            f"(dev cut {dev_total}, end {end.isoformat()})"
+        )
+        writes.append(line)
+        log.info("checkpoint %s", line)
+        note_text = "WS4 missing es/pt pageviews are in progress. Exact matches go first."
+        publish(
+            done_flag=False,
+            note_text=note_text,
+            rows=total,
+            dev_rows=dev_total,
+            end=end.isoformat(),
+        )
+        write_status(
+            merged,
+            pageview_rows=total,
+            devcut_rows=dev_total,
+            failed=client.stats["failed"],
+            pageview_end=end.isoformat(),
+            done=False,
+            note=note_text,
+            extra=hold["extra"],
+        )
+
+    pageview_rows, devcut_rows, pageview_end = fetch_and_write(
+        client,
+        needed_records,
+        dev_ids,
+        projects=PRIORITY_PROJECTS,
+        today=PRIORITY_PAGEVIEW_END,
+        on_checkpoint=on_checkpoint,
+        stats=page_stats,
+        merge=True,
+    )
+    note = "WS4 missing es/pt pageviews are written. Exact matches were fetched first."
+    publish(
+        done_flag=True,
+        note_text=note,
+        rows=pageview_rows,
+        dev_rows=devcut_rows,
+        end=pageview_end,
+    )
+    return merged, pageview_rows, devcut_rows, pageview_end, note, hold["extra"]
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
@@ -849,6 +992,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="resolve unresolved backtest priority topics, then es/pt pageviews",
     )
+    parser.add_argument(
+        "--needed",
+        action="store_true",
+        help="es/pt pageviews for ws4_backtest_needed_missing, exact matches first",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -859,7 +1007,7 @@ def main(argv: list[str] | None = None) -> None:
     dev_ids: set[str] = set()
     dev_topics: list[Topic] = []
     extra_topics: list[Topic] = []
-    if not args.priority:
+    if not args.priority and not args.needed:
         topics, dev_ids = load_topics()
         if args.limit:
             topics = topics[: args.limit]
@@ -891,7 +1039,18 @@ def main(argv: list[str] | None = None) -> None:
     }
     with WikimediaClient.open() as client:
         try:
-            if args.priority:
+            if args.needed:
+                dev_ids = {topic.topic_id for topic in load_dev_topics()}
+                (
+                    records,
+                    pageview_rows,
+                    devcut_rows,
+                    pageview_end,
+                    note,
+                    extra_lines,
+                ) = run_needed(client, dev_ids, hold)
+                done = True
+            elif args.priority:
                 dev_ids = {topic.topic_id for topic in load_dev_topics()}
                 (
                     records,
@@ -918,7 +1077,7 @@ def main(argv: list[str] | None = None) -> None:
                     write_topic_tables(records, dev_ids)
                     log.info("full topic tables written: %s", summary(records))
                     note = "Full topic table is written. Pageviews have not been fetched."
-            if not args.topics_only and not args.priority:
+            if not args.topics_only and not args.priority and not args.needed:
                 dev_records = [row for row in records if row["topic_id"] in dev_ids]
                 pageview_rows, devcut_rows, pageview_end = fetch_and_write(
                     client, dev_records, dev_ids
@@ -931,7 +1090,7 @@ def main(argv: list[str] | None = None) -> None:
                     note = "Full topic list and pageviews are written."
             done = True
         finally:
-            if args.priority:
+            if args.priority or args.needed:
                 records = hold["records"]
                 pageview_rows = hold["pageview_rows"]
                 devcut_rows = hold["devcut_rows"]

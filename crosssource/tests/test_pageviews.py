@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 from entity.wikidata import parse_entity_payload
 
-from crosssource.pageviews import article_keys, parse_pageviews, timestamp_to_date
+from crosssource.pageviews import (
+    article_keys,
+    merge_pageview_rows,
+    parse_pageviews,
+    timestamp_to_date,
+)
 from radar.contracts import validate_records
 
 DATA = Path(__file__).parent / "data"
@@ -31,6 +36,36 @@ def test_priority_article_keys_skip_english():
         projects={"es.wikipedia", "pt.wikipedia"},
     )
     assert [project for _qid, project, _title in keys] == ["es.wikipedia", "pt.wikipedia"]
+
+
+def test_merge_keeps_existing_days_and_adds_a_new_article():
+    existing = [
+        {
+            "qid": "Q1",
+            "project": "es.wikipedia",
+            "article": "Uno",
+            "dt": "2025-10-01",
+            "views": 3,
+        }
+    ]
+    incoming = [
+        {
+            "qid": "Q1",
+            "project": "es.wikipedia",
+            "article": "Uno",
+            "dt": "2025-10-01",
+            "views": 9,
+        },
+        {
+            "qid": "Q2",
+            "project": "pt.wikipedia",
+            "article": "Dois",
+            "dt": "2025-10-02",
+            "views": 4,
+        },
+    ]
+    merged = merge_pageview_rows(existing, incoming)
+    assert [(row["qid"], row["views"]) for row in merged] == [("Q1", 3), ("Q2", 4)]
 
 
 def test_pageviews_fixture_is_daily_user_views():

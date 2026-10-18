@@ -12,6 +12,7 @@ import json
 import logging
 import re
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -191,23 +192,68 @@ def fetch_pageviews(
     return rows, end
 
 
+def read_pageview_rows(path: Path) -> list[dict[str, Any]]:
+    """Gold rows with ``dt`` as an ISO date string. Missing files are empty."""
+    if not path.exists():
+        return []
+    frame = pl.read_parquet(path)
+    if frame.is_empty():
+        return []
+    dtype = frame.schema.get("dt")
+    if dtype == pl.Date:
+        frame = frame.with_columns(pl.col("dt").dt.strftime("%Y-%m-%d"))
+    rows = frame.select(["qid", "project", "article", "dt", "views"]).to_dicts()
+    for row in rows:
+        day = row["dt"]
+        if not isinstance(day, str):
+            row["dt"] = day.isoformat()
+        row["views"] = int(row["views"])
+    return rows
+
+
+def merge_pageview_rows(
+    existing: list[dict[str, Any]],
+    incoming: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep every existing day, then add new keys. The same day is not duplicated."""
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for row in (*existing, *incoming):
+        key = (row["qid"], row["project"], row["article"], row["dt"])
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(row)
+    merged.sort(key=lambda row: (row["qid"], row["project"], row["dt"]))
+    return merged
+
+
 def write_pageview_tables(
     rows: list[dict[str, Any]],
     dev_qids: set[str],
+    *,
+    merge: bool = False,
 ) -> tuple[int, int]:
+    gold_path = lake() / "gold" / "wiki_pageviews_daily.parquet"
+    dev_path = lake() / "devcut" / "wiki_pageviews_daily.parquet"
+    incoming = rows
+    if merge:
+        rows = merge_pageview_rows(read_pageview_rows(gold_path), incoming)
     errors = validate_records("wiki_pageviews_daily", rows)
     if errors:
         raise RuntimeError("wiki_pageviews_daily failed validation:\n" + "\n".join(errors[:20]))
-    write_parquet(lake() / "gold" / "wiki_pageviews_daily.parquet", rows, PAGE_SCHEMA)
+    write_parquet(gold_path, rows, PAGE_SCHEMA)
     dev_rows = [
         row
         for row in rows
         if row["qid"] in dev_qids and DEV_CUT_START <= date.fromisoformat(row["dt"]) <= DEV_CUT_END
     ]
+    if merge:
+        dev_rows = merge_pageview_rows(read_pageview_rows(dev_path), dev_rows)
     dev_errors = validate_records("wiki_pageviews_daily", dev_rows)
     if dev_errors:
         raise RuntimeError("pageview dev cut failed validation:\n" + "\n".join(dev_errors[:20]))
-    write_parquet(lake() / "devcut" / "wiki_pageviews_daily.parquet", dev_rows, PAGE_SCHEMA)
+    write_parquet(dev_path, dev_rows, PAGE_SCHEMA)
     return len(rows), len(dev_rows)
 
 
@@ -220,13 +266,14 @@ def fetch_and_write(
     today: date | None = None,
     on_checkpoint: Any = None,
     stats: dict[str, int] | None = None,
+    merge: bool = False,
 ) -> tuple[int, int, str]:
     dev_qids = {
         record["qid"] for record in records if record.get("qid") and record["topic_id"] in dev_ids
     }
 
     def _write(snapshot: list[dict[str, Any]], end: date) -> None:
-        total, dev_total = write_pageview_tables(snapshot, dev_qids)
+        total, dev_total = write_pageview_tables(snapshot, dev_qids, merge=merge)
         if on_checkpoint is not None:
             on_checkpoint(total, dev_total, end)
 
@@ -238,5 +285,5 @@ def fetch_and_write(
         on_checkpoint=_write if on_checkpoint is not None else None,
         stats=stats,
     )
-    total, dev_total = write_pageview_tables(rows, dev_qids)
+    total, dev_total = write_pageview_tables(rows, dev_qids, merge=merge)
     return total, dev_total, end.isoformat()

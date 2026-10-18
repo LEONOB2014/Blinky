@@ -13,6 +13,7 @@ from entity.wikidata import (
     load_dev_topics,
     match_kind,
     none_record,
+    order_exact_first,
     order_hits,
     parse_entity_payload,
     parse_search,
@@ -85,6 +86,23 @@ def test_nvidia_record_matches_the_contract():
 def test_subclass_of_artificial_intelligence_is_allowed():
     assert "Q11660" in ALLOWED_ROOTS
     assert classify((), ("Q11660",), lambda _qid: ("Q5",)) == "ok"
+
+
+def test_exact_matches_are_ordered_before_aliases():
+    ordered = order_exact_first(
+        [
+            {"topic_id": "org:alias", "match": "alias"},
+            {"topic_id": "org:exact", "match": "exact"},
+            {"topic_id": "org:none", "match": "none"},
+            {"topic_id": "org:exact-2", "match": "exact"},
+        ]
+    )
+    assert [record["topic_id"] for record in ordered] == [
+        "org:exact",
+        "org:exact-2",
+        "org:alias",
+        "org:none",
+    ]
 
 
 def test_priority_topic_skips_persons_and_keeps_organizations():
