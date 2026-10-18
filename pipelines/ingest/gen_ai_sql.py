@@ -31,11 +31,10 @@ LEXICON = REPO_ROOT / "contracts" / "ai_lexicon.yaml"
 S15 = REPO_ROOT / "bq_sql" / "s15_topic_ai_daily.sql"
 S16 = REPO_ROOT / "bq_sql" / "s16_edges_ai_weekly.sql"
 
-PREFIXES = (
-    "lab", "model", "product", "tech", "infra", "research", "biz", "policy", "risk", "critic",
-    "culture",
-)  # fmt: skip
-ID_RE = re.compile(rf"^(?:{'|'.join(PREFIXES)}):[a-z0-9][a-z0-9_.+-]*$")
+# The prefix list belongs to the lexicon contract (src/radar/tests/test_ai_lexicon.py); here only
+# the id's shape is checked, and a person prefix is refused (persons are never ranked).
+ID_RE = re.compile(r"^[a-z]+:[a-z0-9][a-z0-9_.+-]*$")
+PERSON_PREFIXES = ("per", "person", "persona")
 
 
 def load_entries(path: Path) -> list[dict]:
@@ -46,7 +45,7 @@ def load_entries(path: Path) -> list[dict]:
     problems: list[str] = []
     for i, e in enumerate(entries):
         eid = e.get("id", "")
-        if not ID_RE.match(eid):
+        if not ID_RE.match(eid) or eid.split(":")[0] in PERSON_PREFIXES:
             problems.append(f"entry {i}: bad id {eid!r}")
         if eid in seen:
             problems.append(f"entry {i}: duplicate id {eid!r}")
