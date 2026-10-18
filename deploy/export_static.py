@@ -41,6 +41,22 @@ REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "web" / "public" / "data"
 TOP = 10
 RECENT_WEEKS = 4
+# The AI radar (RADAR_SOURCE=ai): the tables this export reads directly, switched the way the API
+# and agents switch them (api/app.py, agents/tools.py), when the AI table exists.
+AI_TABLES = {
+    "topic_scores_weekly": "topic_ai_scores_weekly",
+    "topic_briefs_weekly": "topic_ai_briefs_weekly",
+}
+
+
+def source_table(name: str) -> str:
+    """The gold table to read for `name` under the active RADAR_SOURCE (default gdelt)."""
+    from radar.paths import gold
+
+    alt = AI_TABLES.get(name) if os.environ.get("RADAR_SOURCE") == "ai" else None
+    return alt if alt and gold(alt).exists() else name
+
+
 # The entities web/src/App.tsx offers in its context picker (CONTEXT_ENTITIES).
 UI_ENTITIES = (
     "org:nvidia",
@@ -121,7 +137,7 @@ def export(out: Path = OUT) -> dict[str, int]:
         return resp.json()
 
     weeks = (
-        pl.scan_parquet(gold("topic_scores_weekly"))
+        pl.scan_parquet(gold(source_table("topic_scores_weekly")))
         .select(pl.col("week").unique())
         .collect()["week"]
         .sort()
@@ -171,7 +187,9 @@ def export(out: Path = OUT) -> dict[str, int]:
     evidence_path = gold("topic_evidence_weekly")
     if evidence_path.exists():
         evidence = topic_evidence_json(
-            pl.read_parquet(gold("topic_scores_weekly"), columns=["week", "topic_id", "rank"]),
+            pl.read_parquet(
+                gold(source_table("topic_scores_weekly")), columns=["week", "topic_id", "rank"]
+            ),
             pl.read_parquet(evidence_path),
         )
         for name, body in evidence.items():
@@ -256,7 +274,7 @@ def export_demo_cards(out: Path = OUT) -> dict[str, int]:
 
     sizes = {"briefs": 0, "evidence_topics": 0, "evidence_trust": 0}
     reports = REPO / "reports"
-    briefs_path = gold("topic_briefs_weekly")
+    briefs_path = gold(source_table("topic_briefs_weekly"))
     if briefs_path.exists():
         frame = pl.read_parquet(briefs_path)
         for week in frame["week"].unique().to_list():
