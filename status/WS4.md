@@ -12,6 +12,116 @@ READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.par
 with the syndication guard in the eligibility gate (16,904 rows, 46 weeks, 4,911 topics, 0 contract
 violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060 rows, 1,916 exact).
 
+## WP2: agents eval v2 on the AI lexicon (09:45 UTC-5, branch `feat/ws4-ai-ranking`, claude-cacho; committed locally, the orchestrator pushes)
+
+- **Question set:** `agents/evals/questions_v2.yaml`, version 2 (LangSmith dataset
+  `radar-agents-v2`). v1 stays frozen. Entity ids were measured on 2026-10-18 in
+  `topic_ai_scores_weekly`:
+  - q06 Nvidia -> `ai:infra:nvidia` (the company entry); q07 -> `ai:lab:openai`;
+    q08 -> `ai:lab:microsoft_ai`; q10 -> `ai:lab:google_ai`; q11 -> `ai:infra:tsmc_foundry`;
+  - q09 asks about Anthropic (`ai:lab:anthropic`), because Samsung has no lexicon entry.
+- **`run_evals.py --spec`:** defaults to `questions.yaml`; the question file is recorded in the
+  metadata.
+- **Resolver bug fixed** (18ec840): under `RADAR_SOURCE=ai` the resolver returned GDELT ids
+  (`org:nvidia`, `org:openai inc`).
+  - It now matches the AI lexicon: patterns, GDELT org aliases and the label, whole word, only
+    among scored `ai:` topics, longest match first.
+  - It was checked offline on all 25 questions before the paid run. Without `RADAR_SOURCE` the
+    GDELT resolver is unchanged (tested).
+  - The ranking was not touched and nothing was rescored.
+
+**Run:** `ai-v2-5ef01c19`, 25 x 3, no lost runs, all *measured*. Brackets are the min-max of the
+three repetition means.
+
+| Evaluator | Mean [spread] |
+|---|---|
+| grounding | **0.987 [0.96-1.00]** (ship bar >= 0.95: met) |
+| decision faithfulness | 1.000 [1.00-1.00] |
+| routing | 1.000 [1.00-1.00] |
+| entities | 0.960 [0.96-0.96] |
+| usefulness v1 | 0.737 [0.72-0.75] |
+| usefulness_v2 | 0.587 [0.55-0.64] |
+| latency | 8.7 s |
+| tokens per turn | 6,183 |
+
+- **Entities:** all six entity questions resolve correctly in 18 of 18 runs.
+  - The 3 misses are q14 ("cómo se conecta la IA con el clima y la energía"): it now resolves to
+    `ai:infra:energy`, a lexicon topic it does name. v2 keeps v1's "no entity" for q14, because
+    only the entity questions were changed.
+- **Grounding:** the one miss (a q05 run) is an Auditor false positive. "30" is read out of the
+  brand "30X" ("Datos del radar de 30X"); `_NUM` lacks a trailing word boundary.
+- **Next for the orchestrator:** decide whether q14 gets an entity in a v3, and fix the "30X"
+  number read. Neither was changed here.
+- **Spend:** agent tokens 463,757 (*measured*); judge tokens not recorded; about $0.20 at assumed
+  list rates (*estimate*).
+
+## WP2: scores and backtest on the AI lexicon (09:05 UTC-5, branch `feat/ws4-ai-ranking`, claude-cacho; committed locally, the orchestrator pushes)
+
+**Pipeline**
+- `--source ai` on `models.build_scores` and `models.backtest` (`models/source.py`). The default
+  GDELT run is unchanged: rebuilding `topic_scores_weekly` gives the same 16,904 rows, every column
+  equal (*measured*).
+- **Outputs:** `topic_ai_scores_weekly`, `reports/backtest_ai.md` and `topic_ai_briefs_weekly`.
+  v0.2's tables and report are untouched.
+- **Ranked universe:** every `ai:` topic with at least `min_articles_week` articles in the week.
+  The taxonomy says 20. A first run used 1; the orchestrator put the floor back at 09:25 (below).
+- **Eligibility gate:** holds by construction.
+- **Syndication guard:** kept. The 09:25 rescore reads the `ai:` rows now in `topic_sources_weekly`.
+- **Window and fit:** the lexicon family replaces WS1's subtopic mapping. The `business` family is
+  the fit share (hand-set, *estimate*).
+- **`new_nbr_rate`:** from `edges_ai_weekly` with WS3's rule (4-week look-back, n >= 3, the "all"
+  language bucket).
+- **Pageview label:** `crosssource/lexicon_pageviews.py` (WS6 fetcher, 6.5 s per request) ->
+  `wiki_pageviews_ai_daily`: 18,764 rows, 53 of 58 pages answered (*measured*).
+  - Only 29 of 110 lexicon entries have an es or pt title, so the primary label ranks at most 29
+    topics a week.
+  - The table needs a contract: the existing one requires a QID.
+
+**Scores (floor 20, 09:25 UTC-5):** 3,379 rows, 101 topics, 46 scored weeks. Nine lexicon
+entries never reach 20 articles in a week, so they are not ranked. The run is
+`RADAR_PROFILE=full uv run --extra models python -m models.build_scores --source ai --unit topic`.
+
+**Top 10:** 10/10 recognisably AI topics in both weeks, and every one has at least 21 articles
+(*measured*). The gate needs >= 8/10.
+- **W41** (articles that week): Rondas y valuaciones 289; IA en medios 182; Fichajes 30; Pesos
+  abiertos 43; Adopción en empresas 152; Deepfakes 153; Nuevos laboratorios 57; IA en salud 412;
+  Voz y música 60; ChatGPT 1,609.
+- **W42:** Alianzas y adquisiciones 161; Google DeepMind 68; Bolsa y acciones 368; Fichajes 89;
+  Protestas 66; Artistas y creadores 293; Rondas y valuaciones 242; Ajuste fino 21; Pesos abiertos
+  69; Robótica 129.
+- **Volume giants are not "hot" this week.** OpenAI is rank 66 in W41 (2,750 articles, +7% vs the
+  week before) and rank 58 in W42 (2,698). Nvidia is rank 57 / 54 (4,881 / 4,767). Agents is rank
+  42 / 49 (1,020 / 997). The emergence score ranks the week's spike, not the week's largest topic.
+  Anthropic is rank 32 in W42 and its decision is `esperar` (1,947 articles).
+
+**Backtest** (*measured*, 43 evaluable weeks, `reports/backtest_ai.md`; brackets are 95% bootstrap
+intervals over weeks):
+
+| Label | AI radar | Raw-count growth | Persistence | Base rate | v0.2 radar (same label) |
+|---|---|---|---|---|---|
+| Primary: es+pt pageviews, on labelled slots | 27.7% [24.0-31.2]; worst 24.8%, best 35.2%; coverage 89.5% (394/440) | 27.3% [24.0-30.7] | 22.1% [18.6-25.8] | 26.5% | 29.2% [24.4-34.0] vs 25.4% |
+| Secondary: es+pt GDELT growth | 25.6% [22.3-28.8] | 27.2% [23.3-31.2] | 12.3% [9.3-15.6] | 25.4% | 13.3% [9.5-17.2] vs 6.7% |
+
+- **Primary:** below the 90% coverage rule (only 29 of 110 entries have an es or pt Wikipedia
+  title). The hook may not use it. The worst case does not beat raw-count growth.
+- **Secondary:** it beats persistence (+13.3 points [9.1, 17.2]) and does not beat raw-count
+  growth (-1.6 points [-5.6, 2.3]). It sits on the base rate (25.6% vs 25.4%). With the floor of 1
+  it had beaten raw-count growth; that comparison counted 3-article spikes. Median lead 2 weeks
+  over 91 flagged positives.
+- **Reading:** the top 10 is AI. Neither label shows the score beating chance once small spikes are
+  out. It is not better evidence than v0.2. Report it that way.
+
+**Briefs:** regenerated for this top 10 under `RADAR_SOURCE=ai`. Auditor 20/20, 3 retried, 25,898
+tokens, 53 s (*measured*). Written to `lake/gold/topic_ai_briefs_weekly.parquet` (not in git).
+- **Known limit:** the Auditor checks that cited numbers exist, not that the sentence follows
+  them. The new DeepMind brief says the topic "aún no llega al español" and in the same paragraph
+  counts 18 es/pt articles against 28 in English (*measured* in the brief). ChatGPT's brief says
+  "casi nadie lo cuenta en español" while counting 152 es/pt articles against 785 in English.
+
+**Eval questions (v1):** none names an old W41/W42 top-10 org. q06-q11 name Nvidia, OpenAI,
+Microsoft, Samsung, Google and TSMC, but expect GDELT ids (`org:nvidia`, `org:openai inc`…). Once
+the agents resolve to `ai:` topics they need `radar-agents-v2`. Not changed.
+
 ## Primary backtest, reported with bounds (orchestrator decision, 03:40 UTC-5)
 
 `models/backtest.py` now reports a label below the 90% coverage rule instead of withholding it:

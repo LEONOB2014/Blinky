@@ -112,6 +112,58 @@ def test_radar_returns_validated_scores_when_table_exists(
 
 
 @pytest.mark.unit
+def test_radar_reads_ai_scores_when_that_source_is_selected(
+    client: TestClient, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("RADAR_SOURCE", "ai")
+    ai_path = tmp_path / "topic_ai_scores_weekly.parquet"
+    gdelt_path = tmp_path / "topic_scores_weekly.parquet"
+    row = {
+        "week": "2026-W42",
+        "topic_id": "ai:product:chatgpt",
+        "label_es": "ChatGPT",
+        "subtopics": ["products"],
+        "primary_subtopic": "products",
+        "emergence_pct": 70.0,
+        "stage": "emergente",
+        "saturation": 0.1,
+        "audience_fit": 0.5,
+        "outperformance": None,
+        "emotional_charge_pct": 40.0,
+        "framing_angle": "explicador neutral",
+        "window": {
+            "state": "dias_restantes",
+            "days_left": 5,
+            "typical_lag_days": 6.0,
+            "n_onsets": 10,
+        },
+        "priority": 0.5,
+        "rank": 1,
+        "decision": "preparar",
+        "why": ["Emergencia medida"],
+        "evidence_ids": [],
+        "has_wikipedia_es_pt": True,
+        "profile": "full",
+    }
+    pl.DataFrame([row]).write_parquet(ai_path)
+    pl.DataFrame([{**row, "topic_id": "org:kroger", "label_es": "Kroger"}]).write_parquet(
+        gdelt_path
+    )
+
+    def fake(name: str):
+        if name == "topic_ai_scores_weekly":
+            return ai_path
+        if name == "topic_scores_weekly":
+            return gdelt_path
+        return tmp_path / f"{name}.parquet"
+
+    monkeypatch.setattr("api.app.gold", fake)
+    rows = client.get("/api/radar?week=2026-W42&limit=5").json()
+    assert [r["topic_id"] for r in rows] == ["ai:product:chatgpt"]
+    assert validate_records("topic_scores_weekly", rows) == []
+
+
+@pytest.mark.unit
 def test_topic_timeline_matches_topic_daily_contract_on_dev_slice(client: TestClient):
     resp = client.get("/api/topic/regulation_policy/timeline")
     assert resp.status_code == 200

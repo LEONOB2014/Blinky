@@ -24,8 +24,9 @@ import polars as pl
 from agents import tools
 from agents.llm import ChatModel, NebiusChat
 from agents.runtime import DECISION_ES, NO_NARRATIVE, PLAIN, topic_name, untraced_numbers
+from agents.tools import gold
 from radar.contracts import validate_records
-from radar.paths import gold, profile
+from radar.paths import profile
 
 FIELDS = ("headline_es", "what_happened_es", "why_latam_es", "angle_es", "hook_es", "format_es")
 MAX_LEN = {"headline_es": 110, "hook_es": 220}
@@ -339,7 +340,7 @@ def save(records: list[dict[str, Any]]) -> None:
     errors = validate_records("topic_briefs_weekly", records)
     if errors:
         raise SystemExit(f"{len(errors)} contract violations, e.g. {errors[:3]}")
-    path = gold("topic_briefs_weekly")
+    path = gold("topic_briefs_weekly", write=True)
     path.parent.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(records, schema=SCHEMA).write_parquet(path, compression="zstd")
     print(f"{len(records)} briefs -> {path}")

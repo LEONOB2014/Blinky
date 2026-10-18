@@ -66,6 +66,22 @@ _FRESHNESS_TABLES: tuple[tuple[str, str], ...] = (
 
 PERSON_PREFIX = "per:"  # persons are never served (privacy guard, whatever the lake holds)
 
+# The AI lexicon run writes parallel tables. The default stays the v0.2 GDELT ranking.
+_AI_TABLES = {
+    "topic_scores_weekly": "topic_ai_scores_weekly",
+    "topic_daily": "topic_ai_daily",
+}
+
+
+def _lake_table(name: str) -> str:
+    """Table the API reads. `RADAR_SOURCE=ai` uses the lexicon run when that file exists."""
+    if os.environ.get("RADAR_SOURCE") != "ai":
+        return name
+    alt = _AI_TABLES.get(name)
+    if alt is not None and gold(alt).exists():
+        return alt
+    return name
+
 
 @lru_cache(maxsize=1)
 def _taxonomy() -> dict[str, Any]:
@@ -144,9 +160,10 @@ def get_radar(
     1.5.6 cannot filter the Polars-written file ("PlainSkip not implemented"), so it is scanned
     with Polars and the week filter pushed down.
     """
-    path = gold("topic_scores_weekly")
+    table = _lake_table("topic_scores_weekly")
+    path = gold(table)
     if not path.exists():
-        reason = f"topic_scores_weekly not available yet in profile {profile()} (pending WS4)"
+        reason = f"{table} not available yet in profile {profile()} (pending WS4)"
         response.headers["X-Radar-Empty-Reason"] = reason
         response.headers["X-Radar-Status"] = "pending-ws4"
         return []
@@ -186,7 +203,7 @@ def get_topic_timeline(topic_id: str) -> list[dict[str, Any]]:
     """Daily series of one topic by language (`topic_daily.schema.json`)."""
     if is_person(topic_id):
         return []
-    topic_daily_path = gold("topic_daily")
+    topic_daily_path = gold(_lake_table("topic_daily"))
     if topic_daily_path.exists():
         file_path = str(topic_daily_path)
         rows = _query_rows(
