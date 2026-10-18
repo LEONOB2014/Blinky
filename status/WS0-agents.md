@@ -4,7 +4,71 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 05:35 UTC-5 · trust route reads the cost ledger only for cost questions (fix/agents-trust-cost) · committed locally; the orchestrator lands it.
+2026-10-18 06:10 UTC-5 · pre-deploy defects D1-D3 (fix/agents-trust-cost): D1, D2 fixed; D3 not fully · committed locally; the orchestrator lands it.
+
+## Pre-deploy defects D1-D3 fixed (06:10 UTC-5, branch `fix/agents-trust-cost`, committed locally; the orchestrator lands it)
+
+From claude-work's pre-deploy check of `develop` e830a28 (`status/WS9.md`, PR #45):
+
+- **D1, outlet count.**
+  - New `get_topic_sources(topic_id, week)` over `topic_sources_weekly`: `n_articulos`, `n_medios`
+    (distinct outlets) and the top source shares. It is in the Signal analyst's plan for named
+    topics and in `contracts/agents.yaml`.
+  - `get_topic_evidence`'s counts are renamed `articulos_mostrados` / `medios_entre_mostrados`, so
+    the 5 articles shown are no longer a second `n_medios`.
+- **D2, evidence written by code.** A question about artículos / evidencia / fuentes / medios of a
+  named topic gets a block after the decision line: "N artículos de M medios esa semana", then
+  outlet, date, language and title of each `get_topic_evidence` row. Never the URL.
+- **D3, no stories.** The Media Master's prompt forbids causes, stories or intentions beyond the
+  data, and says subtopics are categories, not the company's business. It shares the briefs'
+  wording (`NO_NARRATIVE`, used by both).
+- **Tests:** 5 new (tool, plan, block present and absent, prompt rule). `make test` 259 passed;
+  `make check` clean.
+
+**Eval:** predeploy-fixes, 25 x 3 at fea4dd2, all *measured*. Brackets are the min-max of the three
+repetition means.
+
+| Experiment | grounding | usefulness_v2 | usefulness v1 | decisions / routing / entities | tokens/turn |
+|---|---|---|---|---|---|
+| final-develop (7634781) | 0.973 [0.92-1.00] | 0.567 [0.51-0.60] | 0.457 [0.43-0.48] | 0.987 each (1 DNS-lost run) | 5,824 [5,531-5,980] |
+| predeploy-fixes (fea4dd2) | 0.947 [0.88-1.00] | 0.547 [0.51-0.58] | 0.480 [0.45-0.52] | 1.000 each | 6,148 [6,141-6,154] |
+
+- **Grounding** overlaps the baseline's range: 4 of 75 runs failed, against 2 of 75. None comes
+  from D1-D3.
+  - **q21 x2** ("¿qué tan frescos?"): "18 de octubre de 2026" is a correct date, but the Auditor's
+    `_numbers` reads "2026-10-18" as only "2026", so the day is flagged. Before PR #42 it passed by
+    matching 0.18 through the /100 rule. This is an Auditor false positive; the fix is to split ISO
+    dates in `_numbers`.
+  - **q10 and q12**: invented co-mention and nPMI thresholds ("más de 50", "0.85") on the graph
+    route, which this change does not touch. The ring thresholds from PR #42 reduce this but do not
+    stop it.
+- **usefulness_v2** overlaps the baseline's range. q20 rose (0.67 -> 1.00, the cost fix of PR #42);
+  q21 fell (1.00 -> 0.50, the two flagged runs).
+- **Tokens** rose by 324 per turn (beyond the range): the sources tool's output and the longer
+  Media Master prompt.
+
+**claude-work's 4 questions, run by hand** (full lake, tracing off, read against the tool results):
+
+| # | Question | Before (claude-work) | After |
+|---|---|---|---|
+| 1 | ¿Qué contenido preparo esta semana sobre Marsh McLennan? | pass | pass on data (Preparar, 92, carrusel from the brief); D3 not fully: "su enfoque en inversión y tecnología" still reads the subtopics as the business |
+| 2 | ¿Qué artículos respaldan a Marsh McLennan, el tema número 1 de esta semana? | fail: no article named | **pass**: block with 44 articles / 39 outlets and 5 outlet-date-language-title rows. The model repeats the decision line once below it (seen before this change) |
+| 3 | ¿Cuántos medios distintos cubren a Marsh McLennan esta semana? | fail: "44 medios" | **pass on the fact**: "39 medios distintos". D3 fails: "No es por IA, sino por su rol en inversiones estratégicas en infraestructura de chips" is invented |
+| 4 | ¿En qué subtemas de IA cae Marsh McLennan esta semana? | pass | **partial**: "temas de financiamiento y tecnología de chips" (the right subtopics, loosely named). D3 fails: "cómo el sector asegurador está invirtiendo en tecnología de chips" is invented, and "crecimiento muy rápido en Latinoamérica" is wrong |
+
+- Auditor 4/4 with no veto; tokens 31,065 for the 4 turns (*measured*).
+- **D1 and D2 are fixed. D3 is not:** the prompt rule alone does not stop Qwen3-30B from writing a
+  story in "Qué hacer".
+- **Next for D3:** a code check like the briefs' overclaim list ("está redefiniendo", "invierte
+  en", "su rol en", subtopic names next to the company), or a "Qué hacer" written from the brief's
+  angle field.
+- **Data note:** the five evidence articles for Marsh McLennan are generic Wall Street / AI-stock
+  pieces. That is how WS1d's evidence selection matched the topic, not an agent fault.
+
+**Nebius spend** for this follow-up, *estimate*:
+- agent tokens 492,173 (*measured*: 461,108 eval + 31,065 by hand, Qwen3-30B);
+- judge tokens not recorded, roughly 75 runs x 2 judges x ~4k on Qwen3-235B;
+- about $0.21 at assumed list rates, about $0.27 with the 06:00 trust runs; under the $0.60 cap.
 
 ## Trust route reads the cost ledger only for cost questions (05:35 UTC-5, branch `fix/agents-trust-cost`, committed locally; the orchestrator lands it)
 
