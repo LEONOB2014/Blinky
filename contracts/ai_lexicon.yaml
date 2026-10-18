@@ -1,0 +1,656 @@
+# The AI lexicon: the radar's ranked unit (contracts/ai_lexicon.schema.json).
+#
+# Why: GDELT's organisation extractor does not recognise most AI-native entities (in 2026-W42 there is no
+# org:openai, only "openai partner network"), so ranking GDELT orgs co-mentioned in AI articles filled the
+# top 10 with retailers and banks. A topic is now an entry of this curated list: labs, models, products,
+# techniques, infrastructure, research, business, policy, safety and the opposition to AI.
+#
+# Matching: an AI-ring article counts for an entry when any pattern matches txt = lower(title || ' ' || url)
+# (RE2, lowercase, so URL slugs with hyphens match too) or when one of gdelt_orgs is in its GDELT orgs.
+# Topic id: 'ai:' || id. Persons are never entries. A change here is a contract change.
+version: 1
+
+families:
+  labs: Laboratorios
+  models: Modelos
+  products: Productos y asistentes
+  techniques: Técnicas
+  infra: Infraestructura y chips
+  research: Investigación y open source
+  business: Negocio e inversión
+  policy: Regulación y política
+  safety: Seguridad y riesgo
+  opposition: Oposición y crítica
+  society: Sociedad y trabajo
+
+entries:
+  # ---------------------------------------------------------------- labs
+  - id: lab:openai
+    label_es: OpenAI
+    family: labs
+    stance: promoter
+    patterns: ['\bopenai\b', '\bopen ai\b']
+    gdelt_orgs: [openai, openai inc, openai group, openai foundation]
+    wikipedia: {es: OpenAI, pt: OpenAI}
+  - id: lab:anthropic
+    label_es: Anthropic
+    family: labs
+    stance: promoter
+    patterns: ['\banthropic\b']
+    gdelt_orgs: [anthropic]
+    wikipedia: {es: Anthropic, pt: Anthropic}
+  - id: lab:google_deepmind
+    label_es: Google DeepMind
+    family: labs
+    stance: promoter
+    patterns: ['deepmind', 'deep mind']
+    gdelt_orgs: [deepmind, google deepmind]
+    wikipedia: {es: Google DeepMind, pt: Google DeepMind}
+  - id: lab:meta_ai
+    label_es: Meta AI
+    family: labs
+    stance: promoter
+    patterns: ['\bmeta ai\b', 'meta-ai', 'meta superintelligence', '\bmeta\b.{0,40}\b(ai|ia|llama|superintelig)', '(ai|ia)\b.{0,30}\bmeta\b']
+    gdelt_orgs: [meta ai, meta platforms]
+    wikipedia: {es: Meta Platforms, pt: Meta Platforms}
+  - id: lab:xai
+    label_es: xAI
+    family: labs
+    stance: promoter
+    patterns: ['\bxai\b', '\bx\.ai\b']
+    gdelt_orgs: [xai]
+    wikipedia: {es: xAI, pt: xAI}
+  - id: lab:mistral
+    label_es: Mistral AI
+    family: labs
+    stance: promoter
+    patterns: ['mistral ai', 'mistral-ai', 'mistralai', '\bmistral\b.{0,30}\b(ai|ia|model|modelo|le chat|large|medium|small|startup)']
+    gdelt_orgs: [mistral ai]
+    wikipedia: {es: Mistral AI, pt: Mistral AI}
+  - id: lab:deepseek
+    label_es: DeepSeek
+    family: labs
+    stance: promoter
+    patterns: ['deepseek', 'deep seek']
+    gdelt_orgs: [deepseek]
+    wikipedia: {es: DeepSeek, pt: DeepSeek}
+  - id: lab:alibaba_qwen
+    label_es: Alibaba Qwen
+    family: labs
+    stance: promoter
+    patterns: ['\bqwen', 'tongyi', 'alibaba.{0,30}\b(ai|ia|model|modelo|cloud)']
+    gdelt_orgs: [alibaba, alibaba group, alibaba cloud]
+    wikipedia: {es: Alibaba Group, pt: Alibaba Group}
+  - id: lab:moonshot_kimi
+    label_es: Moonshot AI (Kimi)
+    family: labs
+    stance: promoter
+    patterns: ['moonshot ai', '\bkimi\b']
+  - id: lab:zhipu
+    label_es: Zhipu AI (GLM)
+    family: labs
+    stance: promoter
+    patterns: ['zhipu', '\bz\.ai\b', '\bglm-?\d']
+  - id: lab:baidu_ernie
+    label_es: Baidu ERNIE
+    family: labs
+    stance: promoter
+    patterns: ['\bernie bot\b', '\bernie \d', 'baidu.{0,30}\b(ai|ia|ernie|model|modelo)']
+    gdelt_orgs: [baidu]
+    wikipedia: {es: Baidu, pt: Baidu}
+  - id: lab:bytedance_doubao
+    label_es: ByteDance (Doubao, Seed)
+    family: labs
+    stance: promoter
+    patterns: ['doubao', 'bytedance.{0,30}\b(ai|ia|model|modelo|seed)']
+    gdelt_orgs: [bytedance]
+  - id: lab:tencent_hunyuan
+    label_es: Tencent Hunyuan
+    family: labs
+    stance: promoter
+    patterns: ['hunyuan', 'tencent.{0,30}\b(ai|ia|model|modelo)']
+    gdelt_orgs: [tencent]
+  - id: lab:minimax
+    label_es: MiniMax
+    family: labs
+    stance: promoter
+    patterns: ['\bminimax\b']
+  - id: lab:huawei_ai
+    label_es: Huawei IA y Ascend
+    family: labs
+    stance: promoter
+    patterns: ['\bascend\b.{0,20}\b(chip|910|ai|ia)', 'huawei.{0,30}\b(ai|ia|chip|ascend|pangu)', '\bpangu\b']
+    gdelt_orgs: [huawei, huawei technologies]
+  - id: lab:microsoft_ai
+    label_es: Microsoft IA
+    family: labs
+    stance: promoter
+    patterns: ['microsoft.{0,30}\b(ai|ia|copilot|openai)', 'microsoft ai']
+    gdelt_orgs: [microsoft, microsoft corporation, microsoft corp]
+    wikipedia: {es: Microsoft, pt: Microsoft}
+  - id: lab:google_ai
+    label_es: Google IA
+    family: labs
+    stance: promoter
+    patterns: ['google.{0,30}\b(ai|ia|gemini)', 'google ai']
+    gdelt_orgs: [google, alphabet, alphabet inc]
+    wikipedia: {es: Google, pt: Google}
+  - id: lab:amazon_ai
+    label_es: Amazon IA (AWS, Nova)
+    family: labs
+    stance: promoter
+    patterns: ['amazon.{0,30}\b(ai|ia|nova|bedrock|alexa\+)', '\baws\b.{0,30}\b(ai|ia|bedrock|trainium)', 'bedrock']
+    gdelt_orgs: [amazon, amazon web services]
+  - id: lab:apple_intelligence
+    label_es: Apple Intelligence
+    family: labs
+    stance: promoter
+    patterns: ['apple intelligence', 'apple.{0,30}\b(ai|ia)\b', 'siri.{0,20}\b(ai|ia|gemini|llm)']
+    gdelt_orgs: [apple, apple inc]
+  - id: lab:nvidia_models
+    label_es: Modelos abiertos de Nvidia (Nemotron, Cosmos, GR00T)
+    family: labs
+    stance: promoter
+    patterns: ['nemotron', 'nvidia nim', '\bnvidia\b.{0,30}\b(model|modelo|open|abierto|agent|agente|hugging ?face|release|lanza)', 'nvidia cosmos', 'cosmos (world|reason|predict)', 'gr00t', 'groot n\d', 'parakeet', 'nvidia canary', 'bionemo', 'earth-2', 'nvidia omniverse', 'isaac (sim|lab|gr00t)']
+  - id: lab:ssi
+    label_es: Safe Superintelligence (SSI)
+    family: labs
+    stance: promoter
+    patterns: ['safe superintelligence', '\bssi\b.{0,20}\b(ai|ia|startup)']
+    gdelt_orgs: [safe superintelligence]
+  - id: lab:thinking_machines
+    label_es: Thinking Machines Lab
+    family: labs
+    stance: promoter
+    patterns: ['thinking machines']
+  - id: lab:cohere
+    label_es: Cohere
+    family: labs
+    stance: promoter
+    patterns: ['\bcohere\b']
+    gdelt_orgs: [cohere]
+  - id: lab:perplexity
+    label_es: Perplexity
+    family: labs
+    stance: promoter
+    patterns: ['perplexity']
+    gdelt_orgs: [perplexity, perplexity ai]
+  - id: lab:stability
+    label_es: Stability AI
+    family: labs
+    stance: promoter
+    patterns: ['stability ai', 'stable diffusion']
+    gdelt_orgs: [stability ai]
+  - id: lab:ai2
+    label_es: Allen Institute for AI (Ai2)
+    family: labs
+    stance: promoter
+    patterns: ['allen institute for (ai|artificial)', '\bai2\b', '\bolmo\b']
+
+  # ---------------------------------------------------------------- models
+  - id: model:gpt
+    label_es: Modelos GPT
+    family: models
+    stance: promoter
+    patterns: ['\bgpt-?\d', '\bgpt-oss', '\bo3\b.{0,20}\b(model|modelo|openai)', '\bo4-mini']
+    wikipedia: {es: GPT-4, pt: GPT-4}
+  - id: model:claude
+    label_es: Claude
+    family: models
+    stance: promoter
+    patterns: ['claude (ai|\d|opus|sonnet|haiku|code)', 'claude-(ai|\d|opus|sonnet|haiku|code)', 'anthropic.{0,30}claude', 'claude.{0,30}anthropic']
+    wikipedia: {es: Claude (modelo de lenguaje), pt: Claude (modelo de linguagem)}
+  - id: model:gemini
+    label_es: Gemini
+    family: models
+    stance: promoter
+    patterns: ['google gemini', 'gemini (ai|\d|pro|flash|ultra|app|nano|model|modelo)', 'gemini-(ai|\d|pro|flash|ultra|app)', 'google.{0,30}gemini', 'gemini.{0,30}google']
+    wikipedia: {es: Google Gemini, pt: Google Gemini}
+  - id: model:llama
+    label_es: Llama (Meta)
+    family: models
+    stance: promoter
+    patterns: ['\bllama ?\d', 'llama-\d', 'meta.{0,20}\bllama\b', '\bllama\b.{0,20}\bmeta\b']
+    wikipedia: {es: Llama (modelo de lenguaje), pt: Llama (modelo de linguagem)}
+  - id: model:grok
+    label_es: Grok
+    family: models
+    stance: promoter
+    patterns: ['\bgrok ?\d', 'grok-\d', 'xai.{0,30}\bgrok\b', '\bgrok\b.{0,30}\b(chatbot|xai|musk|ai|ia)']
+    wikipedia: {es: Grok (chatbot), pt: Grok (chatbot)}
+  - id: model:open_chinese
+    label_es: Modelos abiertos chinos
+    family: models
+    stance: promoter
+    patterns: ['chinese (open|ai model|llm)', 'modelos? (chinos?|de ia chinos?)', 'china.{0,20}(open-source|código abierto|open source).{0,20}(ai|ia|model)']
+  - id: model:reasoning
+    label_es: Modelos de razonamiento
+    family: models
+    stance: promoter
+    patterns: ['reasoning model', 'modelos? de razonamiento', 'thinking model', 'chain of thought', 'chain-of-thought']
+  - id: model:small
+    label_es: Modelos pequeños y en el dispositivo
+    family: models
+    stance: promoter
+    patterns: ['small language model', '\bslms?\b', 'on-device (ai|model)', 'modelos? pequeños?', 'edge ai']
+  - id: model:image_video
+    label_es: Generación de imagen y video
+    family: models
+    stance: neutral
+    patterns: ['\bsora\b', '\bveo ?\d', 'midjourney', 'text-to-video', 'video generat', 'image generat', 'generación de (video|imágenes)', 'geração de (vídeo|imagens)', '\brunway\b', '\bkling\b', 'nano banana', 'dall-?e']
+  - id: model:voice_music
+    label_es: Voz y música con IA
+    family: models
+    stance: neutral
+    patterns: ['voice clon', 'clonación de voz', 'ai music', 'música (con|generada por) ia', '\bsuno\b', '\budio\b.{0,10}\b(ai|music)', 'elevenlabs', 'text-to-speech']
+  - id: model:frontier
+    label_es: Modelos de frontera
+    family: models
+    stance: promoter
+    patterns: ['frontier model', 'modelos? de frontera', 'frontier ai', 'foundation model', 'modelos? fundacional']
+
+  # ---------------------------------------------------------------- products
+  - id: product:chatgpt
+    label_es: ChatGPT
+    family: products
+    stance: promoter
+    patterns: ['chatgpt', 'chat gpt', 'chat-gpt']
+    wikipedia: {es: ChatGPT, pt: ChatGPT}
+  - id: product:copilot
+    label_es: Copilot
+    family: products
+    stance: promoter
+    patterns: ['\bcopilot\b']
+    wikipedia: {es: Microsoft Copilot, pt: Microsoft Copilot}
+  - id: product:ai_browser_search
+    label_es: Buscadores y navegadores con IA
+    family: products
+    stance: neutral
+    patterns: ['ai overview', 'ai mode', 'ai search', 'búsqueda con ia', 'buscador(es)? (con|de) ia', 'ai browser', 'navegador(es)? (con|de) ia', '\batlas\b.{0,20}\b(browser|openai)', '\bcomet\b.{0,20}\b(browser|perplexity)']
+  - id: product:coding_assistants
+    label_es: Asistentes de programación
+    family: products
+    stance: promoter
+    patterns: ['coding (assistant|agent|tool)', 'ai coding', 'vibe cod', 'claude code', '\bcodex\b', '\bcursor\b.{0,20}\b(ai|ia|editor|code)', 'github copilot', 'windsurf', 'programación con ia', 'asistente de (código|programación)']
+  - id: product:ai_companions
+    label_es: Chatbots de compañía
+    family: products
+    stance: neutral
+    patterns: ['ai companion', 'character\.ai', 'character ai', 'replika', 'companion chatbot', 'novi[ao] (virtual|de ia)', 'acompañante de ia', 'ai girlfriend', 'ai boyfriend']
+  - id: product:chatbots
+    label_es: Chatbots y asistentes
+    family: products
+    stance: neutral
+    patterns: ['\bchatbots?\b', 'asistentes? (virtual|de ia|con ia)', 'ai assistant', 'assistente (virtual|de ia)']
+  - id: product:ai_devices
+    label_es: Dispositivos y gafas con IA
+    family: products
+    stance: promoter
+    patterns: ['smart glasses', 'ai glasses', 'gafas (inteligentes|con ia)', 'óculos (inteligentes|com ia)', 'ai pin', 'ai device', 'ai pc', 'copilot\+ pc', 'ai phone', 'ai smartphone']
+
+  # ---------------------------------------------------------------- techniques
+  - id: tech:agents
+    label_es: Agentes de IA
+    family: techniques
+    stance: promoter
+    patterns: ['ai agents?', 'agentic', 'agentes? de ia', 'agentes? (autónomos?|inteligentes?)', 'agentes? de inteligência artificial', 'agentes? de inteligencia artificial', 'multi-agent', 'agent(e|es)? (de|con) ia', '\b(gpt|llm|openai|claude|gemini|copilot|enterprise|coding)\b.{0,25}\bagents?\b', '\bagents?\b.{0,25}\b(llm|openai|autonomous|autónomos|agentic)\b']
+    wikipedia: {es: Agente inteligente, pt: Agente inteligente}
+  - id: tech:mcp
+    label_es: Model Context Protocol (MCP)
+    family: techniques
+    stance: promoter
+    patterns: ['model context protocol', '\bmcp\b.{0,20}\b(server|servidor|protocol|ai|agent)', 'agent2agent', '\ba2a\b.{0,20}\bprotocol']
+  - id: tech:rag
+    label_es: RAG y búsqueda semántica
+    family: techniques
+    stance: promoter
+    patterns: ['retrieval-augmented', 'retrieval augmented', '\brag\b.{0,20}\b(ai|llm|pipeline|system)', 'vector database', 'base de datos vectorial', 'embeddings?']
+  - id: tech:open_weights
+    label_es: Pesos abiertos y open source
+    family: techniques
+    stance: promoter
+    patterns: ['open-weight', 'open weights?', 'pesos abiertos', 'open-source (ai|model|llm)', 'open source (ai|model|llm)', 'ia de código abierto', 'modelos? (de código )?abiertos?', 'código aberto']
+  - id: tech:fine_tuning
+    label_es: Ajuste fino y entrenamiento
+    family: techniques
+    stance: neutral
+    patterns: ['fine-tun', 'fine tun', 'ajuste fino', 'post-training', 'reinforcement learning', 'aprendizaje por refuerzo', '\brlhf\b', 'distillation', 'destilación']
+  - id: tech:multimodal
+    label_es: IA multimodal
+    family: techniques
+    stance: promoter
+    patterns: ['multimodal']
+  - id: tech:llm
+    label_es: Modelos de lenguaje (LLM)
+    family: techniques
+    stance: neutral
+    patterns: ['\bllms?\b', 'large language model', 'modelos? de lenguaje', 'modelos? de linguagem', 'language model']
+    wikipedia: {es: Modelo extenso de lenguaje, pt: Grande modelo de linguagem}
+  - id: tech:generative_ai
+    label_es: IA generativa
+    family: techniques
+    stance: neutral
+    patterns: ['generative ai', '\bgen ?ai\b', 'ia generativa', 'inteligencia artificial generativa', 'inteligência artificial generativa']
+    wikipedia: {es: Inteligencia artificial generativa, pt: Inteligência artificial generativa}
+  - id: tech:agi
+    label_es: AGI y superinteligencia
+    family: techniques
+    stance: neutral
+    patterns: ['\bagi\b', 'artificial general intelligence', 'inteligencia artificial general', 'inteligência artificial geral', 'superintelligen', 'superintelig']
+    wikipedia: {es: Inteligencia artificial general, pt: Inteligência artificial geral}
+  - id: tech:robotics
+    label_es: Robótica e IA física
+    family: techniques
+    stance: promoter
+    patterns: ['humanoid', 'humanoide', 'robotaxi', 'physical ai', 'ia física', 'embodied ai', 'robot(s|ic|ics)?\b.{0,30}\b(ai|ia)\b', 'optimus', 'figure ai', '\bwaymo\b', 'self-driving', 'autonomous (vehicle|driving)', 'conducción autónoma']
+  - id: tech:world_models
+    label_es: Modelos del mundo y simulación
+    family: techniques
+    stance: promoter
+    patterns: ['world model', 'modelos? del mundo', '\bgenie ?\d']
+
+  # ---------------------------------------------------------------- infra
+  - id: infra:nvidia
+    label_es: Nvidia
+    family: infra
+    stance: promoter
+    patterns: ['\bnvidia\b', 'blackwell', '\bh100\b', '\bh200\b', '\bb200\b', '\bgb200\b', '\brubin\b.{0,20}\b(gpu|chip|nvidia)', '\bcuda\b']
+    gdelt_orgs: [nvidia, nvidia corporation, nvidia corp]
+    wikipedia: {es: Nvidia, pt: Nvidia}
+  - id: infra:amd
+    label_es: AMD
+    family: infra
+    stance: promoter
+    patterns: ['\bamd\b', 'instinct mi\d', '\bmi\d{3}\b']
+    gdelt_orgs: [advanced micro devices, amd]
+    wikipedia: {es: AMD, pt: AMD}
+  - id: infra:tsmc_foundry
+    label_es: TSMC y fabricación de chips
+    family: infra
+    stance: neutral
+    patterns: ['\btsmc\b', 'taiwan semiconductor', 'foundry', 'fundición de chips', 'chipmaking', 'semiconductor (plant|fab|fábrica)', '\b2nm\b', '\b3nm\b']
+    gdelt_orgs: [tsmc, taiwan semiconductor manufacturing, taiwan semiconductor manufacturing co]
+    wikipedia: {es: TSMC, pt: TSMC}
+  - id: infra:custom_chips
+    label_es: Chips propios (TPU, Trainium) y startups
+    family: infra
+    stance: promoter
+    patterns: ['\btpus?\b', 'trainium', 'inferentia', 'custom (ai )?chip', 'cerebras', '\bgroq\b', 'sambanova', 'tenstorrent', 'chips? de ia', 'chips? (para|de) inteligencia artificial', 'ai chips?', 'ai accelerator']
+    gdelt_orgs: [cerebras, cerebras systems, groq]
+  - id: infra:hbm_memory
+    label_es: Memoria HBM
+    family: infra
+    stance: neutral
+    patterns: ['\bhbm\d?\b', 'high-bandwidth memory', 'sk hynix', 'micron.{0,20}\b(ai|hbm)', 'samsung.{0,20}\bhbm']
+    gdelt_orgs: [sk hynix, micron technology]
+  - id: infra:datacenters
+    label_es: Centros de datos para IA
+    family: infra
+    stance: neutral
+    patterns: ['data ?cent(er|re)s?', 'centros? de datos', 'centros? de dados', 'hyperscale', 'stargate', 'gigawatt', 'ai factor(y|ies)', 'fábricas? de ia', 'supercomputer', 'supercomputador']
+    wikipedia: {es: Centro de procesamiento de datos, pt: Centro de processamento de dados}
+  - id: infra:energy
+    label_es: Energía y consumo de la IA
+    family: infra
+    stance: neutral
+    patterns: ['(ai|ia)\b.{0,40}\b(energy|energía|energia|power grid|electricity|electricidad|nuclear|consumo eléctrico)', '(energy|power|electricity|energía|electricidad).{0,40}\b(ai|ia|data ?center|centros? de datos)\b', 'small modular reactor']
+  - id: infra:chip_export_controls
+    label_es: Controles de exportación de chips
+    family: infra
+    stance: neutral
+    patterns: ['export control', 'controles? (a las|de) exportaci', 'chip (ban|export)', 'entity list', 'chips?.{0,30}\bchina\b.{0,30}\b(ban|restric|export)']
+  - id: infra:cloud_neoclouds
+    label_es: Nube para IA (CoreWeave, neoclouds)
+    family: infra
+    stance: neutral
+    patterns: ['coreweave', 'neocloud', 'nebius', 'lambda labs', 'oracle.{0,30}\b(ai|ia|cloud|openai|stargate)', 'azure.{0,30}\b(ai|ia|openai)', 'google cloud.{0,30}\b(ai|ia)']
+    gdelt_orgs: [coreweave, oracle, oracle corporation]
+
+  # ---------------------------------------------------------------- research
+  - id: research:hugging_face
+    label_es: Hugging Face
+    family: research
+    stance: promoter
+    patterns: ['hugging ?face', 'huggingface']
+    gdelt_orgs: [hugging face]
+    wikipedia: {es: Hugging Face, pt: Hugging Face}
+  - id: research:papers_benchmarks
+    label_es: Investigación y benchmarks
+    family: research
+    stance: neutral
+    patterns: ['benchmark', 'arxiv', 'research paper', 'artículo científico.{0,30}\b(ia|ai)', 'neurips', '\bicml\b', '\biclr\b', 'leaderboard', 'state-of-the-art', 'estado del arte']
+  - id: research:ai_science
+    label_es: IA para la ciencia
+    family: research
+    stance: promoter
+    patterns: ['alphafold', 'ai (for|in) science', 'ia (para|en) la ciencia', 'drug discover', 'descubrimiento de fármacos', 'protein (fold|design)', 'ai scientist', 'científico de ia', 'materials discover']
+  - id: research:ai_health
+    label_es: IA en salud y medicina
+    family: research
+    stance: neutral
+    patterns: ['(ai|ia)\b.{0,30}\b(health|healthcare|medical|medicine|diagnos|salud|médic|medicina|saúde|hospital)', '(health|healthcare|medical|salud|medicina|saúde).{0,30}\b(ai|ia)\b']
+  - id: research:ai_education
+    label_es: IA en educación
+    family: research
+    stance: neutral
+    patterns: ['(ai|ia)\b.{0,30}\b(education|school|student|teacher|universit|educación|escuela|estudiante|docente|educação|escola|aluno|professor)', '(education|school|students?|teachers?|educación|escuelas?|estudiantes?|educação|escolas?).{0,30}\b(ai|ia|chatgpt)\b']
+  - id: research:open_source_projects
+    label_es: Proyectos open source de IA
+    family: research
+    stance: promoter
+    patterns: ['github.{0,30}\b(ai|ia|agent|llm)', 'pytorch', 'langchain', 'llamaindex', '\bvllm\b', 'ollama', 'llama\.cpp', 'open-source project']
+
+  # ---------------------------------------------------------------- business
+  - id: biz:funding_valuations
+    label_es: Rondas y valuaciones de IA
+    family: business
+    stance: promoter
+    patterns: ['(ai|ia)\b.{0,40}\b(funding|raises?|valuation|valued at|series [a-f]|ronda|valuaci|valoraci|recauda|levanta|financiamiento|financiación|investimento|aporte)', '(funding|valuation|ronda|valuación|valoración|recauda).{0,40}\b(ai|ia) (startup|company|empresa)', 'ai startups?', 'startups? de (ia|inteligencia artificial)']
+  - id: biz:ai_bubble
+    label_es: ¿Burbuja de la IA?
+    family: business
+    stance: critic
+    patterns: ['ai bubble', 'burbuja (de la |de )?(ia|inteligencia artificial)', 'bolha (da |de )?(ia|inteligência artificial)', 'ai (stocks?|shares?).{0,30}\b(fall|drop|slump|sell-?off|caen|cae|plunge)', 'circular (deal|financing)', 'ai capex', 'ai spending']
+  - id: biz:ai_stocks_markets
+    label_es: Bolsa y acciones de IA
+    family: business
+    stance: neutral
+    patterns: ['ai (stocks?|shares?|trade|rally)', 'acciones (de|ligadas a la) ia', 'ações de ia', 'magnificent seven', 'siete magníficas', 'nasdaq.{0,30}\b(ai|ia)\b']
+  - id: biz:enterprise_adoption
+    label_es: Adopción de IA en empresas
+    family: business
+    stance: promoter
+    patterns: ['(ai|ia) adoption', 'adopción de (la )?ia', 'adoção de (ia|inteligência artificial)', 'enterprise ai', 'ia (en|para) (las )?empresas', 'ia (nas|para) empresas', 'deploy(s|ing|ment)? (ai|generative ai)', 'implementa(r|ción) (la )?ia', 'transformación digital.{0,30}\b(ia|ai)']
+  - id: biz:mergers_deals
+    label_es: Alianzas y adquisiciones en IA
+    family: business
+    stance: neutral
+    patterns: ['(ai|ia)\b.{0,40}\b(acqui|merger|partnership|deal|alianza|adquisici|acuerdo|parceria|aquisiç)', '(acquires?|adquiere|compra|alianza con|partnership with).{0,40}\b(ai|ia) (startup|company|empresa)']
+  - id: biz:latam_ai
+    label_es: IA en Latinoamérica
+    family: business
+    stance: neutral
+    patterns: ['latin america.{0,30}\b(ai|artificial)', '(ia|inteligencia artificial|inteligência artificial)\b.{0,40}\b(latinoam|américa latina|méxico|mexico|brasil|brazil|argentina|colombia|chile|perú|peru)\b', '(latinoam|américa latina|méxico|brasil|argentina|colombia|chile|perú)\b.{0,40}\b(ia|inteligencia artificial|inteligência artificial)\b', 'latam.{0,20}\b(ai|ia)\b', 'mercadolibre.{0,20}\b(ai|ia)', 'nubank.{0,20}\b(ai|ia)']
+  - id: biz:sovereign_ai
+    label_es: IA soberana y estrategias nacionales
+    family: business
+    stance: neutral
+    patterns: ['sovereign ai', 'ia soberana', 'ia soberana', 'national ai (strategy|plan)', 'estrategia nacional de (ia|inteligencia artificial)', 'plan nacional de (ia|inteligencia artificial)']
+
+  # ---------------------------------------------------------------- policy
+  - id: policy:eu_ai_act
+    label_es: Ley de IA de la UE (AI Act)
+    family: policy
+    stance: critic
+    patterns: ['ai act', 'ley de (ia|inteligencia artificial) (de la ue|europea)', 'reglamento europeo de (ia|inteligencia artificial)', 'lei europeia de (ia|inteligência artificial)', 'eu ai', 'european (union|commission).{0,40}\b(ai|artificial intelligence)', '(unión europea|comisión europea|bruselas).{0,40}\b(ia|inteligencia artificial)', '\b(ue|eu|europa|europe|bruselas|brussels)\b.{0,40}\b(ley|law|act|regula\w*|reglamento)\b.{0,30}\b(ia|ai|inteligencia artificial|artificial intelligence)']
+    wikipedia: {es: Ley de Inteligencia Artificial de la Unión Europea, pt: Lei de Inteligência Artificial da União Europeia}
+  - id: policy:us_ai_policy
+    label_es: Política de IA en EE. UU.
+    family: policy
+    stance: neutral
+    patterns: ['white house.{0,40}\b(ai|artificial intelligence)', '(executive order|orden ejecutiva).{0,40}\b(ai|ia)', 'ai action plan', 'congress.{0,40}\b(ai|artificial intelligence)', 'senate.{0,40}\b(ai|artificial intelligence)', 'casa blanca.{0,40}\b(ia|inteligencia artificial)', 'ai moratorium', 'state ai laws?', 'preemption']
+  - id: policy:china_ai_policy
+    label_es: Política de IA en China
+    family: policy
+    stance: neutral
+    patterns: ['beijing.{0,40}\b(ai|artificial intelligence)', 'china.{0,30}\b(ai|ia) (rules|regulation|law|policy|plan|race)', 'china.{0,30}\b(ai|ia)\b.{0,20}(regula|norma|ley)', 'us-china.{0,30}\b(ai|tech)', 'ai race', 'carrera (de la|por la) ia']
+  - id: policy:ai_regulation_laws
+    label_es: Leyes y regulación de la IA
+    family: policy
+    stance: critic
+    patterns: ['ai (regulation|law|bill|legislation|rules|governance|policy)', '(regulation|regulating|regulate|legislation|bill) (of |on )?(ai|artificial intelligence)', 'regulación de (la )?(ia|inteligencia artificial)', 'regular (la )?(ia|inteligencia artificial)', 'ley de (ia|inteligencia artificial)', 'regulação (da |de )?(ia|inteligência artificial)', 'marco legal.{0,20}\b(ia|inteligencia artificial)', 'gobernanza de (la )?(ia|inteligencia artificial)']
+  - id: policy:copyright
+    label_es: Derechos de autor y demandas
+    family: policy
+    stance: critic
+    patterns: ['copyright', 'derechos de autor', 'direitos autorais', '(lawsuit|sues|sued|demanda|processo).{0,40}\b(openai|anthropic|meta|google|stability|midjourney|ai|ia)\b', '(openai|anthropic|meta|midjourney|perplexity).{0,40}\b(lawsuit|sued|demanda)', 'fair use', 'training data.{0,30}(license|licencia|pay)', 'publishers?.{0,30}\b(ai|ia)\b']
+  - id: policy:privacy_data
+    label_es: Privacidad y datos
+    family: policy
+    stance: critic
+    patterns: ['(ai|ia)\b.{0,40}\b(privacy|privacidad|privacidade|data protection|protección de datos|gdpr|surveillance|vigilancia)', '(privacy|privacidad|surveillance|vigilancia|facial recognition|reconocimiento facial).{0,40}\b(ai|ia)\b', 'facial recognition', 'reconocimiento facial']
+  - id: policy:military_ai
+    label_es: IA militar y armas autónomas
+    family: policy
+    stance: critic
+    patterns: ['autonomous weapon', 'armas autónomas', 'killer robot', 'military ai', 'ia militar', '(pentagon|department of (defense|war)|pentágono).{0,40}\b(ai|artificial intelligence|ia)', 'drone.{0,30}\b(ai|ia)\b', 'lethal autonomous']
+
+  # ---------------------------------------------------------------- safety
+  - id: risk:ai_safety
+    label_es: Seguridad de la IA y alineamiento
+    family: safety
+    stance: critic
+    patterns: ['ai safety', 'seguridad de la ia', 'segurança da ia', 'alignment', 'alineamiento', 'red team', 'safety institute', 'ai risk', 'riesgos? de la (ia|inteligencia artificial)', 'riscos? da (ia|inteligência artificial)', 'frontier safety', 'interpretability', 'interpretabilidad']
+  - id: risk:existential
+    label_es: Riesgo existencial de la IA
+    family: safety
+    stance: critic
+    patterns: ['existential (risk|threat)', 'riesgo existencial', 'risco existencial', 'extinction', 'extinción', 'doomer', 'p\(doom\)', 'ai apocalypse', 'apocalipsis', 'end of humanity', 'fin de la humanidad', 'superintelligence.{0,30}\b(risk|ban|danger|threat)', 'rogue ai']
+  - id: risk:deepfakes
+    label_es: Deepfakes y desinformación
+    family: safety
+    stance: critic
+    patterns: ['deepfake', 'deep fake', 'desinformación.{0,30}\b(ia|ai)', '(ai|ia)\b.{0,30}\b(misinformation|disinformation|desinformación|desinformação|fake news)', 'ultrafalso', 'manipulated (video|image)', 'nudify', 'non-consensual (image|imagery)']
+  - id: risk:cyber
+    label_es: Ciberseguridad e IA
+    family: safety
+    stance: critic
+    patterns: ['(ai|ia)\b.{0,40}\b(cyber|hack|malware|phishing|ransomware|ciberataque|ciberseguridad|cibersegurança)', '(cyber|hack|malware|phishing|ransomware|ciberataque|ciberseguridad).{0,40}\b(ai|ia)\b', 'prompt injection', 'jailbreak']
+  - id: risk:child_safety_mental_health
+    label_es: Menores, salud mental y chatbots
+    family: safety
+    stance: critic
+    patterns: ['(chatbot|chatgpt|character\.ai|ai)\b.{0,40}\b(suicide|suicidio|teen|teens|children|child|minors|menores|adolescentes|mental health|salud mental|saúde mental)', '(teens?|children|kids|menores|adolescentes).{0,40}\b(chatbot|chatgpt|ai companion|ia)\b', 'ai psychosis', 'psicosis', 'sycophan']
+  - id: risk:bias_fairness
+    label_es: Sesgos y discriminación algorítmica
+    family: safety
+    stance: critic
+    patterns: ['algorithmic bias', 'ai bias', 'sesgo (algorítmico|de la ia)', 'viés (algorítmico|da ia)', 'discrimina.{0,30}\b(ai|ia|algoritm)', 'fairness.{0,20}\b(ai|model)']
+
+  # ---------------------------------------------------------------- opposition
+  - id: critic:pause_ai
+    label_es: Movimiento para pausar la IA
+    family: opposition
+    stance: critic
+    patterns: ['pause ?ai', 'pausar la (ia|inteligencia artificial)', 'pause (on |in )?(ai|giant ai|advanced ai)', 'moratorium on (ai|advanced ai|superintelligence)', 'moratoria (a la|de la|sobre la) (ia|inteligencia artificial)', 'stop ai', 'ban (on )?superintelligence', 'prohibir la superinteligencia', 'statement on superintelligence']
+  - id: critic:safety_orgs
+    label_es: Organizaciones de riesgo y ética de la IA
+    family: opposition
+    stance: critic
+    patterns: ['future of life institute', 'center for ai safety', '\bmiri\b', 'machine intelligence research institute', 'ai now institute', '\bdair\b', 'stop killer robots', 'ai safety (institute|summit)', 'controlai']
+    gdelt_orgs: [future of life institute, center for ai safety, machine intelligence research institute]
+  - id: critic:protests_backlash
+    label_es: Protestas y rechazo social a la IA
+    family: opposition
+    stance: critic
+    patterns: ['(protest|protesta|boycott|boicot|backlash|rechazo|huelga|strike).{0,40}\b(ai|ia|artificial intelligence|inteligencia artificial)\b', '(ai|ia)\b.{0,30}\b(backlash|protest|boycott)', 'anti-ai', 'anti ia', 'luddite', 'ludita', 'no to ai']
+  - id: critic:artists_creators
+    label_es: Artistas y creadores contra la IA
+    family: opposition
+    stance: critic
+    patterns: ['(artists?|artistas?|writers?|escritores?|actors?|actores?|musicians?|músicos?|authors?|autores?|actors? strike|dubbing|doblaje).{0,40}\b(ai|ia|inteligencia artificial)\b', 'sag-aftra', '(ai|ia)\b.{0,30}\b(artists?|artistas?|creators?|creadores?)']
+  - id: critic:ai_hype_skeptics
+    label_es: Escepticismo y límites de la IA
+    family: opposition
+    stance: critic
+    patterns: ['ai hype', 'hype de la ia', 'overhyped', 'ai winter', 'invierno de la ia', 'hallucinat', 'alucinaci', 'alucinaç', '(ai|llms?)\b.{0,30}\b(fail|fails|failure|limits|can.t reason|cannot reason)', 'ai slop', 'basura de ia']
+
+  # ---------------------------------------------------------------- society
+  - id: society:jobs
+    label_es: IA y empleo
+    family: society
+    stance: critic
+    patterns: ['(ai|ia)\b.{0,40}\b(jobs?|layoffs?|workers?|employment|unemployment|empleos?|despidos?|trabajadores?|desempleo|empregos?|demiss|trabalhadores?)', '(jobs?|layoffs?|workers?|empleos?|despidos?|trabajadores?|empregos?).{0,40}\b(ai|ia|automation|automatización)\b', 'replaced by ai', 'reemplazados? por (la )?ia', 'substituídos? pela ia']
+  - id: society:skills_upskilling
+    label_es: Formación y habilidades en IA
+    family: society
+    stance: promoter
+    patterns: ['(ai|ia)\b.{0,30}\b(skills|upskill|reskill|training program|literacy|habilidades|capacitación|formación|alfabetización|competencias)', '(upskill|reskill|capacitación|alfabetización|literacy).{0,30}\b(ai|ia)\b', 'ai fluency']
+  - id: society:leaders_executives
+    label_es: Líderes y ejecutivos ante la IA
+    family: society
+    stance: neutral
+    patterns: ['(ceo|ceos|executives?|ejecutivos?|líderes|directivos?|executivos?|board|c-suite).{0,40}\b(ai|ia|artificial intelligence|inteligencia artificial)\b', '(ai|ia)\b.{0,30}\b(ceo|ceos|executives?|ejecutivos?|líderes|leadership|liderazgo)', 'chief ai officer']
+  - id: society:creativity_media
+    label_es: IA en medios, cine y creatividad
+    family: society
+    stance: neutral
+    patterns: ['(ai|ia)\b.{0,30}\b(film|movie|hollywood|cine|película|journalism|periodismo|newsroom|music industry|industria musical|publicidad|advertising)', '(hollywood|newsroom|periodismo|journalism|advertising|publicidad).{0,30}\b(ai|ia)\b', 'ai-generated (content|film|song|ad)', 'contenido generado por ia']
+
+  # ---------------------------------------------------------------- open models and initiatives
+  - id: model:open_models
+    label_es: Modelos abiertos (Gemma, Phi, Granite, OLMo, Falcon)
+    family: models
+    stance: promoter
+    patterns: ['\bgemma ?\d', 'gemma-\d', '\bphi-?\d', 'granite ?\d', 'ibm granite', '\bolmo', '\bfalcon ?\d', 'falcon-\d', '\bjais\b', 'kimi k\d', 'gpt-oss', 'smollm', 'open-weight model']
+  - id: model:deepseek_models
+    label_es: Modelos DeepSeek (V, R)
+    family: models
+    stance: promoter
+    patterns: ['deepseek[- ]?(v\d|r\d|coder|math|prover|ocr)']
+    wikipedia: {es: DeepSeek, pt: DeepSeek}
+  - id: model:relational_graph_fm
+    label_es: Modelos fundacionales relacionales y de grafos
+    family: models
+    stance: promoter
+    patterns: ['kumorfm', 'kumo ai', 'kumo\.ai', 'relational foundation model', 'graph foundation model', 'modelos? fundacional(es)? (relacional|de grafos)', 'tabular foundation model', 'tabpfn', 'graph neural network', 'redes neuronales de grafos']
+  - id: model:science_fm
+    label_es: Modelos fundacionales para ciencia (clima, biología, materiales)
+    family: models
+    stance: promoter
+    patterns: ['(weather|climate|clima) (foundation )?model', 'graphcast', 'aurora.{0,20}\b(weather|microsoft|model)', 'evo ?2', 'esm ?3', 'protein language model', 'materials? foundation model', 'genomic (foundation )?model']
+  - id: research:open_initiatives
+    label_es: Iniciativas abiertas de IA (EleutherAI, LAION, AI Alliance)
+    family: research
+    stance: promoter
+    patterns: ['eleutherai', '\blaion\b', 'ai alliance', 'bigscience', '\bbloom\b.{0,20}\b(model|llm)', 'open source initiative', 'open source ai definition', 'together ai', 'openrouter', 'common crawl', 'open datasets?', 'datos abiertos.{0,20}\b(ia|ai)']
+  - id: research:institutes
+    label_es: Institutos de investigación en IA
+    family: research
+    stance: neutral
+    patterns: ['\bmila\b', 'vector institute', 'stanford (hai|crfm|ai)', 'human-centered (ai|artificial intelligence)', 'berkeley (ai|bair)', '\bbair\b', 'mit csail', '\bcsail\b', 'max planck.{0,30}\b(ai|intelligent|informatics)', 'eth z(ü|u)rich.{0,30}\b(ai|model)', 'tsinghua.{0,30}\b(ai|model|llm)', 'beijing academy of (ai|artificial)', '\bbaai\b', 'shanghai (ai|artificial intelligence) lab', 'alan turing institute', '\binria\b', '\bellis\b.{0,20}\b(ai|machine learning)', '\bcifar\b', 'kaist.{0,20}\b(ai|model)', 'mbzuai', 'technology innovation institute']
+  - id: lab:new_labs
+    label_es: Nuevos laboratorios (Sakana, Reka, Liquid, Black Forest)
+    family: labs
+    stance: promoter
+    patterns: ['sakana ai', 'reka ai', 'liquid ai', 'black forest labs', '\bflux\b.{0,20}\b(image|model|1)', 'ai21', 'jamba', 'nous research', 'prime intellect', 'reflection ai', 'poolside', 'magic\.dev', 'physical intelligence', 'skild ai']
+  - id: lab:world_labs
+    label_es: World Labs (modelos del mundo espaciales)
+    family: labs
+    stance: promoter
+    patterns: ['world labs', 'worldlabs', 'spatial intelligence', 'inteligencia espacial', '\bmarble\b.{0,20}\b(world|3d|model)']
+  - id: biz:talent_moves
+    label_es: Fichajes, salidas y spin-offs en los laboratorios de IA
+    family: business
+    stance: neutral
+    patterns: ['talent war', 'guerra (de|por el) talento', 'poach', 'acqui-?hire', '(leaves?|left|departs?|exits?|quits?|abandona|deja|sale de) (openai|anthropic|google|deepmind|meta|xai|apple|microsoft|nvidia)', '(joins?|hired by|ficha(do)? por|se une a|contrata(do)? por) (openai|anthropic|google|deepmind|meta|xai|microsoft|nvidia|thinking machines|safe superintelligence)', '(former|ex-|ex) ?(openai|anthropic|deepmind|google brain|meta ai|fair)\b.{0,40}\b(start|found|launch|raise|funda|lanza|startup|recauda)', '(ex|antiguos?|exempleados?|exinvestigadores?) (de )?(openai|deepmind|google|meta|anthropic)', 'superintelligence lab.{0,30}\b(hire|recruit|ficha)', '(researchers?|investigadores?|engineers?|ingenieros?).{0,30}\b(leave|left|depart|exodus|éxodo|salida)']
+  - id: society:ai_for_good
+    label_es: IA para el bien (impacto social, clima, humanitario)
+    family: society
+    stance: promoter
+    patterns: ['ai for good', 'ia para el bien', 'ia para o bem', 'ai for (social good|humanity|climate|the planet|sustainab|development)', 'ia (para|al servicio de) (la humanidad|el clima|el desarrollo|la sostenibilidad)', 'humanitarian.{0,30}\b(ai|ia)\b', '(ai|ia)\b.{0,30}\b(humanitarian|humanitari|sdgs?|ods|objetivos de desarrollo sostenible|sustainable development|accessibility|accesibilidad|disaster|desastres|wildfire|incendios|poverty|pobreza|agricultur|food security)', 'itu.{0,20}\bai\b', 'responsible ai', 'ia responsable', 'ai ethics', 'ética de la ia']
+  - id: research:prizes_competitions
+    label_es: Premios y competencias de IA (XPRIZE, ARC Prize)
+    family: research
+    stance: promoter
+    patterns: ['xprize', 'x prize', 'arc prize', 'arc-agi', '\baimo\b', 'ai mathematical olympiad', '(imo|olimpiada (internacional )?de matemáticas).{0,30}\b(ai|ia|gold|oro|deepmind|openai)', 'kaggle', 'ai cyber challenge', 'darpa.{0,30}\b(ai|challenge)', '(ai|ia)\b.{0,30}\b(prize|premio|prêmio|competition|competencia|challenge|desafío|hackathon)']
