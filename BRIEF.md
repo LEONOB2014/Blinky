@@ -93,3 +93,11 @@ containers on this account). Both are live and public.
 3. Keep committing locally; the orchestrator pushes. No service URL or project number in git.
 
 Deadline: rate limit by **01:30**; redeploy within 30 minutes of WS4's signal.
+
+## Addendum (orchestrator, 01:20 UTC-5): build the redeploy remotely
+
+This Mac is short of memory (swap nearly full while a large Google Drive copy runs). For the redeploy,
+build the image with Cloud Build instead of local Docker (for example `gcloud builds submit` on the
+staged context, or `gcloud run deploy --source`), quit Docker Desktop if it is not needed, and run
+the rate-limit tests without starting a local container. Same project, same service; the redeploy
+stays approved.
