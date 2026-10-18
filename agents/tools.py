@@ -248,6 +248,43 @@ def _entity_series(topic: str, lang_bucket: str, weeks: int) -> dict[str, Any]:
     return {"available": bool(rows), "topic": topic, "lang_bucket": lang_bucket, "rows": rows[::-1]}
 
 
+def _days_with_data(monday: dt.date, sunday: dt.date) -> int | None:
+    """Days of the week with Spanish and Portuguese data (daily_totals, is_missing excluded)."""
+    table = _table("daily_totals")
+    if not table:
+        return None
+    row = _rows(
+        f"SELECT count(DISTINCT dt) AS days FROM '{table}' "  # noqa: S608
+        "WHERE dt BETWEEN ? AND ? AND lang_bucket IN ('spa', 'por') AND NOT is_missing",
+        [monday, sunday],
+    )
+    return row[0]["days"] if row else None
+
+
+def get_language_coverage(topic: str, week: str | None = None) -> dict[str, Any]:
+    """Articles of a topic in Spanish and Portuguese in a week, from get_topic_series (0 when the
+    topic has articles that week but none in that language), and the days with data behind it."""
+    total = get_topic_series(topic, "all", weeks=60)
+    if not total.get("available") or not total.get("rows"):
+        return {"available": False, "reason": f"no hay serie para {topic}"}
+    label = week if week in {r["week"] for r in total["rows"]} else total["rows"][-1]["week"]
+
+    def articles(lang: str) -> int:
+        rows = get_topic_series(topic, lang, weeks=60).get("rows") or []
+        return int(next((r["articles"] for r in rows if r["week"] == label), 0) or 0)
+
+    _, monday, sunday = week_bounds(label)
+    return {
+        "available": True,
+        "topic": total["topic"],
+        "week": label,
+        "articulos_es": articles("spa"),
+        "articulos_pt": articles("por"),
+        "articulos_total": int(next(r["articles"] for r in total["rows"] if r["week"] == label)),
+        "dias_con_datos": _days_with_data(monday, sunday),
+    }
+
+
 def get_top10(week: str | None = None) -> dict[str, Any]:
     """The weekly top 10 with the six scores and the decision, from WS4's table."""
     con = _scores_con()
@@ -750,6 +787,17 @@ TOOLS: dict[str, Tool] = {
                 "type": "object",
                 "properties": {"topic_id": {"type": "string"}, "week": WEEK},
                 "required": ["topic_id"],
+            },
+        ),
+        Tool(
+            "get_language_coverage",
+            get_language_coverage,
+            "Cuántos artículos de un tema hay en español y en portugués esa semana (pueden ser 0), "
+            "de cuántos en total y con cuántos días con datos.",
+            {
+                "type": "object",
+                "properties": {"topic": {"type": "string"}, "week": WEEK},
+                "required": ["topic"],
             },
         ),
         Tool(
