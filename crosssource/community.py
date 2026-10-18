@@ -374,6 +374,10 @@ def main() -> None:
             items += got
     df = pl.DataFrame(items)
     raw.mkdir(parents=True, exist_ok=True)
+    saved = raw / "items.parquet"
+    if args.only and saved.exists():  # a partial fetch replaces only those sources' items
+        kept = pl.read_parquet(saved).filter(~pl.col("source_id").is_in(args.only))
+        df = pl.concat([kept, df], how="diagonal_relaxed") if df.height else kept
     df.write_parquet(raw / "items.parquet")
     matched = match_lexicon(df)
     out = weekly(matched)
