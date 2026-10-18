@@ -254,3 +254,12 @@ def test_lens_values_are_in_the_contract():
     assert {"decision", "segment", "tone", "window", "bridge", "momentum", "novelty"} <= set(
         schema["properties"]["color_by"]["enum"]
     )
+
+
+def test_auditor_matches_shares_only_for_percentages():
+    from agents.runtime import untraced_numbers
+
+    results = [{"result": {"share": 0.346, "rows": 220}}]
+    assert untraced_numbers("Usamos el 34,6% de la capa gratuita.", results, "") == []
+    assert untraced_numbers("Cuesta $2.20 por semana.", results, "") == ["2.20"]
+    assert untraced_numbers("Hay 220 filas.", results, "") == []
