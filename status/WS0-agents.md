@@ -4,7 +4,28 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 04:55 UTC-5 · final regression eval on `develop` done (chore/final-eval) · committed locally; the orchestrator pushes.
+2026-10-18 05:05 UTC-5 · grounding gaps closed (fix/ws0-grounding-gaps) · committed locally; the orchestrator pushes.
+
+## Grounding gaps closed (05:05 UTC-5, branch `fix/ws0-grounding-gaps`, committed locally; the orchestrator pushes)
+
+- `get_cost_ledger` now returns:
+  - BigQuery bytes billed (*measured*) and the month's share of the 1 TiB free tier;
+  - the USD it implies at USD 6.25/TiB, with and without the free tier (*estimate*, source stated);
+  - Jev's USD total (*measured*): $0.0443 over 981 calls.
+- The old share divided by 1 TB instead of 1 TiB: 0.38 -> 0.346.
+- `get_context_1hop` now states the ring's thresholds: n >= 3, NPMI > 0.1, hubs and persons dropped,
+  top 20. A test checks them against `graph/`.
+- grounding-gaps (3 x 25, *measured*) vs final-develop:
+  - grounding 1.000 [1.00-1.00] vs 0.973 [0.92-1.00]; the ranges touch at 1.00;
+  - usefulness_v2 0.593 [0.54-0.63] vs 0.567; v1 0.460 vs 0.457;
+  - decisions, routing and entities 1.000 (no lost runs);
+  - tokens 6,035 vs 5,824 (beyond the spread: larger tool outputs).
+- q20 cites the real cost in 3 of 3 runs. q12 no longer invents a threshold, but no graph answer
+  cites one either.
+- **Open:** two q22 runs say "$2.20 por semana", an invented weekly cost the Auditor missed.
+  - Cause: `untraced_numbers` divides every number by 100, not only percentages.
+  - Proposed fix: divide only "%" tokens, and keep the cost ledger out of the trust route.
+  - Not done here: outside this brief.
 
 ## Final regression check (04:55 UTC-5, branch `chore/final-eval`, committed locally; the orchestrator pushes)
 

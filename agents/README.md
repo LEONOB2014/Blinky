@@ -195,3 +195,51 @@ spread = min-max of the three repetition means).
   Tokens per turn are flat (5,812 -> 5,824), so the new tools add no measurable prompt load.
 
 Reading: no regression attributable to the merged changes. The demo can run on `develop` as is.
+
+### Closing the two grounding gaps (2026-10-18, `fix/ws0-grounding-gaps`)
+
+final-develop lost grounding on 2 of 75 runs, both to numbers the model invented: a "$114.23"
+BigQuery cost (q20) and an "nPMI > 0.85" threshold (q12). This change gives the model the real
+numbers it was reaching for:
+
+- **`get_cost_ledger`** now returns:
+  - BigQuery bytes billed (*measured*, `reports/bq_ledger.csv`) and the month's share of the free
+    tier;
+  - the USD cost this implies at the public on-demand price, with and without the free tier
+    (*estimate*, labelled so, with the price source stated);
+  - Jev's real USD total from `reports/jev_ledger.csv` (*measured*).
+- **Price:** USD 6.25 per TiB after the first 1 TiB per month, checked on 2026-10-18 at
+  cloud.google.com/bigquery/pricing.
+- **Free-tier share correction:** the old `free_tier_share` divided by 10^12 (1 TB). The free tier
+  is 1 TiB, so the share is 0.346, not 0.38.
+- **`get_context_1hop`** now states the ring's thresholds: n >= 3, NPMI > 0.1, the week's top-1% hubs
+  and persons dropped, top 20 per topic, how many are shown. These are the numbers in
+  `graph/context.py` and `graph/metrics.py`; a test fails if they drift.
+
+| Experiment (sha) | Change | usefulness v1 | usefulness_v2 | grounding | decisions | routing | entities (n=75) | latency | tokens/turn |
+|---|---|---|---|---|---|---|---|---|---|
+| final-develop (7634781) | before | 0.457 [0.43-0.48] | 0.567 [0.51-0.60] | 0.973 [0.92-1.00] | 0.987 [0.96-1.00] | 0.987 [0.96-1.00] | 0.987 [0.96-1.00] | 7.8 s | 5,824 |
+| grounding-gaps (75e2dfe) | real cost and ring thresholds in the tools | 0.460 [0.45-0.47] | 0.593 [0.54-0.63] | **1.000** [1.00-1.00] | 1.000 | 1.000 | 1.000 | 8.7 s | 6,035 [6,015-6,047] |
+
+All numbers are *measured*; the spread is the min-max of the three repetition means. There were no
+lost runs this time; final-develop's 0.987s were one DNS-failed run.
+
+- **Grounding** is 75 of 75 (was 73 of 75). The ranges touch at 1.00, so on its own this is within
+  noise.
+- **q20 (BigQuery cost)** is clearly better. All three runs cite real figures: 0.3463 TiB, $0 with
+  the free tier, $2.16 without it at $6.25/TiB. q20's usefulness_v2 rose from 0.67 to 1.00.
+- **q12 (weekly graph)** stopped inventing a threshold, but it does not cite the real ones either.
+  None of the 15 graph-question runs mentions an nPMI value. At 3 runs per question this cannot be
+  told apart from chance: the failure was 1 of 3 before.
+- **New side effect:** the cost fields now appear where nobody asked about cost.
+  - q21 (freshness) mentions the cost in several runs.
+  - Two q22 runs (trust) say "$2.20 por semana". That is the $2.16 BigQuery estimate plus Jev's
+    $0.04, recast as a weekly cost that exists nowhere.
+  - The Auditor did not flag it. In `untraced_numbers` (`agents/runtime.py`) both branches of
+    `candidates = [value, value / 100] if token.endswith("%") else [value, value / 100]` are the
+    same, so any number also matches a tool value 100 times smaller (2.20 matches a 0.022 share in
+    the backtest). This weakness predates this change.
+  - Fix next: divide by 100 only for "%" tokens, and drop `get_cost_ledger` from the Auditor's
+    trust route unless the question is about cost.
+- **Tokens** per turn rose by 211 (beyond the spread) from the larger tool outputs. Latency is within
+  run-to-run API noise.
