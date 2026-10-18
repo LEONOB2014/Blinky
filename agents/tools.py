@@ -10,6 +10,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -18,7 +19,7 @@ import yaml
 from jsonschema import Draft202012Validator
 
 from radar.contracts import load_schema
-from radar.paths import REPO_ROOT, gold, profile
+from radar.paths import REPO_ROOT, gold, lake, profile
 
 WEEK_RE = re.compile(r"^(\d{4})-W(\d{2})$")
 Z_DISPLAY_CAP = 10.0  # z-scores above this are shown as ">10": tiny 28-day baselines inflate them
@@ -247,6 +248,43 @@ def _entity_series(topic: str, lang_bucket: str, weeks: int) -> dict[str, Any]:
     return {"available": bool(rows), "topic": topic, "lang_bucket": lang_bucket, "rows": rows[::-1]}
 
 
+def _days_with_data(monday: dt.date, sunday: dt.date) -> int | None:
+    """Days of the week with Spanish and Portuguese data (daily_totals, is_missing excluded)."""
+    table = _table("daily_totals")
+    if not table:
+        return None
+    row = _rows(
+        f"SELECT count(DISTINCT dt) AS days FROM '{table}' "  # noqa: S608
+        "WHERE dt BETWEEN ? AND ? AND lang_bucket IN ('spa', 'por') AND NOT is_missing",
+        [monday, sunday],
+    )
+    return row[0]["days"] if row else None
+
+
+def get_language_coverage(topic: str, week: str | None = None) -> dict[str, Any]:
+    """Articles of a topic in Spanish and Portuguese in a week, from get_topic_series (0 when the
+    topic has articles that week but none in that language), and the days with data behind it."""
+    total = get_topic_series(topic, "all", weeks=60)
+    if not total.get("available") or not total.get("rows"):
+        return {"available": False, "reason": f"no hay serie para {topic}"}
+    label = week if week in {r["week"] for r in total["rows"]} else total["rows"][-1]["week"]
+
+    def articles(lang: str) -> int:
+        rows = get_topic_series(topic, lang, weeks=60).get("rows") or []
+        return int(next((r["articles"] for r in rows if r["week"] == label), 0) or 0)
+
+    _, monday, sunday = week_bounds(label)
+    return {
+        "available": True,
+        "topic": total["topic"],
+        "week": label,
+        "articulos_es": articles("spa"),
+        "articulos_pt": articles("por"),
+        "articulos_total": int(next(r["articles"] for r in total["rows"] if r["week"] == label)),
+        "dias_con_datos": _days_with_data(monday, sunday),
+    }
+
+
 def get_top10(week: str | None = None) -> dict[str, Any]:
     """The weekly top 10 with the six scores and the decision, from WS4's table."""
     con = _scores_con()
@@ -389,6 +427,42 @@ RING_MIN_N = 3
 RING_MIN_NPMI = 0.1  # strict: NPMI > 0.1
 RING_TOP_K = 20
 RING_HUB_SHARE = 0.01
+
+
+@functools.lru_cache(maxsize=2)
+def _view_summary(path: str, mtime: float) -> tuple[dict[str, Any], list[int]]:
+    """The view's _meta and, per week, how many nodes it draws (those with an edge that week);
+    cached per file version, since the view is several MB."""
+    view = json.loads(Path(path).read_text(encoding="utf-8"))
+    drawn: list[set[int]] = [set() for _ in view["_meta"]["iso_weeks"]]
+    edges = view["edges"]
+    for a, b, w in zip(edges["source"], edges["target"], edges["week"], strict=True):
+        drawn[w].update((a, b))
+    return view["_meta"], [len(d) for d in drawn]
+
+
+def get_graph_facts(week: str | None = None) -> dict[str, Any]:
+    """How the weekly graph view is built, from the metadata graph/export_views.py writes
+    (lake/views/temporal.json): per-node top-k, minimum co-mentions, the NPMI cut, and how many
+    nodes and edges the view draws that week. Read, never restated, so the answer cites the real thresholds."""
+    path = lake() / "views" / "temporal.json"
+    if profile() == "dev" or not path.exists():
+        return _unavailable("views/temporal.json")
+    meta, present = _view_summary(str(path), path.stat().st_mtime)
+    weeks = meta["iso_weeks"]
+    label = week if week in weeks else weeks[-1]
+    i = weeks.index(label)
+    params = meta["params"]
+    return {
+        "available": True,
+        "source": "views/temporal.json",
+        "week": label,
+        "conexiones_por_tema": params["top_k_per_node"],
+        "min_coapariciones": params["min_n"],
+        "npmi_mayor_que": params["min_npmi_exclusive"],
+        "temas_semana": present[i],
+        "conexiones_semana": meta["edges_per_week"][i],
+    }
 
 
 def ring_criteria(shown: int) -> dict[str, Any]:
@@ -714,6 +788,24 @@ TOOLS: dict[str, Tool] = {
                 "properties": {"topic_id": {"type": "string"}, "week": WEEK},
                 "required": ["topic_id"],
             },
+        ),
+        Tool(
+            "get_language_coverage",
+            get_language_coverage,
+            "Cuántos artículos de un tema hay en español y en portugués esa semana (pueden ser 0), "
+            "de cuántos en total y con cuántos días con datos.",
+            {
+                "type": "object",
+                "properties": {"topic": {"type": "string"}, "week": WEEK},
+                "required": ["topic"],
+            },
+        ),
+        Tool(
+            "get_graph_facts",
+            get_graph_facts,
+            "Cómo se arma el grafo semanal que ve el usuario: conexiones por tema, mínimo de "
+            "co-menciones, corte de NPMI y cuántos temas y conexiones tiene la semana.",
+            {"type": "object", "properties": {"week": WEEK}},
         ),
         Tool(
             "get_context_1hop",

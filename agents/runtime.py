@@ -33,6 +33,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
             "get_topic_series",
             "get_top10",
             "get_topic_scores",
+            "get_language_coverage",
             "get_topic_sources",
             "get_topic_evidence",
         ],
@@ -43,7 +44,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     },
     "cartographer": {
         "name_es": "Cartógrafo",
-        "tools": ["get_context_1hop", "update_view"],
+        "tools": ["get_context_1hop", "get_graph_facts", "update_view"],
         "role": "Explicas un tema por sus vecinos en el grafo de co-menciones y cambias la vista del "
         "grafo con update_view cuando el usuario quiere ver algo.",
     },
@@ -328,6 +329,9 @@ def _source_dates(results: list[dict[str, Any]], extra: str) -> set[tuple[int | 
     return {d for t in texts for _, d in _dates(t)}
 
 
+_THOUSANDS = re.compile(r"^[1-9]\d{0,2}(?:[.,]\d{3})+$")
+
+
 def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) -> list[str]:
     """Numbers in the answer that match no tool result (allowing rounding and % of a share)."""
     sources = _source_numbers(results, question)
@@ -346,8 +350,12 @@ def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) 
         candidates = [value, value / 100] if token.endswith("%") else [value]
         decimals = len(token.rstrip("%").replace(",", ".").partition(".")[2])
         tol = 0.5 * 10**-decimals
-        if not any(abs(s - c) <= max(tol, abs(c) * 0.005) for s in sources for c in candidates):
-            bad.append(token)
+        if any(abs(s - c) <= max(tol, abs(c) * 0.005) for s in sources for c in candidates):
+            continue
+        # "4.117" or "4,117" written for 4117: an exact integer, no rounding allowance
+        if _THOUSANDS.match(token) and float(re.sub(r"[.,]", "", token)) in sources:
+            continue
+        bad.append(token)
     return bad
 
 
@@ -544,6 +552,166 @@ _EVIDENCE_Q = re.compile(r"\bart[ií]culos?\b|\bevidencias?\b|\bfuentes?\b|\bmed
 LANG_ES = {"spa": "español", "eng": "inglés", "por": "portugués"}
 
 
+def _num(x: float) -> str:
+    """A threshold as the answer writes it: 0.1 -> "0,1", 20 -> "20"."""
+    return f"{x:g}".replace(".", ",")
+
+
+def graph_facts_line(turn: Turn, entity: str | None) -> str:
+    """How the graph shown was built, written by code from the graph tools' own output: a named
+    topic's ring (get_context_1hop's criterios) or the weekly view (get_graph_facts)."""
+    found = {r["tool"]: r["result"] for r in turn.tool_results if r["result"].get("available")}
+    ring, view = found.get("get_context_1hop"), found.get("get_graph_facts")
+    if view and not entity:
+        return (
+            f"Cómo se arma el grafo ({view['week']}): cada tema muestra hasta sus "
+            f"{view['conexiones_por_tema']} conexiones más fuertes, con al menos "
+            f"{view['min_coapariciones']} co-menciones y NPMI mayor que {_num(view['npmi_mayor_que'])}; "
+            f"esta semana son {view['temas_semana']} temas y {view['conexiones_semana']} conexiones."
+        )
+    if ring and ring.get("criterios"):
+        c = ring["criterios"]
+        top = (
+            f"sus {c['top_por_tema']} vecinos más fuertes"
+            if c.get("top_por_tema")
+            else "sus vecinos"
+        )
+        return (
+            f"Cómo se arma el grafo ({ring['week']}): {top}, con al menos "
+            f"{c['n_minimo_coapariciones']} co-menciones y NPMI mayor que "
+            f"{_num(c['npmi_mayor_que'])}, sin los nodos más conectados ni personas; "
+            f"se muestran {len(ring.get('rows') or [])}."
+        )
+    return ""
+
+
+def _display_name(turn: Turn, topic_id: str) -> str:
+    """A topic's name as the scores give it ("Marsh & McLennan Companies"), else topic_name."""
+    scored = [
+        row
+        for r in turn.tool_results
+        if r["tool"] in {"get_top10", "get_topic_scores"} and r["result"].get("available")
+        for row in r["result"].get("rows") or []
+        if row.get("topic_id") == topic_id
+    ]
+    return topic_name(scored[0] if scored else {"topic_id": topic_id})
+
+
+_OUTLET_COUNT_Q = re.compile(r"cu[aá]ntos\s+(?:\w+\s+){0,2}medios", re.I)
+_OUTLETS_SAID = re.compile(r"(?<![\d.,])(\d[\d.,]*)\s+medios\b", re.I)
+
+
+def _sources_result(turn: Turn) -> dict[str, Any] | None:
+    return next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_topic_sources" and r["result"].get("available")
+        ),
+        None,
+    )
+
+
+def outlet_count_line(turn: Turn) -> str:
+    """The answer to "¿cuántos medios?", written by code from get_topic_sources."""
+    src = _sources_result(turn)
+    if not src:
+        return ""
+    name = _display_name(turn, src["topic_id"])
+    return (
+        f"Medios distintos que cubrieron a {name} en {src['week']}: {src['n_medios']} "
+        f"(en {src['n_articulos']} artículos)."
+    )
+
+
+def wrong_outlet_counts(answer: str, turn: Turn) -> list[str]:
+    """'N medios' in the answer where N is not the measured outlet count (44 articles != 39)."""
+    src = _sources_result(turn)
+    if not src:
+        return []
+    bad = []
+    for m in _OUTLETS_SAID.finditer(answer):
+        if answer[max(0, m.start() - 15) : m.start()].rstrip().endswith("artículos de"):
+            continue  # "44 artículos de 39 medios": the block's own phrasing
+        if int(re.sub(r"[.,]", "", m.group(1))) != src["n_medios"]:
+            bad.append(m.group(0))
+    return bad
+
+
+def coverage_line(turn: Turn) -> str:
+    """Spanish and Portuguese coverage of the topic, written by code from get_language_coverage."""
+    cov = next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_language_coverage" and r["result"].get("available")
+        ),
+        None,
+    )
+    if not cov:
+        return ""
+    name = _display_name(turn, cov["topic"])
+    days = f" ({cov['dias_con_datos']} días con datos)" if cov.get("dias_con_datos") else ""
+    return (
+        f"Cobertura en español y portugués de {name} ({cov['week']}): {cov['articulos_es']} "
+        f"artículos en español y {cov['articulos_pt']} en portugués, de {cov['articulos_total']} "
+        f"en total{days}."
+    )
+
+
+# a growth or presence word followed within three words by "en <LatAm>", e.g. "crecimiento muy
+# rápido en Latinoamérica", "alta participación en América Latina"; a gap word just before it
+# ("brecha de cobertura en LatAm", "sin presencia en la región") makes it the opposite claim
+_LATAM_CLAIM = re.compile(
+    r"\b(?:crec\w*|sub\w*|aument\w*|gan\w*|tracci[oó]n|expan\w*|particip\w*|presencia|"
+    r"cobertura|conversaci[oó]n|se habla|repunt\w*)(?:\s+\S+){0,3}?\s+en\s+"
+    r"(?:latinoam[eé]rica|am[eé]rica latina|latam|la regi[oó]n)\b",
+    re.I,
+)
+_GAP = re.compile(
+    r"\b(?:no|sin|nul[oa]|cero|brecha|vac[ií]o|ausencia|falta|baj[oa]|poc[oa]|escas[oa]|nadie)\b",
+    re.I,
+)
+
+
+def latam_claims(answer: str, turn: Turn) -> list[str]:
+    """Phrases claiming growth or presence in LatAm while the topic has 0 es and 0 pt articles."""
+    cov = next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_language_coverage" and r["result"].get("available")
+        ),
+        None,
+    )
+    if not cov or cov["articulos_es"] + cov["articulos_pt"] > 0:
+        return []
+    claims = []
+    for m in _LATAM_CLAIM.finditer(answer):
+        before = answer[max(0, m.start() - 30) : m.start()]
+        if not _GAP.search(before) and not _GAP.search(m.group(0)):
+            claims.append(m.group(0))
+    return claims
+
+
+def strip_echo(body: str, code_text: str) -> str:
+    """Drop the model's lines that repeat a line code already wrote (the decision line above all)."""
+    if not code_text:
+        return body
+
+    def norm(text: str) -> str:
+        return re.sub(r"[*_`]+", "", text).strip().rstrip(".").lower()
+
+    written = {norm(t) for t in code_text.splitlines() if norm(t)}
+    decision = any(t.startswith("decisión del radar") for t in written)
+    kept = [
+        ln
+        for ln in body.splitlines()
+        if not (norm(ln) in written or (decision and norm(ln).startswith("decisión del radar")))
+    ]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
 def evidence_block(turn: Turn) -> str:
     """The articles behind a named topic, written by code from get_topic_evidence (and the week's
     outlet count from get_topic_sources), so an evidence question lists them verbatim."""
@@ -551,14 +719,7 @@ def evidence_block(turn: Turn) -> str:
     evidence, sources = found.get("get_topic_evidence"), found.get("get_topic_sources")
     if not evidence:
         return ""
-    scored = [
-        row
-        for r in turn.tool_results
-        if r["tool"] in {"get_top10", "get_topic_scores"} and r["result"].get("available")
-        for row in r["result"].get("rows") or []
-        if row.get("topic_id") == evidence["topic_id"]
-    ]
-    name = topic_name(scored[0] if scored else {"topic_id": evidence["topic_id"]})
+    name = _display_name(turn, evidence["topic_id"])
     head = f"Artículos que respaldan a {name} ({evidence['week']})"
     if sources:
         head += f": {sources['n_articulos']} artículos de {sources['n_medios']} medios esa semana"
@@ -668,6 +829,16 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     week, leader, entity = ctx["week"], ctx["leader"], ctx["entity"]
     calls: list[tuple[str, dict[str, Any]]] = {
         "signal_analyst": [("get_topic_series", {"topic": entity or leader or "ai_all"})]
+        + (
+            [
+                (
+                    "get_language_coverage",
+                    {"topic": entity or leader, "week": week or ctx["signals"].get("week")},
+                )
+            ]
+            if (entity or leader)
+            else []
+        )
         + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else [])
         + ([("get_topic_sources", {"topic_id": entity, "week": week})] if entity else [])
         + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
@@ -675,9 +846,12 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
         # no entity named: the ring of the week's #1 topic, so the answer has real neighbours
-        "cartographer": [("get_context_1hop", {"entity": entity or leader, "week": week})]
-        if (entity or (leader and ":" in leader))
-        else [],
+        "cartographer": (
+            [("get_context_1hop", {"entity": entity or leader, "week": week})]
+            if (entity or (leader and ":" in leader))
+            else []
+        )
+        + ([] if entity else [("get_graph_facts", {"week": week})]),
         # the pre-written, Auditor-checked brief first when it exists (agents/briefs.py)
         "editor": (
             [("get_topic_brief", {"topic_id": entity or leader, "week": week})]
@@ -869,15 +1043,49 @@ def run_turn(
         block = evidence_block(turn) if _EVIDENCE_Q.search(question) else ""
         if block:
             line = f"{line}\n\n{block}" if line else block
+        facts = graph_facts_line(turn, entity) if "cartographer" in needed else ""
+        if facts:
+            line = f"{line}\n\n{facts}" if line else facts
+        count = outlet_count_line(turn) if _OUTLET_COUNT_Q.search(question) else ""
+        if count:
+            line = f"{line}\n\n{count}" if line else count
+        coverage = coverage_line(turn) if decides or entity else ""
+        if coverage:
+            line = f"{line}\n\n{coverage}" if line else coverage
         instructions = (
-            f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
-            "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
-            "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
-            "(formato y enfoque). Máximo 6 líneas en total."
-            if decides
-            else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
-            "los informes; no agregues KPIs ni decisiones que no estén en ellos."
-            + (f" El sistema ya lista los artículos: «{block}». No los repitas." if block else "")
+            (
+                f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
+                "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
+                "viñetas cortas, y una línea 'Qué hacer:' con una sugerencia de contenido concreta "
+                "(formato y enfoque). Máximo 6 líneas en total."
+                if decides
+                else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
+                "los informes; no agregues KPIs ni decisiones que no estén en ellos."
+                + (
+                    f" El sistema ya lista los artículos: «{block}». No los repitas."
+                    if block
+                    else ""
+                )
+            )
+            + (
+                f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
+                "menciones otros umbrales, mínimos de co-menciones ni valores de NPMI."
+                if facts
+                else ""
+            )
+            + (
+                f" El sistema ya escribe cuántos medios distintos hubo: «{count}». No des otro "
+                "número de medios: el número de artículos no es el de medios."
+                if count
+                else ""
+            )
+            + (
+                f" El sistema ya escribe la cobertura en español y portugués: «{coverage}». No la "
+                "repitas. No digas que el tema crece, está presente o se habla de él en Latinoamérica, "
+                "LatAm o la región salvo que esa línea muestre artículos en español o portugués."
+                if coverage
+                else ""
+            )
         )
         reply = model.chat(
             [
@@ -898,7 +1106,7 @@ def run_turn(
             tokens=reply.tokens,
             model=reply.model,
         )
-        body = (reply.content or "").strip()
+        body = strip_echo((reply.content or "").strip(), line)
         answer = f"{line}\n\n{body}" if line else body
     # cards only when the question is about what to publish, not about cost or freshness
     turn.decision_cards = (
@@ -951,6 +1159,27 @@ def _audit(
             "auditor", "veto", result_summary="decisión sin tarjeta de decisión: se marca pendiente"
         )
         answer = checked
+    if claims := latam_claims(answer, turn):
+        turn.log(
+            "auditor",
+            "veto",
+            result_summary=f"afirmación sobre LatAm sin artículos en español ni portugués: {claims[0][:120]}",
+        )
+        answer += (
+            "\n\n⚠️ El Auditor: los datos no muestran artículos de este tema en español ni en "
+            "portugués esta semana; lo que se diga de su crecimiento o presencia en Latinoamérica "
+            "no tiene respaldo."
+        )
+    if wrong := wrong_outlet_counts(answer, turn):
+        turn.log(
+            "auditor",
+            "veto",
+            result_summary=f"número de medios que no es el medido: {', '.join(wrong)}",
+        )
+        answer += (
+            f"\n\n⚠️ El Auditor: el número de medios distintos medido es "
+            f"{_sources_result(turn)['n_medios']}; no {', '.join(wrong)}."
+        )
     bad = untraced_numbers(answer, turn.tool_results, question)
     if bad:
         turn.log("auditor", "veto", result_summary=f"números sin fuente: {', '.join(bad)}")

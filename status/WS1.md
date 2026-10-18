@@ -13,7 +13,9 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 03:05 UTC-5 · branch `feat/ws1-topic-evidence` (WS1d) · committed locally, the orchestrator pushes.
+2026-10-18 06:40 UTC-5 · branch `fix/ws1-evidence-suffix` · committed locally, not pushed, not deployed.
+
+Previous: 2026-10-18 03:05 UTC-5 · branch `feat/ws1-topic-evidence` (WS1d) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:30 UTC-5 · branch `feat/ws1-topic-sources` (WS1c) · committed locally, the orchestrator pushes.
 
@@ -40,6 +42,60 @@ Previous: 2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` · draft PR #7
 - `x-mock` NOT changed: with `dev-slice`, `make test-ws` fails (`test_mock_matches_contract[topic_daily]`,
   checked) because it needs `mocks/<name>.json`, which this brief does not let me write. For the
   orchestrator: copy records from the two fixtures into `mocks/` and then flip both `x-mock` values.
+
+## WS1e: evidence near-duplicates (site suffixes and escaped dashes)
+
+The 06:15 redeploy showed the same story twice in one evidence card, once with a site name appended
+(" - Boston News, Weather, Sports").
+
+- `bq_sql/s14_topic_evidence_weekly.sql`, new CTE `keyed`: the title key used for "one article per
+  title" is now built in four steps:
+  1. decode the HTML dash and no-break-space entities (`&#x2013;` and its kin become " - ",
+     `&#xA0;` becomes a space);
+  2. drop the trailing site suffix: the last " - X", " | X" or " :: X" segment (also an en/em dash)
+     when X is at most 40 characters without another separator, and only when at least 25
+     characters remain;
+  3. lowercase;
+  4. collapse every run of non-letters and non-digits.
+- The title shown is untouched. `pipelines/ingest/evidence_titles.py` mirrors the key for tests.
+- **Why the decoding:** GDELT titles are HTML-escaped. `&#x2013;` is the most frequent entity in
+  the evidence titles (70 times, measured), often right before a site name ("… how did we get here
+  &#x2013; PolitiFact"). A first version without decoding left 37 near-duplicate groups (48 extra
+  copies), found by measuring with the decoded key. It was fixed before committing.
+- **Runs** (same 240 topic-weeks, the top 30 of the 8 weeks 2026-08-24..2026-10-12, checked
+  identical), measured:
+  - the first version billed 1,205,862,400 bytes (1.12 GiB);
+  - the final version billed 1,184,890,880 bytes (1.10 GiB).
+  - Both are in the ledger: **2.22 GiB in total**, about twice the "about 1.1 GiB" estimate,
+    because of the second run.
+- **Near-duplicates**, counted with the final key on the same 240 topic-weeks (measured):
+
+  | | Groups | Extra copies | Topic-weeks affected |
+  |---|---|---|---|
+  | Before | **48** | **65** | **46** |
+  | After | **0** | **0** | **0** |
+
+  Rows stay at 1,191 (each slot refills from other titles): 235 topic-weeks have 5 articles, 5
+  have fewer (2, 3, 3, 4, 4), as before.
+- **What the rule cannot catch, by design:**
+  - two suffixes (only the last segment goes);
+  - a prefix added by one outlet ("Gesundheitstipps vom Chatbot: …");
+  - truncated copies of a title.
+  - These are kept as separate articles; I saw a few of each while checking.
+- **Risk of cutting real title text:** the rule only builds the grouping key, so the worst case is
+  two different stories with the same 25+ characters before a short last segment being merged. In
+  the 52 titles stripped on the earlier file, three suffixes were real text ("- aber richtig",
+  "| Why ...", "| Arm"). The one merge among them joined copies of the same syndicated health story
+  (checked by reading the titles).
+- **Tests:**
+  - `pipelines/ingest/tests/test_evidence_titles.py`: suffixes, escaped dashes and no-break spaces
+    match their plain titles; "Earnings - Q3" and "Earnings - Q4" stay distinct; a long last
+    segment and an earlier segment are kept.
+  - `test_topic_evidence_has_no_site_suffix_duplicates` (data, `RADAR_PROFILE=full`): 0 duplicate
+    keys per topic-week in the lake file.
+- Lake: `lake/gold/topic_evidence_weekly.parquet` re-exported (1,000 sampled rows valid). The static
+  evidence JSON was **not** regenerated and nothing was deployed: the orchestrator batches the
+  redeploy (`make deploy-static` regenerates it).
 
 ## WS1d: evidence articles per ranked topic-week
 

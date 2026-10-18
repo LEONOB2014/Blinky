@@ -66,3 +66,5 @@ ts_utc,job_id,script,workstream,dry_run_bytes,billed_bytes,cap_gib,note
 2026-10-18T06:28:55Z,radar_s13_topic_sources_weekly_20261018T062721_5a8757,s13_topic_sources_weekly.sql,WS1,1356563503,1356857344,10,WS1c v2: pattern over specific entities (<=10% week share) (measured)
 2026-10-18T08:04:13Z,radar_s14_topic_evidence_weekly_20261018T080357_7e5b0e,s14_topic_evidence_weekly.sql,WS1,3840,1205862400,15,"WS1d topic_evidence_weekly, top 30 x last 8 weeks (measured)"
 2026-10-18T10:25:49Z,radar_s14_topic_evidence_weekly_20261018T102535_9c2fb3,s14_topic_evidence_weekly.sql,WS1,3840,1205862400,15,WS9 final data: evidence deduplicated by normalized title (measured)
+2026-10-18T11:31:58Z,radar_s14_topic_evidence_weekly_20261018T113143_1fea9a,s14_topic_evidence_weekly.sql,WS1,3840,1205862400,15,evidence dedupe also drops a trailing site suffix (measured)
+2026-10-18T11:33:28Z,radar_s14_topic_evidence_weekly_20261018T113315_706ed6,s14_topic_evidence_weekly.sql,WS1,3840,1184890880,15,evidence dedupe: decode HTML dash entities before the site suffix rule (measured)

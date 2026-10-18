@@ -29,12 +29,12 @@ agents:
     name_es: Analista de señales
     owns: [models/]
     decides: emergence, stage, saturation, window, priority, decision
-    tools: [get_top10, get_topic_scores, get_topic_sources, get_topic_series, compare_topics, why_not_hot]
+    tools: [get_top10, get_topic_scores, get_language_coverage, get_topic_sources, get_topic_series, compare_topics, why_not_hot]
   cartographer:
     name_es: Cartógrafo
     owns: [graph/]
     decides: which neighbours explain a topic; what the view shows
-    tools: [get_context_1hop, get_community, update_view]
+    tools: [get_context_1hop, get_graph_facts, get_community, update_view]
   audience_strategist:
     name_es: Estratega de audiencia
     owns: [models/ fit and angle]

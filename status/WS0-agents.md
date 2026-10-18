@@ -4,7 +4,140 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 06:10 UTC-5 · pre-deploy defects D1-D3 (fix/agents-trust-cost): D1, D2 and the Auditor's date false positive fixed; D3 not fully · committed locally; the orchestrator lands it.
+2026-10-18 06:45 UTC-5 · answer polish (fix/agents-answer-polish): one decision line, es/pt coverage by code, LatAm and outlet-count audits · committed locally; the orchestrator lands it.
+
+## Answer polish: one decision line, es/pt coverage by code, LatAm claims audited (06:45 UTC-5, branch `fix/agents-answer-polish`, committed locally; the orchestrator lands it)
+
+From claude-work's live rehearsal:
+
+1. **Double decision line.**
+   - `strip_echo` drops any line of the model's text that repeats a code-written line, or a second
+     "Decisión del radar" line. It works in code, not only through the prompt.
+   - Answers with two decision lines: 3 of 75 in PR #48's full run, 0 in every run since.
+2. **Invented LatAm claim.**
+   - New `get_language_coverage`: es and pt articles of the topic that week, from `get_topic_series`.
+     A topic with articles that week but no rows in a language counts 0 there. It also gives the
+     total and the days with data (`daily_totals`, `is_missing` excluded; W42 has 6).
+   - Code writes "Cobertura en español y portugués de X (W): 0 artículos en español y 0 en
+     portugués, de 44 en total (6 días con datos)".
+   - The model is told not to claim growth, presence or conversation in Latinoamérica / LatAm / la
+     región unless that line shows es/pt articles.
+   - **Auditor check (deterministic):** when es + pt = 0, a growth or presence word followed within
+     three words by "en <LatAm>" is flagged, unless a gap word comes just before it ("brecha de
+     cobertura en LatAm", "sin presencia en la región"). The Auditor logs a veto and appends a
+     warning.
+   - The first version of the check (any LatAm word plus a claim word in one sentence) warned on 15
+     of 75 answers, 14 of them false positives. The narrowed rule keeps 1 of those 15, q04's
+     "crecimiento en América Latina", a real unbacked claim.
+3. **Found and fixed on the way:**
+   - The coverage line's large totals made the model write "4.117" for 4117, which the Auditor read
+     as 4.117. Thousands separators now match the integer, exactly (4.118 is still flagged).
+   - The coverage line also made Q3 answer "44 medios distintos" (2 of 2 hand runs; the measured
+     count is 39, and 44 is articles). An outlet-count question now gets a code-written line from
+     `get_topic_sources`, and the Auditor flags any "N medios" that is not the measured count.
+- **Tests:** 9 new across `test_answer_polish.py` and `test_topic_evidence.py`. `make test` 279 passed,
+  `make check` clean.
+
+**Eval,** all *measured*. Brackets are the min-max of the three repetition means.
+
+| Experiment | Questions | grounding | usefulness_v2 | tokens/turn |
+|---|---|---|---|---|
+| PR #48 (graph-facts, d6fa0ff) | 25 x 3 | 0.933 [0.88-0.96] | 0.647 [0.61-0.67] | 6,205 |
+| answer-polish (56478c4, first LatAm rule) | 25 x 3 | 0.920 [0.84-0.96] | 0.597 [0.54-0.63] | 6,350 |
+| PR #48, the 11 questions below only | q01-q07, q12, q13, q16, q19 x 3 | 0.939 | 0.515 | 7,496 |
+| answer-polish-r2 (0ac3893, narrowed rule + thousands) | same 11 x 3 | **0.970** [0.91-1.00] | **0.614** [0.59-0.64] | 7,685 |
+
+- **The first full run's drop** came from the over-eager LatAm warnings (15 answers) and the "4.117"
+  misses. Those 11 questions were rerun after the fix, rather than the full 25 x 3, to stay under the
+  $0.40 cap.
+- **Combined estimate:** the rerun's 11 questions plus the first run's other 14 give grounding
+  0.947 and usefulness_v2 0.663 over 75 runs. That mixes two runs, so it has no spread; read it as
+  an *estimate*, not a measured full run.
+- **Left in the rerun:** one grounding miss, q05's "más de 50" (a co-mention floor again, now on a
+  non-graph route). No LatAm warnings and no double decision lines.
+- **Tokens:** +135 per turn against PR #48 (the coverage line).
+
+**claude-work's 4 questions,** by hand on the final commit 9aa36df (full lake, tracing off):
+
+| # | Question | Decision lines | LatAm claim | Other |
+|---|---|---|---|---|
+| 1 | ¿Qué contenido preparo esta semana sobre Marsh McLennan? | 1 | none ("aún no hay cobertura en español ni portugués") | pass |
+| 2 | ¿Qué artículos respaldan a Marsh McLennan, el tema número 1 de esta semana? | 1 | none | pass: evidence block, 44 / 39 |
+| 3 | ¿Cuántos medios distintos cubren a Marsh McLennan esta semana? | 1 | none | **pass:** "39 (en 44 artículos)" by code, no other count |
+| 4 | ¿En qué subtemas de IA cae Marsh McLennan esta semana? | 1 | none | right subtopics; still leaks the id "funding_markets" (the plain-language rule is not always followed) |
+
+- Auditor: no veto on any of the 4. Tokens 31,690 for the 4 turns.
+- The full and subset evals ran before 9aa36df. That commit only changes outlet-count questions and
+  adds a "N medios" check; no frozen question asks for an outlet count.
+
+**Nebius spend,** *estimate*:
+- agent tokens about 825,000 (*measured*: 476,248 full + 253,605 rerun + 3 x ~31,600 by hand,
+  Qwen3-30B);
+- judge tokens not recorded, roughly 108 runs x 2 judges x ~4k on Qwen3-235B;
+- about $0.32 at assumed list rates, under the $0.40 cap.
+
+## Graph facts written by code (06:25 UTC-5, branch `fix/agents-graph-facts`, committed locally; the orchestrator lands it)
+
+The last grounding gap: on the graph route the model invented thresholds ("más de 50 co-menciones",
+"nPMI > 0.85"; q10 and q12 in predeploy-fixes).
+
+- **Fix:** code now writes a "Cómo se arma el grafo" line from real values, as it writes the
+  decision line.
+  - **Weekly graph** (no topic named): the new `get_graph_facts` reads the metadata
+    `graph/export_views.py` writes to `lake/views/temporal.json`. That gives the top-k per node (5),
+    the minimum co-mentions (20) and the NPMI cut (> 0.1). It also counts the nodes and edges the
+    view draws that week: 930 and 3,463 in W42 (*measured*). The node count is nodes with an edge
+    that week, not `importance` rows (979), so it matches what is on screen.
+  - **Named topic:** `get_context_1hop`'s own criteria: top 20, n >= 3, NPMI > 0.1, hubs and persons
+    dropped, how many are shown.
+  - The model is told the line is written and must not state other thresholds.
+  - Nothing is hard-coded in the prompt. `get_graph_facts` is in the Cartographer's plan and in
+    `contracts/agents.yaml`.
+- **Auditor:** every number in both lines is traced. A test checks this, and that an invented
+  "0.85" beside the line is still caught.
+- **Tests:** 4 new. `make test` 264 passed, `make check` clean, contract tests pass.
+- **Deploy gap closed** (06:30):
+  - `deploy/cloudrun_stage.py` now also stages `lake/views/temporal.json`, and only that view file.
+  - The image reads it at `$RADAR_LAKE/views/temporal.json` = `/app/lake/views/temporal.json`, the
+    staged path. Checked by running `get_graph_facts` against a real staged context: 930 nodes and
+    3463 edges for W42.
+  - The stage refuses if the file is missing or has a `per:` node; the current file has none and no
+    URLs.
+  - Staged size, *measured*: temporal.json 3.6 MiB; the whole context 91.6 MiB.
+  - 2 tests in `deploy/tests/test_cloudrun_stage.py`.
+  - Not deployed; the orchestrator redeploys after landing.
+
+**Results** against PR #47's full eval (predeploy-fixes, fea4dd2), all *measured*. Brackets are the
+min-max of the three repetition means.
+
+| Experiment | Questions | grounding | usefulness_v2 | tokens/turn |
+|---|---|---|---|---|
+| predeploy-fixes (fea4dd2), graph questions only | q07, q10, q12, q13, q14 x 3 | 0.867 (13/15) | 0.467 | - |
+| graph-facts-graphq (d6fa0ff) | same x 3 | **1.000** [1.00-1.00] (15/15) | 0.633 [0.60-0.70] | 5,677 |
+| predeploy-fixes (fea4dd2) | 25 x 3 | 0.947 [0.88-1.00] | 0.547 [0.51-0.58] | 6,148 [6,141-6,154] |
+| graph-facts (d6fa0ff) | 25 x 3 | 0.933 [0.88-0.96] | 0.647 [0.61-0.67] | 6,205 [6,186-6,219] |
+
+- **Graph questions:** 28 of 30 runs grounded across both experiments (was 13 of 15).
+  - No answer states an NPMI value any more.
+  - Left: one q10 run (of 6) still writes "todos con más de 50 co-menciones" about the listed
+    neighbours, and one q13 run cites a "video de 35 segundos" (below).
+- **Full-run grounding** is within the old range (5 of 75 missed vs 4 of 75). The other misses are
+  not graph thresholds:
+  - q21 x2: "actualizados a menos de 24 horas", an inference from the date.
+  - q02 and q13: "video de 35 segundos", taken from the Editor's "30-45 s" role text, which is not
+    tool data.
+  - Both are prompt-sourced numbers. A fix would be to give the Editor's format lengths as data, or
+    to drop the number from its role.
+- **usefulness_v2** rose beyond the old range (0.547 -> 0.647). Only part of it is this change:
+  - q12 rose 0.33 -> 0.83, the line opens its answer;
+  - q21 rose 0.50 -> 0.83 from PR #47's date fix, which landed after predeploy-fixes was run;
+  - q11 (0.25 -> 1.00) and q23 (0.25 -> 0.67) use routes this change does not touch, so read them as
+    noise.
+- **Tokens:** +57 per turn.
+- **Nebius spend,** *estimate*:
+  - agent tokens 550,557 (*measured*: 85,153 subset + 465,404 full, Qwen3-30B);
+  - judge tokens not recorded, roughly 90 runs x 2 judges x ~4k on Qwen3-235B;
+  - about $0.25 at assumed list rates, under the $0.40 cap.
 
 ## Pre-deploy defects D1-D3 fixed (06:10 UTC-5, branch `fix/agents-trust-cost`, committed locally; the orchestrator lands it)
 
