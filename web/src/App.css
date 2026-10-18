@@ -1328,7 +1328,7 @@ body {
   overflow: auto;
   border-right: 1px solid #e2e8f0;
   background: #ffffff;
-  padding: 0.65rem 0.75rem 1.25rem;
+  padding: 0.35rem 0.5rem 0.4rem;
 }
 
 .workspace-fs .workspace-rail {
@@ -1337,10 +1337,25 @@ body {
 
 .rail-header {
   position: sticky;
-  top: -0.65rem;
+  top: -0.35rem;
   z-index: 2;
   background: #ffffff;
-  padding: 0.15rem 0 0.45rem;
+  margin-bottom: 0.25rem;
+  padding: 0.1rem 0 0.2rem;
+}
+
+.rail-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.rail-list {
+  gap: 0.25rem;
+}
+
+.rail-list .topic-card {
+  padding: 0.25rem 0.4rem;
 }
 
 .workspace-stage {
@@ -1403,7 +1418,8 @@ body {
   grid-template-areas:
     "rank name decision"
     "why why why";
-  gap: 0.2rem 0.45rem;
+  align-items: start;
+  gap: 0.1rem 0.35rem;
   width: 100%;
   padding: 0;
   border: none;
@@ -1416,17 +1432,20 @@ body {
 
 .rail-row .rank-badge {
   grid-area: rank;
+  align-self: start;
 }
 
 .rail-name {
   grid-area: name;
   font-weight: 700;
   font-size: 0.92rem;
+  line-height: 1.2;
   min-width: 0;
 }
 
 .rail-row .decision-badge {
   grid-area: decision;
+  align-self: start;
 }
 
 .rail-why {
@@ -1441,18 +1460,17 @@ body {
 .rail-signals {
   grid-area: why;
   display: flex;
-  gap: 0.45rem;
+  flex-wrap: wrap;
+  gap: 0.05rem 0.4rem;
   min-width: 0;
-  overflow: hidden;
   color: #475569;
-  font-size: 0.8rem;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .rail-signals span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .rail-detail {
