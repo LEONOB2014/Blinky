@@ -7,5 +7,5 @@ procedures.
 | Guide | Covers |
 |---|---|
 | [git-workflow.md](git-workflow.md) | branches, worktrees, day-to-day commands, PRs, stacked work, recovery |
-| [releasing.md](releasing.md) | SemVer 0.x policy, release and hotfix procedures, changelog |
+| [releasing.md](releasing.md) | SemVer 0.x policy, the develop → main release, changelog |
 | [data-and-secrets.md](data-and-secrets.md) | where the lake lives, how code finds it, `.env`, detect-secrets policy, BigQuery spend |
