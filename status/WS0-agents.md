@@ -4,7 +4,37 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 05:05 UTC-5 · grounding gaps closed (fix/ws0-grounding-gaps) · committed locally; the orchestrator pushes.
+2026-10-18 05:35 UTC-5 · trust route reads the cost ledger only for cost questions (fix/agents-trust-cost) · committed locally; the orchestrator lands it.
+
+## Trust route reads the cost ledger only for cost questions (05:35 UTC-5, branch `fix/agents-trust-cost`, committed locally; the orchestrator lands it)
+
+- `agents/runtime.py`: the Auditor's plan calls `get_cost_ledger` only when the question matches
+  `_COST_Q`, the cost words of the Scout route, now a shared regex.
+- Runtime test for both cases: a trust question reads only the backtest and the filter quality; a
+  cost question also reads the ledger.
+- `run_evals.py --questions q20,q22,q23` runs a subset of the frozen dataset.
+- Before = `develop` e830a28 (includes the % fix of PR #42); after = e5eb9d5. Same questions, 3 runs
+  each, all *measured*; brackets are the min-max of the three repetition means.
+
+  | Experiment | grounding | usefulness v1 | usefulness_v2 | decisions / routing / entities | tokens/turn |
+  |---|---|---|---|---|---|
+  | trust-cost-before (n=9) | 0.778 [0.67-1.00] | 0.306 [0.17-0.50] | 0.528 [0.50-0.58] | 1.00 / 1.00 / 1.00 | 4,414 |
+  | trust-cost-after (n=9) | **1.000** [1.00-1.00] | 0.250 [0.08-0.50] | 0.528 [0.50-0.58] | 1.00 / 1.00 / 1.00 | 4,294 |
+
+- Per question (grounding, before -> after):
+  - q22 (trust): 1/3 -> 3/3. Before, two runs invented a total cost ("$2.21"), and the Auditor now
+    catches it after PR #42. After, no q22 run cites the BigQuery or Jev cost.
+  - q20 (cost): 3/3 -> 3/3. It still gets the ledger and cites the real figures.
+  - q23 (filter): 3/3 -> 3/3.
+- **Usefulness:** v2 is unchanged and v1 moves within its range; n = 9 is too small to read more
+  into it.
+- **Left as is:** "$1.47", the labelling round's cost from `reports/label_quality.md`, still appears
+  in q22 and q23 answers. The number is real and grounded, but one q22 run calls it "el costo del
+  backtest". That is a wrong label on a real number, not an invented one.
+- **Nebius spend** for both runs, *estimate*:
+  - agent tokens 78,373 (*measured*, Qwen3-30B);
+  - judge tokens not recorded, roughly 18 runs x 2 judges x ~4k on Qwen3-235B;
+  - about $0.06 at Nebius list prices, under the $0.30 cap.
 
 ## Grounding gaps closed (05:05 UTC-5, branch `fix/ws0-grounding-gaps`, committed locally; the orchestrator pushes)
 
