@@ -15,29 +15,47 @@ from pathlib import Path
 import polars as pl
 
 from graph.context import context_1hop
-from graph.metrics import node_metrics
+from graph.metrics import edge_weeks, node_metrics
 from radar import paths
 from radar.contracts import validate_records
 
+VALIDATE_CHUNK = 100_000
 
-def validate(name: str, df: pl.DataFrame) -> None:
-    records = df.with_columns(pl.col("wk").cast(pl.Utf8)).to_dicts()
-    errors = validate_records(name, records)
+
+def validate(name: str, df: pl.DataFrame, chunk: int = VALIDATE_CHUNK) -> None:
+    """Validate every row against the contract, in chunks so the full lake fits in memory."""
+    errors: list[str] = []
+    for offset in range(0, df.height, chunk):
+        part = df.slice(offset, chunk).with_columns(pl.col("wk").cast(pl.Utf8))
+        errors += [f"offset {offset} {e}" for e in validate_records(name, part.to_dicts())]
+        if len(errors) >= 20:
+            break
     if errors:
         head = "\n".join(errors[:20])
         raise ValueError(f"{name}: {len(errors)} contract violations, first ones:\n{head}")
 
 
-def build(edges: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
-    metrics = node_metrics(edges)
-    ring = context_1hop(edges, metrics)
+def build(edges: pl.DataFrame | pl.LazyFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Both tables, validated. ``edges`` may be a lazy scan; the ring is built week by week."""
+    lf = edges.lazy()
+    metrics = node_metrics(lf)
+    ring = pl.concat(
+        [
+            context_1hop(
+                lf.filter(pl.col("wk") == wk).collect(), metrics.filter(pl.col("wk") == wk)
+            )
+            for wk in edge_weeks(lf)
+        ]
+    )
     validate("node_metrics_weekly", metrics)
     validate("topic_context_1hop", ring)
     return metrics, ring
 
 
-def summary(edges: pl.DataFrame, metrics: pl.DataFrame, ring: pl.DataFrame) -> pl.DataFrame:
-    e = edges.group_by("wk").agg(edges=pl.len())
+def summary(
+    edges: pl.DataFrame | pl.LazyFrame, metrics: pl.DataFrame, ring: pl.DataFrame
+) -> pl.DataFrame:
+    e = edges.lazy().group_by("wk").agg(edges=pl.len()).collect()
     m = metrics.group_by("wk").agg(
         nodes=pl.len(),
         communities=pl.col("community_id").n_unique(),
@@ -68,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     if out is None and paths.profile() == "full":
         out = paths.lake() / "gold"
 
-    edges = pl.read_parquet(paths.gold("edges_weekly"))
+    edges = pl.scan_parquet(paths.gold("edges_weekly"))
     metrics, ring = build(edges)
     if out is not None:
         out.mkdir(parents=True, exist_ok=True)

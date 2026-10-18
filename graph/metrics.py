@@ -118,18 +118,29 @@ def _neighbours(edges: pl.DataFrame) -> dict[date, dict[str, set[str]]]:
     return out
 
 
-def node_metrics(edges: pl.DataFrame) -> pl.DataFrame:
-    """``node_metrics_weekly`` rows for every node of every week in ``edges``."""
-    weeks = sorted(edges["wk"].unique().to_list())
+def edge_weeks(edges: pl.DataFrame | pl.LazyFrame) -> list[date]:
+    return sorted(edges.lazy().select(pl.col("wk").unique()).collect()["wk"].to_list())
+
+
+def node_metrics(edges: pl.DataFrame | pl.LazyFrame) -> pl.DataFrame:
+    """``node_metrics_weekly`` rows for every node of every week in ``edges``.
+
+    Reads one week at a time (``edges`` may be a lazy scan of the full table) and keeps only the
+    weeks the look-backs need in memory.
+    """
+    lf = edges.lazy()
+    weeks = edge_weeks(lf)
     present = set(weeks)
-    nbrs = _neighbours(edges)
+    nbrs: dict[date, dict[str, set[str]]] = {}
     deg: dict[date, dict[str, float]] = {}
     pr_rank: dict[date, dict[str, int]] = {}
     comms_prev: dict[str, set[str]] | None = None
     rows = []
 
     for wk in weeks:
-        g = week_graph(edges.filter(pl.col("wk") == wk))
+        week = lf.filter(pl.col("wk") == wk).collect()
+        nbrs[wk] = _neighbours(week).get(wk, {})
+        g = week_graph(week)
         names = g.vs["name"]
         deg_w = dict(zip(names, g.strength(weights="n"), strict=True))
         pagerank = dict(zip(names, g.pagerank(weights="n", directed=False), strict=True))
@@ -172,8 +183,9 @@ def node_metrics(edges: pl.DataFrame) -> pl.DataFrame:
                     "is_hub": v in hubs,
                 }
             )
-        deg[wk] = deg_w
-        pr_rank[wk] = rank
+        deg = {wk: deg_w}
+        pr_rank = {wk: rank}
+        nbrs = {w: nb for w, nb in nbrs.items() if w > wk - WEEK * NEW_NBR_WEEKS}
 
     schema = {
         "wk": pl.Date, "entity_id": pl.Utf8, "deg_w": pl.Float64, "deg_growth": pl.Float64,
