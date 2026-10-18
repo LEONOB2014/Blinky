@@ -59,3 +59,19 @@ def test_graph_nodes_never_include_persons():
 def test_unknown_tool_and_bad_arguments_come_back_as_data():
     assert tools.call("nope", {})["available"] is False
     assert tools.call("get_topic_series", "{not json")["available"] is False
+
+
+def test_names_resolve_to_graph_ids():
+    # real dev-slice ids: a plain name, a capitalised name, and an id that passes through
+    known = set(tools.known_topics())
+    assert "org:google" in known
+    assert tools.resolve_topic("Google") == "org:google"
+    assert tools.resolve_topic("org:google") == "org:google"
+    assert tools.resolve_topic("regulation_policy") == "regulation_policy"
+    assert tools.resolve_topic("per:anyone") == "per:anyone"
+
+
+def test_entity_series_reads_topic_daily():
+    out = tools.get_topic_series("Google")
+    assert out["available"] and out["topic"] == "org:google"
+    assert all(r["articles"] > 0 for r in out["rows"])

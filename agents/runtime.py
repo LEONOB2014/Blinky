@@ -15,6 +15,7 @@ from typing import Any
 
 from agents import tools
 from agents.llm import ChatModel, NebiusChat
+from radar.paths import lake
 
 MAX_ROUNDS = 3
 
@@ -68,9 +69,17 @@ RULES = (
     "Reglas: responde en español claro para ejecutivos de medios. Usa SOLO números que devuelvan las "
     "herramientas, sin inventar ni redondear de forma engañosa; si una herramienta dice que algo no "
     "está disponible, dilo tal cual. Las decisiones (publicar ahora, preparar, esperar, no es tema "
-    "caliente) las calcula el código del Analista de señales: nunca las inventes. Si los datos son "
-    "de desarrollo, menciónalo. Sé breve: máximo 8 líneas."
+    "caliente) las calcula el código del Analista de señales: nunca las inventes. Sé breve: máximo "
+    "8 líneas."
 )
+
+
+def rules() -> str:
+    """RULES plus what the data is, so answers never call the full lake 'development data'."""
+    if tools.profile() == "dev":
+        return RULES + " Los datos son un corte de desarrollo (8 semanas reales): menciónalo."
+    return RULES + " Los datos son el conjunto completo y real; no digas que son de desarrollo."
+
 
 MASTER_PROMPT = (
     "Eres el Maestro de Medios de la Radar de Señal Temprana de 30X: un estratega de contenido de "
@@ -83,8 +92,11 @@ MASTER_PROMPT = (
     "cuánto confiar -> auditor. Pregunta solo a quien haga falta. Tu equipo: "
     + "; ".join(f"{k} ({v['name_es']}): {v['role']}" for k, v in SPECIALISTS.items())
     + ". "
-    + RULES
 )
+
+
+def master_prompt() -> str:
+    return MASTER_PROMPT + rules()
 
 
 @dataclass
@@ -219,7 +231,7 @@ def _loop(
 
 def run_specialist(model: ChatModel, turn: Turn, agent: str, question: str) -> str:
     spec = SPECIALISTS[agent]
-    system = f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {RULES}"
+    system = f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {rules()}"
     return _loop(
         model, turn, agent, system, question, [tools.TOOLS[t].spec() for t in spec["tools"]]
     )
@@ -377,6 +389,8 @@ def _run_tool(turn: Turn, agent: str, name: str, **args: Any) -> dict[str, Any]:
 
 
 def _leader(result: dict[str, Any]) -> str | None:
+    if result.get("available") and result.get("rows"):
+        return result["rows"][0]["topic_id"]
     trends = (
         result if "fastest_growing_subtopic" in result else result.get("fallback_subtopic_trends")
     )
@@ -387,7 +401,8 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     """Each specialist's fixed data plan: code chooses the tools and arguments, never the LLM."""
     week, leader, entity = ctx["week"], ctx["leader"], ctx["entity"]
     calls: list[tuple[str, dict[str, Any]]] = {
-        "signal_analyst": [("get_topic_series", {"topic": leader or "ai_all"})],
+        "signal_analyst": [("get_topic_series", {"topic": entity or leader or "ai_all"})]
+        + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else []),
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
@@ -431,7 +446,7 @@ def interpret(
 ) -> str:
     spec = SPECIALISTS[agent]
     system = (
-        f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {RULES} "
+        f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {rules()} "
         "Interpreta SOLO los datos que te doy, en 2 a 4 líneas, citando sus números."
     )
     payload = json.dumps(data, ensure_ascii=False, default=str)[:12000]
@@ -468,7 +483,7 @@ def run_turn(
             model,
             turn,
             "media_master",
-            MASTER_PROMPT,
+            master_prompt(),
             question,
             [_delegate_spec(a) for a in SPECIALISTS],
         )
@@ -493,13 +508,13 @@ def run_turn(
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
         decided = _decisions_by_code(turn)
         decision_line = (
-            ", ".join(f"{k}: {v}" for k, v in decided.items())
+            ", ".join(f"{k}: {v}" for k, v in list(decided.items())[:3])
             if decided
             else "PENDIENTE (las puntuaciones formales aún no están calculadas)"
         )
         reply = model.chat(
             [
-                {"role": "system", "content": MASTER_PROMPT},
+                {"role": "system", "content": master_prompt()},
                 {
                     "role": "user",
                     "content": f"Pregunta: {question}\n\nInformes de tu equipo:\n{team}\n\n"
@@ -542,7 +557,21 @@ def run_turn(
             "auditor", "answer", result_summary="todos los números de la respuesta tienen fuente"
         )
     turn.answer_es = answer
-    turn.decision_cards = cards_from_scores(turn)
+    # cards only when the question is about what to publish, not about cost or freshness
+    turn.decision_cards = (
+        cards_from_scores(turn)
+        if {"signal_analyst", "audience_strategist", "editor"} & set(needed or SPECIALISTS)
+        else []
+    )
     for card in turn.decision_cards:
         card["auditor_ok"] = not bad
-    return turn.as_response()
+    response = turn.as_response()
+    _save_trace(question, response)
+    return response
+
+
+def _save_trace(question: str, response: dict[str, Any]) -> None:
+    """Every turn's full response goes to lake/agent_traces/ (git-ignored), for the Auditor and demos."""
+    out = lake() / "agent_traces" / f"{response['conversation_id']}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"question": question} | response, ensure_ascii=False, indent=1))
