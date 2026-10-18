@@ -71,6 +71,8 @@ ranked_universe:
     - bloomberg
     - cnn
     - new york times
+    - big news network
+    - big new network
     # GKG extraction artefacts
     - terms of service
     - young

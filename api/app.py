@@ -12,9 +12,12 @@ import datetime as dt
 import json
 import math
 import os
+from functools import lru_cache
 from typing import Annotated, Any
 
 import duckdb
+import polars as pl
+import yaml
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +26,7 @@ from pydantic import BaseModel, Field
 from agents.llm import ChatModel, NebiusChat, model_config
 from agents.runtime import run_turn
 from agents.tools import week_bounds
-from radar.contracts import load_schema
+from radar.contracts import CONTRACTS_DIR, load_schema
 from radar.paths import REPO_ROOT, gold, profile
 
 load_dotenv(REPO_ROOT / ".env")
@@ -55,6 +58,29 @@ _FRESHNESS_TABLES: tuple[tuple[str, str], ...] = (
     ("topic_daily", "dt"),
     ("topic_context_1hop", "wk"),
 )
+
+
+PERSON_PREFIX = "per:"  # persons are never served (privacy guard, whatever the lake holds)
+
+
+@lru_cache(maxsize=1)
+def _taxonomy() -> dict[str, Any]:
+    return yaml.safe_load((CONTRACTS_DIR / "taxonomy.yaml").read_text(encoding="utf-8"))
+
+
+def denied_topic_ids() -> frozenset[str]:
+    """``org:<name>`` ids on the ranked-universe deny list (wire services, outlets, artefacts)."""
+    deny = _taxonomy().get("ranked_universe", {}).get("org_deny") or []
+    return frozenset(f"org:{name.strip().lower()}" for name in deny)
+
+
+def subtopic_labels() -> dict[str, str]:
+    """Subtopic id -> its Spanish label from the taxonomy."""
+    return {k: v["label_es"] for k, v in (_taxonomy().get("subtopics") or {}).items()}
+
+
+def is_person(entity_id: str | None) -> bool:
+    return bool(entity_id) and entity_id.lower().startswith(PERSON_PREFIX)
 
 
 def _clean_value(val: Any) -> Any:
@@ -107,7 +133,13 @@ def get_radar(
     week: Annotated[str | None, Query(pattern=r"^[0-9]{4}-W[0-9]{2}$")] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> list[dict[str, Any]]:
-    """Weekly top 10 ranked topics from WS4's `topic_scores_weekly` table."""
+    """Weekly top ranked topics from WS4's `topic_scores_weekly` table.
+
+    Rows may be subtopics (``agents``) or ``org:``/``thm:`` topics. Deny-listed orgs from the
+    taxonomy's ``ranked_universe.org_deny`` are never returned. The table is small and DuckDB
+    1.5.6 cannot filter the Polars-written file ("PlainSkip not implemented"), so it is scanned
+    with Polars and the week filter pushed down.
+    """
     path = gold("topic_scores_weekly")
     if not path.exists():
         reason = f"topic_scores_weekly not available yet in profile {profile()} (pending WS4)"
@@ -115,26 +147,41 @@ def get_radar(
         response.headers["X-Radar-Status"] = "pending-ws4"
         return []
 
-    file_path = str(path)
-    if week is not None:
-        rows = _query_rows(
-            "SELECT * FROM read_parquet(?) WHERE week = ? "
-            "ORDER BY COALESCE(rank, 999999) ASC, priority DESC LIMIT ?",
-            [file_path, week, limit],
+    lf = pl.scan_parquet(path)
+    if week is None:
+        week = lf.select(pl.col("week").max()).collect().item()
+    df = (
+        lf.filter(
+            (pl.col("week") == week)
+            & ~pl.col("topic_id").str.to_lowercase().is_in(sorted(denied_topic_ids()))
+            & ~pl.col("topic_id").str.to_lowercase().str.starts_with(PERSON_PREFIX)
         )
-    else:
-        rows = _query_rows(
-            "SELECT * FROM read_parquet(?) "
-            "WHERE week = (SELECT max(week) FROM read_parquet(?)) "
-            "ORDER BY COALESCE(rank, 999999) ASC, priority DESC LIMIT ?",
-            [file_path, file_path, limit],
+        .sort(
+            [pl.col("rank").fill_null(999_999), pl.col("priority")],
+            descending=[False, True],
+            nulls_last=True,
         )
-    return [_normalize_score_row(r) for r in rows]
+        .head(limit)
+        .collect()
+    )
+    if df.is_empty():
+        response.headers["X-Radar-Empty-Reason"] = f"no scored topics for week {week}"
+        return []
+    labels = subtopic_labels()
+    rows = []
+    for raw in df.to_dicts():
+        row = _normalize_score_row({k: _clean_value(v) for k, v in raw.items()})
+        if row.get("topic_id") in labels:
+            row["label_es"] = labels[row["topic_id"]]
+        rows.append(row)
+    return rows
 
 
 @app.get("/api/topic/{topic_id}/timeline")
 def get_topic_timeline(topic_id: str) -> list[dict[str, Any]]:
     """Daily series of one topic by language (`topic_daily.schema.json`)."""
+    if is_person(topic_id):
+        return []
     topic_daily_path = gold("topic_daily")
     if topic_daily_path.exists():
         file_path = str(topic_daily_path)
@@ -199,7 +246,25 @@ def get_topic_context(
     topic_id: str,
     week: Annotated[str | None, Query()] = None,
 ) -> list[dict[str, Any]]:
-    """The 1-hop context ring of a topic (`topic_context_1hop.schema.json`)."""
+    """The 1-hop context ring of a topic (`topic_context_1hop.schema.json`).
+
+    Privacy guard: no ``per:`` neighbour is ever returned (filtered in SQL and again here), and a
+    person is never a topic. Ranks are renumbered after the filter so they stay 1..n.
+    """
+    if is_person(topic_id):
+        return []
+    return _guard_ring(_query_context(topic_id, week))
+
+
+def _guard_ring(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    kept = [r for r in rows if not is_person(r.get("neighbor"))]
+    kept.sort(key=lambda r: r["rank"])
+    for i, r in enumerate(kept, start=1):
+        r["rank"] = i
+    return kept[:20]
+
+
+def _query_context(topic_id: str, week: str | None) -> list[dict[str, Any]]:
     _, monday, _ = week_bounds(week)
     ring_path = gold("topic_context_1hop")
     if ring_path.exists():
@@ -220,6 +285,7 @@ def get_topic_context(
                 r.neighbor_domain
             FROM read_parquet(?) AS r, target_wk
             WHERE r.topic_id = ? AND r.wk = target_wk.wk
+              AND NOT starts_with(lower(r.neighbor), 'per:')
             ORDER BY r.rank ASC
             LIMIT 20
             """,
@@ -258,6 +324,7 @@ def get_topic_context(
               AND npmi > 0.1
               AND n >= 3
               AND (CASE WHEN x = ? THEN y ELSE x END) NOT IN (SELECT e FROM hubs)
+              AND NOT starts_with(lower(CASE WHEN x = ? THEN y ELSE x END), 'per:')
         )
         SELECT
             wk,
@@ -272,7 +339,7 @@ def get_topic_context(
         ORDER BY rank ASC
         LIMIT 20
         """,
-        [file_path, file_path, monday, topic_id, topic_id, topic_id, topic_id, topic_id],
+        [file_path, file_path, monday, topic_id, topic_id, topic_id, topic_id, topic_id, topic_id],
     )
 
 
@@ -286,10 +353,16 @@ def get_freshness() -> dict[str, Any]:
             if not path.exists():
                 tables[name] = None
                 continue
+            # Footer statistics first: no request scans a large table (edges_weekly is 37.8M rows).
             val = con.execute(
-                f"SELECT max({col}) FROM read_parquet(?)",  # noqa: S608
-                [str(path)],
+                "SELECT max(stats_max_value) FROM parquet_metadata(?) WHERE path_in_schema = ?",
+                [str(path), col],
             ).fetchone()
+            if not val or val[0] is None:
+                val = con.execute(
+                    f"SELECT max({col}) FROM read_parquet(?)",  # noqa: S608
+                    [str(path)],
+                ).fetchone()
             tables[name] = str(val[0]) if val and val[0] is not None else None
     return {
         "profile": profile(),

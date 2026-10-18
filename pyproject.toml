@@ -21,7 +21,8 @@ dependencies = [
     "jsonschema>=4.23.0",
     "pyyaml>=6.0.2",
     "python-dotenv>=1.0.0",
-    "httpx>=0.27.0",  # agents/: OpenAI-compatible chat (Nebius)
+    "httpx>=0.27.0", # agents/: OpenAI-compatible chat (Nebius)
+    "langsmith>=0.14",
 ]
 
 # One extra per workstream, so an agent installs only what its directory needs:

@@ -5,7 +5,7 @@
   "description": "BigQuery radar.topic_daily from radar.gkg_ai orgs and themes (design: What is ranked) -> lake/gold/topic_daily.parquet",
   "type": "object",
   "x-owner": "WS1",
-  "x-mock": "pending-dev-slice",
+  "x-mock": "dev-slice",
   "properties": {
     "topic_id": {
       "type": "string",

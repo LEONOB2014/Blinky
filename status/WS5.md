@@ -1,47 +1,85 @@
 # WS5 status
 
-Owner: Gemini (Antigravity) · Directories: `api/, web/`
+Owner: Gemini (Antigravity) for WS5; WS5b (full lake) by Claude #4 (claude-cacho) · Directories: `api/, web/`
 
 Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 21:32 UTC-5 · Branch: `feat/ws5-api-ui` · PR: pending maintainer approval to open draft PR
+2026-10-17 23:00 UTC-5 · Branch: `feat/ws5-full-lake` (brief `BRIEF.md`, WS5b) · committed locally; the orchestrator pushes
 
-## Done
+## Done (WS5b, full lake)
 
-- Implemented `api/app.py` (FastAPI + DuckDB over Parquet) covering all 5 paths in `contracts/api.yaml`:
-  - `GET /api/radar`: reads `topic_scores_weekly` via `radar.paths.gold`; until WS4 lands the table, returns `[]` with HTTP 200 and headers `X-Radar-Empty-Reason` and `X-Radar-Status: pending-ws4`.
-  - `GET /api/topic/{topic_id}/timeline`: reads `topic_daily` when present and falls back to `daily_topic` on the dev slice, preserving `NULL` on `is_missing` days (never zero-filled) and matching `contracts/topic_daily.schema.json`.
-  - `GET /api/topic/{topic_id}/context`: reads `topic_context_1hop` when present and falls back to computing the 1-hop context ring from `edges_weekly` (`n >= 3`, `npmi > 0.1`, dropping top 1% weighted-degree hubs, top 20 by NPMI), matching `contracts/topic_context_1hop.schema.json`.
-  - `GET /api/freshness`: returns active `profile` (`dev` or `full`) and newest date/week per gold table.
-  - `POST /api/chat`: wired to `agents.runtime.run_turn(message, conversation_id, week=week)` per the 21:10 UTC-5 addendum; returns HTTP 503 `{"detail": "agents runtime not deployed yet"}` when `NEBIUS_API_KEY` is missing.
-- Added `api/tests/test_app.py`: 7 unit/contract tests on the dev slice validating responses against `topic_scores_weekly`, `topic_daily`, `topic_context_1hop`, `decision_card`, `view_command`, and `agent_trace` JSON Schemas using a scripted model (no network in CI).
-- Built `web/` (Vite + React + TypeScript, bun):
-  - Visible top banner when `profile === "dev"` (`"datos de desarrollo"`), plus per-table freshness chips from `/api/freshness`.
-  - Top-10 cards panel (`GET /api/radar`) with stage, window chip, six score chips, decision badge, and `why` bullets; displays the `X-Radar-Empty-Reason` header and subtopic selector pills while `topic_scores_weekly` is pending from WS4.
-  - Topic timeline panel (`GET /api/topic/{topic_id}/timeline`) with per-language (`eng`, `spa`, `por`, `other`) article totals, latest share, mean tone, and multi-language SVG chart leaving `is_missing` days as `NULL` gaps.
-  - 1-hop context ring table (`GET /api/topic/{topic_id}/context`) showing rank, neighbor, co-mentions `n`, and `npmi`.
-  - Placeholder view area (`view_command`) that updates live when the Cartographer emits `view_commands`.
-  - Media Master chat panel (`POST /api/chat`) rendering `answer_es`, `decision_cards` with KPI sources and Auditor status, and applying `view_commands`.
-  - Agent trace panel (`agent_trace`) showing step, agent, action, tool, latency (ms), and summary.
-- Added `make api-dev` and `make web-dev` targets to `Makefile`.
-- Captured screenshot of the live UI running against the dev slice API at `web/screenshot-dev.png`.
+- **`/api/radar` was broken on the full lake (HTTP 500).** DuckDB 1.5.6 cannot filter WS4's
+  Polars-2.0-written `topic_scores_weekly.parquet`: `NotImplementedException: PlainSkip not
+  implemented` on the all-null `outperformance` column whenever a WHERE clause applies (plain
+  `SELECT *` works). The endpoint now scans the file with Polars (week filter pushed down); the
+  table is 1.1 MB. Handles both subtopic ids and `org:`/`thm:` ids; the lake currently holds 17,285
+  rows (17,101 org, 184 thm) over 46 weeks, 2025-W49 .. 2026-W42 (measured).
+- **Privacy guard.** `/context` drops `per:` neighbours in SQL and again in Python, renumbers ranks
+  1..n, and returns `[]` when the topic itself is a person (`/timeline` too). `/api/radar` drops
+  `ranked_universe.org_deny` orgs read from `contracts/taxonomy.yaml` (and any `per:` id).
+  Tests bind on real-shaped rows: `org:reuters` ranked #1 is removed; a `per:` neighbour ranked #1
+  is removed and the next one becomes rank 1.
+- **No request reads `edges_weekly`** when `topic_context_1hop` exists; `/api/freshness` now reads
+  Parquet footer statistics (edges_weekly: 13 ms instead of a 461 ms scan, measured).
+- **UI**: ISO-week selector (`<input type="week">`, default = latest scored week from
+  `/api/freshness`); cards titled with the taxonomy `label_es` for subtopics and the name for
+  `org:`/`thm:` rows (id shown next to it); clicking a card loads its timeline and its 1-hop ring
+  for the selected week; chat turns send the selected week; dev-only wording removed.
+- Tests: `uv run --extra api pytest api` 10 passed (3 new); `make check && make test` pass;
+  `cd web && bun run build` passes.
 
-## In progress
+## Latency on the full lake (measured, 2026-10-17 22:56 UTC-5)
 
-- Ready to switch `/api/radar` cards view to real `topic_scores_weekly` rows as soon as WS4 lands the dev/full table.
+`RADAR_PROFILE=full`, uvicorn on localhost, 20 calls per endpoint after one warm-up call; topics
+`org:nvidia`, `org:openai group`, `thm:TECH_AUTOMATION`, `org:microsoft` (`org:openai` does not
+exist in GDELT's names); radar: 10 latest-week calls + 10 for 2026-W40. Target p95 < 300 ms
+(estimate): met.
+
+| endpoint | calls | p50 ms | p95 ms | max ms | rows (first call) |
+|---|---|---|---|---|---|
+| /api/radar | 20 | 11 | 17 | 18 | 10 |
+| /api/topic/{id}/timeline | 20 | 27 | 32 | 36 | 704 |
+| /api/topic/{id}/context | 20 | 21 | 22 | 22 | 20 |
+
+Before the change `/api/radar` failed with HTTP 500 on every call (measured).
+
+## Chat on the full profile (measured, 3 turns, Nebius, week 2026-W42)
+
+The Chrome extension was not connected, so the turns were sent through the UI's own path (the Vite
+dev server's `/api` proxy, the same `POST /api/chat` payload the UI sends), not by clicking. Full
+responses with traces: `lake/agent_traces/ws5-full-<conversation_id>.json` (the runtime itself does
+not persist traces).
+
+| question | HTTP | latency | trace steps | Auditor |
+|---|---|---|---|---|
+| ¿Qué tema de IA sube esta semana y por qué? | 200 | 21,828 ms | 8 | **veto**: numbers without source 37.550, 46.991, 100% (answer cites W38, not W42) |
+| ¿Qué está pasando con Nvidia? | 200 | 40,474 ms | 14 | ok (all numbers sourced) |
+| ¿Cuánto ha costado en BigQuery? | 200 | 4,043 ms | 6 | ok: 365.89 GB billed over 60 jobs (from the ledger) |
+
+## Agent problems for the orchestrator (`agents/**` is out of this brief)
+
+1. `get_top10` fails on the full lake with the same DuckDB `PlainSkip` error, so the agents never see
+   the radar and fall back to subtopic trends (turns 1 and 2). Fix in `agents/tools.py` (read with
+   Polars) or have WS4 write `topic_scores_weekly` so DuckDB can filter it (e.g. via pyarrow, or
+   without the all-null Int32 column).
+2. The Cartographer called `get_context_1hop` with "Nvidia" instead of `org:nvidia` and got no rows;
+   `/api/topic/org:nvidia/context?week=2026-W42` returns 20 neighbours. The tool needs name -> id
+   resolution (GDELT names: `org:openai group`, not `org:openai`).
+3. Answers say "Datos en desarrollo" on the full profile.
+4. `run_turn` does not write traces to `lake/agent_traces/`.
+
+## Screenshot (full profile, not committed)
+
+`/Users/andresbecerra/Documents/30x_Blinky/radar/lake/ws5/screenshot-full.png` (1440x2200, headless Chrome against the Vite dev server proxied to the full-profile API).
+
+## Notes
+
+- WS4's W42 top 10 is led by `org:marsh mclennan`, `org:euronext`, `org:big news network` (an
+  outlet not on the deny list) and `org:scam centre`: worth a look by WS4 and the lead before the
+  demo; the API serves what the table holds.
 
 ## Blocked on
 
 - None.
-
-## Numbers (each marked measured or estimate)
-
-- API contract endpoints implemented and tested: **5 / 5** *(measured, 5 paths in `contracts/api.yaml`)*
-- Test suite (`make test` / `uv run pytest -m "not bq and not data"`): **57 / 57 passed, 9 skipped** *(measured, 50 existing + 7 new API endpoint/contract tests in `api/tests/test_app.py`, runtime 1.33 s)*
-- Pre-commit quality gate (`uv run pre-commit run --all-files`): **15 / 15 hooks passed** *(measured)*
-- Web production build (`cd web && bun run build`): **30 modules transformed**, bundle **239.97 kB JS / 74.66 kB gzip, 4.68 kB CSS / 1.52 kB gzip** in **595 ms** *(measured)*
-- Dev-slice timeline (`GET /api/topic/regulation_policy/timeline`): **220 / 220 rows valid** against `topic_daily.schema.json` across 4 language buckets over 55 days (`2026-08-24` to `2026-10-17`: **6,029** `eng`, **1,097** `spa`, **343** `por`, **572** `other` articles) *(measured)*
-- Dev-slice 1-hop context (`GET /api/topic/org:google/context?week=2026-W41`): **20 / 20 rows valid** against `topic_context_1hop.schema.json` (`n >= 3`, `npmi > 0.1`, top 1% degree hubs excluded) *(measured)*
-- Dev-slice UI screenshot: `web/screenshot-dev.png` (**263,815 bytes**, `1440x1080`) *(measured)*
