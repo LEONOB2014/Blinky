@@ -410,7 +410,17 @@ export function TemporalGraph({
       const aiLabels = Boolean(d._meta.params.ai_only);
       const labelH = aiLabels ? AI_LABEL_H : LABEL_H;
       for (const cand of candidates) {
-        if (accepted.length >= maxLabels && !cand.isFocused) break;
+        // AI graph: the cap applies to optional labels only; must-show ones (top 10, leaders) are
+        // never cut by it, even when PageRank ranks other topics above them.
+        if (accepted.length >= maxLabels && !cand.isFocused) {
+          if (aiLabelsMode && mustShow.has(cand.idx)) {
+            // placed below like any must-show label
+          } else if (aiLabelsMode) {
+            continue;
+          } else {
+            break;
+          }
+        }
         const estW = aiLabels
           ? Math.min(320, cand.text.length * 7 + 4)
           : Math.min(200, Math.max(54, cand.text.length * 7 + 12));
