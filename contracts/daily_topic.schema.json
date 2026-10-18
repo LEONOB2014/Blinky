@@ -13,7 +13,7 @@
     },
     "topic": {
       "type": "string",
-      "description": "ai_all or a subtopic id from taxonomy.yaml"
+      "description": "ring 1 (segment ai): ai_all or a subtopic id from taxonomy.yaml; ring 2 (segment it): it_all; ring 3 (segment ai_domain): domain:<domain id>, one row per matched domain"
     },
     "segment": {
       "type": "string",
