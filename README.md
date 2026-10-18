@@ -95,24 +95,21 @@ and agents run on Google Cloud Run. The public chat is rate-limited.
 
 <!-- media: recorded from the live site at 1440x900; no article titles, URLs or person names appear in them -->
 
-| The weekly graph, 13 weeks played | Question-driven lenses |
+| The weekly AI graph, 13 weeks played | Question-driven lenses: Radar, Familia, Postura, Momento, Comunidades |
 |---|---|
-| ![The temporal graph playing 13 weeks](docs/media/radar-play.gif) | ![Switching lenses re-lays out and recolours the graph](docs/media/radar-lenses.gif) |
+| ![The AI temporal graph playing 13 weeks](docs/media/radar-play.gif) | ![Switching lenses recolours the AI graph](docs/media/radar-lenses.gif) |
 
-| Asking the Media Master | The one-screen workspace |
+| Asking the Media Master: what is biggest this week | Rising vs. biggest: the two rails |
 |---|---|
-| ![A question to the Media Master updates the view](docs/media/radar-chat.gif) | ![Top-10 rail, graph and chat dock](docs/media/radar-default.png) |
+| ![The Media Master answers with the week's leaders](docs/media/radar-chat.gif) | ![The rail switches from Despegando to Lo más grande and back](docs/media/radar-leaders.gif) |
 
-| A topic's card: decision, signals, brief, evidence | How far to trust the radar |
+| The one-screen workspace | A topic's card: decision, signals, community line |
 |---|---|
-| ![Card detail with the decision and its reasons](docs/media/radar-card.png) | ![Trust panel with the backtest and filter quality](docs/media/radar-trust.png) |
+| ![Top-10 rail, AI graph and chat pill](docs/media/radar-default.png) | ![Card detail with the decision, its reasons and the community line](docs/media/radar-card.png) |
 
-<details>
-<summary>Full-screen graph</summary>
-
-![The temporal graph in full screen](docs/media/radar-fullscreen.png)
-
-</details>
+| How far to trust the radar | The AI graph in full screen |
+|---|---|
+| ![Trust panel with the backtest and filter quality](docs/media/radar-trust.png) | ![The AI temporal graph in full screen](docs/media/radar-fullscreen.png) |
 
 ## Status
 
