@@ -1709,8 +1709,8 @@ export function TemporalGraph({
               <p className="graph-fallback-note">
                 Imagen fija del grafo de IA (semana 2026-W42). Los colores son las familias del
                 léxico (laboratorios, modelos, productos, técnicas, infraestructura, investigación,
-                negocio, regulación, seguridad, oposición y sociedad); las etiquetas son temas del top
-                10 del radar.
+                negocio, regulación, seguridad, oposición y sociedad); las etiquetas son el top 10 del
+                radar y los 8 temas con más artículos de la semana.
               </p>
             </div>
           ) : (
