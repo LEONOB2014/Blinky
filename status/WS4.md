@@ -12,6 +12,33 @@ READY FOR REDEPLOY (01:36 UTC-5, Addendum 5): `lake/gold/topic_scores_weekly.par
 with the syndication guard in the eligibility gate (16,904 rows, 46 weeks, 4,911 topics, 0 contract
 violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060 rows, 1,916 exact).
 
+## Primary backtest after WS6's last write (03:20 UTC-5, Claude #4 / claude-cacho, after the handover)
+
+WS6 reports **Done** (03:14 write: 368,394 pageview rows; all 292 missing exact topics fetched, 512 of
+512 articles HTTP 200). Final run on that data (`RADAR_PROFILE=full POLARS_MAX_THREADS=4 uv run
+--extra models python -m models.backtest`, exit 0), label coverage of each ranker's top 10 over 44
+evaluable weeks (measured):
+
+| Ranker | Exact matches (primary) | Alias included (separate row) |
+|---|---|---|
+| Radar, gate + syndication guard (published) | 408/440, 92.7% | 402/440, 91.4% |
+| Radar, gate, no guard | 403/440, 91.6% | 400/440, 90.9% |
+| Radar, no gate | 403/440, 91.6% | 356/440, 80.9% |
+| Baseline: raw-count growth | **378/440, 85.9%** | 318/440, 72.3% |
+| Baseline: persistence | 426/440, 96.8% | 427/440, 97.0% |
+
+**Precision@10 on the primary label is not reported:** raw-count growth stays below the 90% rule
+(`MIN_COVERAGE`), so its precision could still move by up to 14 points. Why the gap does not close
+(measured, read-only check of the same top 10s): the 62 unlabelled raw-count slots (and the 14-37 of
+the other rankers) belong to 83 topics that WS6 **did** fetch; their pageview series have fewer than
+12 days of data in a 14-day window (new or rarely viewed es/pt articles), so the label is missing by
+the protocol and never zero-filled. No further fetch can fill them. The list is in
+`lake/labels/backtest_missing_topics.parquet` (topic, QID, articles, reason).
+
+Decision for the orchestrator (not taken here): keep the 90% rule and present the secondary-label
+backtest as the result, or accept 85.9% and print the precision with its 14-point bound. The
+secondary-label results (es+pt GDELT growth) above are unchanged.
+
 ## Addendum 5: the syndication guard (01:36 UTC-5)
 
 - Guard (hand-set from WS1's distributions over 17,154 ranked topic-weeks, estimate): a topic can
