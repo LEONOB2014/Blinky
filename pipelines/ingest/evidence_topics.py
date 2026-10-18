@@ -4,8 +4,10 @@ The topics are the top 30 ranked topics of each of the last 8 scored weeks of
 `lake/gold/topic_scores_weekly.parquet` (WS4). `bq_sql/s14_topic_evidence_weekly.sql` joins them.
 A load job bills no bytes; it is printed, not logged in the query ledger.
 
-With ``--ai``, the same weeks also get the top 30 AI-lexicon topics (``ai:<id>``) by weekly articles
-(all languages) from `lake/gold/topic_ai_daily.parquet`, until WS4 scores them.
+With ``--ai``, the AI-lexicon topics (``ai:<id>``) are added the same way from
+`lake/gold/topic_ai_scores_weekly.parquet` (WS4: rank <= 30, last 8 scored weeks). Only when
+that file is missing does it fall back to the top 30 by weekly articles from `topic_ai_daily`,
+for the v0.2 weeks.
 
     RADAR_PROFILE=full uv run python pipelines/ingest/evidence_topics.py
     RADAR_PROFILE=full uv run python pipelines/ingest/evidence_topics.py --ai
@@ -66,14 +68,20 @@ def ai_evidence_topics(daily: pl.LazyFrame, weeks: list[dt.date]) -> pl.DataFram
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--ai", action="store_true", help="add the top AI-lexicon topics, same weeks")
+    ap.add_argument("--ai", action="store_true", help="add the top-ranked AI-lexicon topics")
     args = ap.parse_args(argv)
     if profile() != "full":
         raise SystemExit("refusing: set RADAR_PROFILE=full")
     topics = evidence_topics(pl.scan_parquet(gold("topic_scores_weekly")))
     if args.ai:
-        weeks = topics["week"].unique().to_list()
-        ai = ai_evidence_topics(pl.scan_parquet(gold("topic_ai_daily")), weeks)
+        scored = gold("topic_ai_scores_weekly")
+        if scored.exists():
+            ai = evidence_topics(pl.scan_parquet(scored))
+            print(f"ai topics: {ai.height} rows from {scored.name} (rank <= {TOP})")
+        else:
+            weeks = topics["week"].unique().to_list()
+            ai = ai_evidence_topics(pl.scan_parquet(gold("topic_ai_daily")), weeks)
+            print(f"ai topics: {ai.height} rows by volume ({scored.name} missing)")
         topics = pl.concat([topics, ai])
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "evidence_topics.csv"

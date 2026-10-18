@@ -17,7 +17,22 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 09:05 UTC-5 · branch `feat/ws1-ai-topics` (WP1, AI-lexicon topics and edges) · committed locally, not pushed.
+2026-10-18 09:38 UTC-5 · branch `feat/ws1-ai-topics` (evidence for the scored AI topics) · committed locally, not pushed.
+
+## Evidence for the scored AI topics (09:38 UTC-5)
+
+`evidence_topics.py --ai` now takes the AI topics from `lake/gold/topic_ai_scores_weekly.parquet` (WS4, floor
+of 20, `feat/ws4-ai-ranking` 2c58b03) like the v0.2 topics: rank <= 30, last 8 scored weeks. The volume
+stand-in remains only for when that file is missing. All numbers *measured*.
+
+- `radar.evidence_topics`: 480 rows (240 v0.2 + 240 `ai:`), 8 weeks 2026-08-24..2026-10-12, loaded (0 bytes).
+- **S14: 1,220,542,464 bytes billed** (dry run within the guard; logged in `reports/bq_ledger.csv`).
+- `topic_evidence_weekly`: 2,391 rows, of which 1,200 `ai:` (240 topic-weeks, 88 topics, 5 each) and the
+  1,191 v0.2 rows unchanged. 0 duplicates by normalized title.
+- **Coverage of the scored W42 top 10:** 10 / 10 `ai:` topics with rank <= 10 in 2026-W42 are in the loaded
+  evidence set, and 10 / 10 have evidence rows.
+
+Previous: 2026-10-18 09:05 UTC-5 · branch `feat/ws1-ai-topics` (WP1, AI-lexicon topics and edges) · committed locally, not pushed.
 
 ## WP1: AI-lexicon topics and edges (09:05 UTC-5)
 
