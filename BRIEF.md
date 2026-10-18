@@ -92,3 +92,19 @@ screenshots by **05:30** (the redeploy follows).
 ## If blocked
 
 `BLOCKED: <reason>` at the top of `status/WS5.md`, then stop.
+
+## Addendum (orchestrator, 01:15 UTC-5): this Mac is short of memory
+
+The maintainer is copying a large folder to Google Drive: at 01:10 swap was 7.8 of 8 GB used, 7 GB
+compressed, about 3.7 GB free (measured), and WS4's score rebuild (2.3 GB) has priority.
+
+1. **One heavy job at a time.** Before any export or layout run, check `memory_pressure` (or
+   `vm_stat`) and that no `models.build_scores` or `graph.build` process is running
+   (`ps -axo rss,command | grep -E "build_scores|graph.build"`); if one is, work on the components and
+   wait.
+2. **Stay under ~1.5 GB peak** in Python: start from the "light" export (1,000 nodes, n >= 20), prune
+   to top-k edges per node **before** computing the layout, compute the layout on the pruned union
+   graph only (target <= 200k unique links), read `edges_weekly` one week at a time with
+   `pl.scan_parquet` (never the whole 37.8M rows), and report the measured peak (`/usr/bin/time -l`).
+3. In the browser, measure with only the radar tab open; if fps or memory suffer, ship the light export
+   and say so.
