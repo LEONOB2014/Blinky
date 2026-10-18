@@ -638,6 +638,76 @@ def wrong_outlet_counts(answer: str, turn: Turn) -> list[str]:
     return bad
 
 
+_TRUST_Q = re.compile(r"conf[ií]a|confiable|fiable|backtest|precisi|acierta|creer", re.I)
+# unconditional trust: "puedes confiar", "es confiable", "alta precisión"; a hedge right after
+# ("con cautela", "solo para", "pero") or a "no" right before makes it a calibrated statement
+_TRUST_CLAIM = re.compile(
+    r"(?:puedes|puede|se puede|pueden) confiar|conf[ií]a(?:r)? (?:plenamente|totalmente|en el radar)|"
+    r"(?:es|son|resulta) (?:muy |altamente |totalmente |bastante )?(?:confiable|fiable|precis[oa]|"
+    r"exact[oa]|sólid[oa]|robust[oa])|alta (?:precisi[oó]n|confiabilidad|fiabilidad)|"
+    r"(?:muy|altamente|totalmente) (?:confiable|fiable|precis[oa])",
+    re.I,
+)
+_TRUST_HEDGE = re.compile(
+    r"con (?:cautela|moderaci[oó]n|reservas|cuidado)|solo|s[oó]lo|parcialmente|siempre que|"
+    r"pero|aunque|como se[nñ]al|no (?:supera|es mejor)",
+    re.I,
+)
+
+
+def _pct(x: float) -> str:
+    return f"{x:.1f}".replace(".", ",") + "%"
+
+
+def trust_line(turn: Turn) -> str:
+    """How far to trust the radar, written by code from get_backtest's parsed headline."""
+    found = {r["tool"]: r["result"] for r in turn.tool_results if r["result"].get("available")}
+    summary = (found.get("get_backtest") or {}).get("resumen")
+    if not summary:
+        return ""
+    radar, raw = summary["radar_publicado"], summary["crecimiento_de_menciones"]
+    lo, hi = radar["ic95_pct"]
+    weeks = (
+        f" de {summary['semanas_evaluadas']} semanas" if summary.get("semanas_evaluadas") else ""
+    )
+    beats = {
+        "la persistencia (repetir lo que ya subió)": summary["supera_persistencia_en_peor_caso"],
+        f"la regla simple de crecimiento de menciones ({_pct(raw['precision_pct'])})": summary[
+            "supera_crecimiento_en_peor_caso"
+        ],
+    }
+    yes = [k for k, v in beats.items() if v]
+    no = [k for k, v in beats.items() if v is False]
+    text = (
+        f"Qué tan confiable es el radar (backtest{weeks}; acierto = {summary['etiqueta']}): su "
+        f"top 10 publicado acierta el {_pct(radar['precision_pct'])} de las veces (intervalo del "
+        f"95%: {_pct(lo)} a {_pct(hi)}), frente a un {_pct(summary['tasa_base_pct'])} de un tema "
+        f"al azar."
+    )
+    if yes:
+        text += f" Supera a {' y a '.join(yes)} incluso en el peor caso"
+        text += f"; no supera a {' ni a '.join(no)}." if no else "."
+    elif no:
+        text += f" No supera a {' ni a '.join(no)}."
+    if (found.get("get_filter_quality") or {}).get("etiquetas_humanas_pendientes"):
+        text += " Las etiquetas humanas del filtro de noticias aún están pendientes."
+    return text + " Úsalo como señal temprana, no como garantía."
+
+
+def trust_claims(answer: str, turn: Turn) -> list[str]:
+    """Unconditional trust phrases on the trust route (where get_backtest ran)."""
+    if not any(r["tool"] == "get_backtest" for r in turn.tool_results):
+        return []
+    claims = []
+    for m in _TRUST_CLAIM.finditer(answer):
+        before = answer[max(0, m.start() - 12) : m.start()].lower()
+        after = answer[m.end() : m.end() + 40]
+        if re.search(r"\bno\b|\bni\b", before) or _TRUST_HEDGE.search(after):
+            continue
+        claims.append(m.group(0))
+    return claims
+
+
 def coverage_line(turn: Turn) -> str:
     """Spanish and Portuguese coverage of the topic, written by code from get_language_coverage."""
     cov = next(
@@ -1049,6 +1119,9 @@ def run_turn(
         count = outlet_count_line(turn) if _OUTLET_COUNT_Q.search(question) else ""
         if count:
             line = f"{line}\n\n{count}" if line else count
+        trust = trust_line(turn) if "auditor" in needed and _TRUST_Q.search(question) else ""
+        if trust:
+            line = f"{line}\n\n{trust}" if line else trust
         coverage = coverage_line(turn) if decides or entity else ""
         if coverage:
             line = f"{line}\n\n{coverage}" if line else coverage
@@ -1071,6 +1144,13 @@ def run_turn(
                 f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
                 "menciones otros umbrales, mínimos de co-menciones ni valores de NPMI."
                 if facts
+                else ""
+            )
+            + (
+                f" El sistema ya escribe qué tan confiable es el radar: «{trust}». No lo repitas. "
+                "No digas que se puede confiar sin condiciones ('puedes confiar', 'es confiable', "
+                "'alta precisión'): la confianza es la que dice esa línea."
+                if trust
                 else ""
             )
             + (
@@ -1169,6 +1249,17 @@ def _audit(
             "\n\n⚠️ El Auditor: los datos no muestran artículos de este tema en español ni en "
             "portugués esta semana; lo que se diga de su crecimiento o presencia en Latinoamérica "
             "no tiene respaldo."
+        )
+    if claims := trust_claims(answer, turn):
+        turn.log(
+            "auditor",
+            "veto",
+            result_summary=f"confianza sin condiciones que el backtest no respalda: {', '.join(claims)}",
+        )
+        answer += (
+            "\n\n⚠️ El Auditor: el backtest no respalda una confianza sin condiciones ("
+            + ", ".join(f"«{c}»" for c in claims)
+            + "); la confiabilidad medida es la de la línea de arriba."
         )
     if wrong := wrong_outlet_counts(answer, turn):
         turn.log(
