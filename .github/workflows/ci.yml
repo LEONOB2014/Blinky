@@ -1,28 +1,60 @@
 name: CI
 
+# Actions minutes are scarce: private repos bill every job rounded up to a whole minute.
+# So CI is ONE job, on pull requests only (a merge into develop is not re-tested), never on
+# draft PRs, and never when a PR touches only docs, status or reports. The full gate runs
+# locally first (`make check && make test`); CI is the last check before a merge.
 on:
-  push:
-    branches: [main, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "status/**"
+      - "reports/**"
 
-# A newer push to the same branch or PR cancels the run it supersedes.
+# A newer push to the same PR cancels the run it supersedes.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  # ============================================================================
-  # Code Quality
-  # ============================================================================
-  quality:
-    name: "Lint, Format & Hooks"
+  check:
+    name: "Hooks, tests and PR rules"
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    timeout-minutes: 10
     steps:
+      # Cheap checks first: a bad title or base fails before anything is installed.
+      - name: PR title is a Conventional Commit header
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|docs|test|build|ci|chore|style|revert|bump)(\([a-z0-9-]+\))?!?: [a-z].*[^.]$'
+          if ! printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "::error::PR title must be '<type>(<scope>): <lowercase description>' with no trailing period"
+            exit 1
+          fi
+
+      # main changes only through the develop -> main release PR. Without branch protection
+      # (free private repo) this cannot block a merge; it makes a wrong PR visibly red.
+      - name: Only develop merges into main
+        if: github.base_ref == 'main'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD_REF" != "develop" ]; then
+            echo "::error::PRs into main must come from develop (got $HEAD_REF)"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -38,97 +70,37 @@ jobs:
       - name: Install environment
         run: uv sync --locked
 
-      # Single source of truth: the same pinned hooks that run locally on commit.
-      # no-commit-to-branch guards local commits; on a push to main CI checks out
-      # main itself, so the hook would fail every post-merge run.
-      - name: Run every hook (pre-commit)
+      # Single source of truth: the same pinned hooks that run locally on commit, on the
+      # files this PR changes. no-commit-to-branch guards local commits only.
+      - name: Run the hooks on the changed files
         env:
           SKIP: no-commit-to-branch
-        run: uv run pre-commit run --all-files --show-diff-on-failure
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: uv run pre-commit run --from-ref "$BASE_SHA" --to-ref HEAD --show-diff-on-failure
 
-  # ============================================================================
-  # Tests (no network, no BigQuery, no lake: those tests skip themselves)
-  # ============================================================================
-  test:
-    name: "Tests"
-    runs-on: ubuntu-latest
-    needs: quality
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Install environment
-        run: uv sync --locked
-
+      # The dev slice only: no network, no BigQuery, no lake.
       - name: Run tests
-        run: uv run pytest -m "not bq and not data" --cov=radar --cov-report=term-missing
-
-  # ============================================================================
-  # Pull request title (it becomes the merge commit and the changelog entry)
-  # ============================================================================
-  pr-title:
-    name: "Conventional PR title"
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    permissions:
-      pull-requests: read
-    steps:
-      - uses: amannn/action-semantic-pull-request@v5
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          types: |
-            feat
-            fix
-            perf
-            refactor
-            docs
-            test
-            build
-            ci
-            chore
-            style
-            revert
-            bump
-          requireScope: false
-          subjectPattern: ^[a-z].+[^.]$
-          subjectPatternError: "The description must start lowercase and have no trailing period."
+          RADAR_PROFILE: dev
+        run: uv run pytest -m "not bq and not data"
 
-  # ============================================================================
-  # Web UI (web/, Lovable React app). Skipped until web/package.json exists.
-  # ============================================================================
-  web:
-    name: "Web build"
-    runs-on: ubuntu-latest
-    needs: quality
-    steps:
-      - uses: actions/checkout@v4
-
-      # Checked in a step: a job-level `if: hashFiles(...)` is rejected by GitHub.
-      - name: Check for the web app
-        id: app
+      # The web app (web/, bun) is built only when this PR changes it.
+      - name: Check whether web/ changed
+        id: web
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [ -f web/package.json ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
+          if [ -f web/package.json ] && git diff --name-only "$BASE_SHA" HEAD | grep -q '^web/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::web/package.json not written yet - skipping"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install bun
-        if: steps.app.outputs.present == 'true'
+        if: steps.web.outputs.changed == 'true'
         uses: oven-sh/setup-bun@v2
 
-      - name: Install dependencies
-        if: steps.app.outputs.present == 'true'
+      - name: Build the web app
+        if: steps.web.outputs.changed == 'true'
         working-directory: web
-        run: bun install
-
-      - name: Build
-        if: steps.app.outputs.present == 'true'
-        working-directory: web
-        run: bun run build
+        run: bun install && bun run build

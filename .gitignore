@@ -42,6 +42,8 @@ mlruns/
 web/node_modules/
 web/dist/
 web/.netlify/
+# The static fallback carries news headlines and URLs: generated at the freeze, never committed
+web/public/data/
 
 # Tooling
 .pytest_cache/
