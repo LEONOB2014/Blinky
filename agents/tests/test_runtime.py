@@ -67,3 +67,10 @@ def test_a_turn_matches_the_api_contract_shapes():
     assert all(view.is_valid(cmd) for cmd in response["view_commands"])
     agents = {s["agent"] for s in response["trace"]}
     assert {"media_master", "signal_analyst", "auditor"} <= agents
+
+
+def test_cost_questions_reach_the_scout():
+    from agents.runtime import route
+
+    assert "scout" in route("¿Cuánto ha costado BigQuery hasta ahora?")
+    assert "scout" in route("¿Cuánto se ha gastado?")

@@ -3,7 +3,6 @@
 The full response (answer, cards, view commands, trace) is also written to lake/agent_traces/.
 """
 
-import json
 import sys
 
 from agents.runtime import run_turn
@@ -14,8 +13,6 @@ def main() -> None:
     question = " ".join(sys.argv[1:]) or "¿Qué tema de IA está subiendo esta semana y por qué?"
     response = run_turn(question)
     out = lake() / "agent_traces" / f"{response['conversation_id']}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"question": question} | response, ensure_ascii=False, indent=1))
     print(response["answer_es"])
     print("\n--- traza ---")
     for step in response["trace"]:

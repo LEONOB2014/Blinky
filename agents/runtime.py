@@ -8,13 +8,20 @@ Every step is recorded as an `agent_trace` row.
 
 import json
 import re
+import shutil
+import subprocess
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import cache
 from typing import Any
+
+from langsmith import traceable
+from langsmith.run_helpers import get_current_run_tree
+from langsmith.utils import ContextThreadPoolExecutor
 
 from agents import tools
 from agents.llm import ChatModel, NebiusChat
+from radar.paths import lake
 
 MAX_ROUNDS = 3
 
@@ -68,9 +75,17 @@ RULES = (
     "Reglas: responde en español claro para ejecutivos de medios. Usa SOLO números que devuelvan las "
     "herramientas, sin inventar ni redondear de forma engañosa; si una herramienta dice que algo no "
     "está disponible, dilo tal cual. Las decisiones (publicar ahora, preparar, esperar, no es tema "
-    "caliente) las calcula el código del Analista de señales: nunca las inventes. Si los datos son "
-    "de desarrollo, menciónalo. Sé breve: máximo 8 líneas."
+    "caliente) las calcula el código del Analista de señales: nunca las inventes. Sé breve: máximo "
+    "8 líneas."
 )
+
+
+def rules() -> str:
+    """RULES plus what the data is, so answers never call the full lake 'development data'."""
+    if tools.profile() == "dev":
+        return RULES + " Los datos son un corte de desarrollo (8 semanas reales): menciónalo."
+    return RULES + " Los datos son el conjunto completo y real; no digas que son de desarrollo."
+
 
 MASTER_PROMPT = (
     "Eres el Maestro de Medios de la Radar de Señal Temprana de 30X: un estratega de contenido de "
@@ -83,8 +98,11 @@ MASTER_PROMPT = (
     "cuánto confiar -> auditor. Pregunta solo a quien haga falta. Tu equipo: "
     + "; ".join(f"{k} ({v['name_es']}): {v['role']}" for k, v in SPECIALISTS.items())
     + ". "
-    + RULES
 )
+
+
+def master_prompt() -> str:
+    return MASTER_PROMPT + rules()
 
 
 @dataclass
@@ -217,9 +235,12 @@ def _loop(
     return reply.content or ""
 
 
+@traceable(
+    run_type="chain", process_inputs=lambda i: {"agent": i["agent"], "question": i["question"]}
+)
 def run_specialist(model: ChatModel, turn: Turn, agent: str, question: str) -> str:
     spec = SPECIALISTS[agent]
-    system = f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {RULES}"
+    system = f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {rules()}"
     return _loop(
         model, turn, agent, system, question, [tools.TOOLS[t].spec() for t in spec["tools"]]
     )
@@ -333,11 +354,12 @@ ROUTES = [
     ),
     (re.compile(r"[aá]ngulo|ejecutiv|latam|audiencia|encaj", re.I), "audience_strategist"),
     (re.compile(r"contenido|guion|gancho|post|formato|escrib|brief", re.I), "editor"),
-    (re.compile(r"costo|cuesta|fresc|actualiz|fuente", re.I), "scout"),
+    (re.compile(r"cost[oóa]|costad|cuesta|gast|factur|fresc|actualiz|fuente", re.I), "scout"),
     (re.compile(r"conf[ií]a|backtest|precisi|evidencia|calidad", re.I), "auditor"),
 ]
 
 
+@traceable(run_type="chain")
 def route(question: str) -> list[str]:
     """Specialists the question needs, by keyword (Qwen3-30B routes poorly on its own)."""
     return [agent for pattern, agent in ROUTES if pattern.search(question)]
@@ -358,17 +380,69 @@ def _decisions_by_code(turn: Turn) -> dict[str, str]:
 _WEEK_IN_TEXT = re.compile(r"\b(\d{4}-W\d{2})\b")
 
 
+_WORD = re.compile(r"[\wáéíóúñü&.-]+", re.I)
+
+
 def _entity_in_question(question: str, week: str | None) -> str | None:
-    """The longest graph node whose name appears in the question (e.g. 'openai' -> 'org:openai')."""
+    """The graph topic a question names: a full node name in the text ('google' -> 'org:google'),
+    else the longest 1-3 word phrase that resolves to one ('OpenAI' -> GDELT's 'org:openai inc')."""
     q = question.lower()
     names = tools.graph_nodes(week)
     hits = [n for n in names if len(n.split(":", 1)[1]) > 3 and n.split(":", 1)[1] in q]
-    return max(hits, key=len) if hits else None
+    if hits:
+        return max(hits, key=len)
+    words = _WORD.findall(question)
+    for size in (3, 2, 1):
+        for i in range(len(words) - size + 1):
+            phrase = " ".join(words[i : i + size]).strip(".-")
+            if len(phrase) <= 3 or phrase.lower() in labels_stop():
+                continue
+            resolved = tools.resolve_topic(phrase)
+            if resolved != phrase and resolved in names:
+                return resolved
+    return None
+
+
+@cache
+def labels_stop() -> frozenset[str]:
+    """Spanish words that would resolve to an unrelated org by prefix ('esta' -> 'org:esta ...')."""
+    return frozenset(
+        [
+            "esta",
+            "este",
+            "semana",
+            "tema",
+            "temas",
+            "qué",
+            "que",
+            "para",
+            "sobre",
+            "como",
+            "cómo",
+            "cuál",
+            "cual",
+            "está",
+            "pasando",
+            "con",
+            "noticias",
+            "grafo",
+            "vecinos",
+            "conviene",
+            "escribir",
+            "aparece",
+            "muéstrame",
+            "muestrame",
+            "ahora",
+        ]
+    )
+
+
+_traced_tool = traceable(run_type="tool")(tools.call)
 
 
 def _run_tool(turn: Turn, agent: str, name: str, **args: Any) -> dict[str, Any]:
     turn.log(agent, "tool_call", tool=name, arguments=args)
-    result = tools.call(name, args)
+    result = _traced_tool(name, args, langsmith_extra={"name": name, "metadata": {"agent": agent}})
     source = turn.log(agent, "tool_result", tool=name, result_summary=_summary(result))
     turn.tool_results.append({"source": source, "tool": name, "args": args, "result": result})
     if name == "update_view" and result.get("available"):
@@ -377,17 +451,23 @@ def _run_tool(turn: Turn, agent: str, name: str, **args: Any) -> dict[str, Any]:
 
 
 def _leader(result: dict[str, Any]) -> str | None:
+    if result.get("available") and result.get("rows"):
+        return result["rows"][0]["topic_id"]
     trends = (
         result if "fastest_growing_subtopic" in result else result.get("fallback_subtopic_trends")
     )
     return (trends or {}).get("fastest_growing_subtopic")
 
 
+@traceable(
+    run_type="chain", process_inputs=lambda i: {"agent": i["agent"], "question": i["question"]}
+)
 def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[dict[str, Any]]:
     """Each specialist's fixed data plan: code chooses the tools and arguments, never the LLM."""
     week, leader, entity = ctx["week"], ctx["leader"], ctx["entity"]
     calls: list[tuple[str, dict[str, Any]]] = {
-        "signal_analyst": [("get_topic_series", {"topic": leader or "ai_all"})],
+        "signal_analyst": [("get_topic_series", {"topic": entity or leader or "ai_all"})]
+        + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else []),
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
         ],
@@ -426,12 +506,16 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     return results
 
 
+@traceable(
+    run_type="chain",
+    process_inputs=lambda i: {"agent": i["agent"], "question": i["question"]},
+)
 def interpret(
     model: ChatModel, turn: Turn, agent: str, question: str, data: list[dict[str, Any]]
 ) -> str:
     spec = SPECIALISTS[agent]
     system = (
-        f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {RULES} "
+        f"Eres el {spec['name_es']} de la Radar de Señal Temprana. {spec['role']} {rules()} "
         "Interpreta SOLO los datos que te doy, en 2 a 4 líneas, citando sus números."
     )
     payload = json.dumps(data, ensure_ascii=False, default=str)[:12000]
@@ -453,6 +537,11 @@ def interpret(
     return reply.content or ""
 
 
+@traceable(
+    run_type="chain",
+    name="media_master_turn",
+    process_inputs=lambda i: {"question": i["question"], "week": i.get("week")},
+)
 def run_turn(
     question: str,
     conversation_id: str | None = None,
@@ -462,13 +551,16 @@ def run_turn(
     model = model or NebiusChat()
     turn = Turn(conversation_id or uuid.uuid4().hex[:12])
     week = week or (m.group(1) if (m := _WEEK_IN_TEXT.search(question)) else None)
+    entity = _entity_in_question(question, week)
     needed = route(question)
+    if entity and not needed:  # "¿Qué pasa con X?": its scores and its connections
+        needed = ["signal_analyst", "cartographer"]
     if not needed:  # unrecognised question: the Media Master delegates freely
         answer = _loop(
             model,
             turn,
             "media_master",
-            MASTER_PROMPT,
+            master_prompt(),
             question,
             [_delegate_spec(a) for a in SPECIALISTS],
         )
@@ -479,27 +571,35 @@ def run_turn(
             "week": week,
             "signals": signals,
             "leader": _leader(signals),
-            "entity": _entity_in_question(question, week),
+            "entity": entity,
         }
-        data = {a: gather(turn, a, question, ctx) for a in needed}
-        with ThreadPoolExecutor(max_workers=len(needed)) as pool:
+        data = {
+            a: gather(turn, a, question, ctx, langsmith_extra={"name": f"gather:{a}"})
+            for a in needed
+        }
+        with ContextThreadPoolExecutor(max_workers=len(needed)) as pool:
             notes = dict(
                 zip(
                     needed,
-                    pool.map(lambda a: interpret(model, turn, a, question, data[a]), needed),
+                    pool.map(
+                        lambda a: interpret(
+                            model, turn, a, question, data[a], langsmith_extra={"name": a}
+                        ),
+                        needed,
+                    ),
                     strict=True,
                 )
             )
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
         decided = _decisions_by_code(turn)
         decision_line = (
-            ", ".join(f"{k}: {v}" for k, v in decided.items())
+            ", ".join(f"{k}: {v}" for k, v in list(decided.items())[:3])
             if decided
             else "PENDIENTE (las puntuaciones formales aún no están calculadas)"
         )
         reply = model.chat(
             [
-                {"role": "system", "content": MASTER_PROMPT},
+                {"role": "system", "content": master_prompt()},
                 {
                     "role": "user",
                     "content": f"Pregunta: {question}\n\nInformes de tu equipo:\n{team}\n\n"
@@ -524,7 +624,32 @@ def run_turn(
             model=reply.model,
         )
         answer = reply.content or ""
-    if not _decisions_by_code(turn) and _DECISION_WORDS.search(answer):
+    answer, bad, decision_vetoed = _audit(turn, answer, question)
+    turn.answer_es = answer
+    # cards only when the question is about what to publish, not about cost or freshness
+    turn.decision_cards = (
+        cards_from_scores(turn)
+        if {"signal_analyst", "audience_strategist", "editor"} & set(needed or SPECIALISTS)
+        else []
+    )
+    for card in turn.decision_cards:
+        card["auditor_ok"] = not bad
+    response = turn.as_response()
+    _tag_run(needed, bad, decision_vetoed, week)
+    _save_trace(question, response)
+    return response
+
+
+@traceable(
+    run_type="chain",
+    name="auditor",
+    process_inputs=lambda i: {"answer": i["answer"], "question": i["question"]},
+    process_outputs=lambda o: {"answer": o[0], "untraced_numbers": o[1], "decision_vetoed": o[2]},
+)
+def _audit(turn: Turn, answer: str, question: str) -> tuple[str, list[str], bool]:
+    """The deterministic Auditor: veto decisions no code computed, flag numbers no tool returned."""
+    decision_vetoed = not _decisions_by_code(turn) and bool(_DECISION_WORDS.search(answer))
+    if decision_vetoed:
         turn.log(
             "auditor", "veto", result_summary="decisión sin cálculo de código: se marca pendiente"
         )
@@ -541,8 +666,42 @@ def run_turn(
         turn.log(
             "auditor", "answer", result_summary="todos los números de la respuesta tienen fuente"
         )
-    turn.answer_es = answer
-    turn.decision_cards = cards_from_scores(turn)
-    for card in turn.decision_cards:
-        card["auditor_ok"] = not bad
-    return turn.as_response()
+    return answer, bad, decision_vetoed
+
+
+@cache
+def _git_sha() -> str:
+    git = shutil.which("git")
+    if not git:
+        return "unknown"
+    out = subprocess.run(  # noqa: S603 - fixed arguments, absolute path
+        [git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False
+    )
+    return out.stdout.strip() or "unknown"
+
+
+def _tag_run(needed: list[str], bad: list[str], decision_vetoed: bool, week: str | None) -> None:
+    """Tags and metadata on the LangSmith turn, so runs can be filtered by route, veto and version."""
+    run = get_current_run_tree()
+    if run is None:  # tracing is off
+        return
+    run.add_tags(
+        [f"agent:{a}" for a in needed or ["free_delegation"]]
+        + (["auditor:veto"] if bad or decision_vetoed else ["auditor:ok"])
+    )
+    run.add_metadata(
+        {
+            "profile": tools.profile(),
+            "git_sha": _git_sha(),
+            "week": week,
+            "untraced_numbers": len(bad),
+            "decision_vetoed": decision_vetoed,
+        }
+    )
+
+
+def _save_trace(question: str, response: dict[str, Any]) -> None:
+    """Every turn's full response goes to lake/agent_traces/ (git-ignored), for the Auditor and demos."""
+    out = lake() / "agent_traces" / f"{response['conversation_id']}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"question": question} | response, ensure_ascii=False, indent=1))
