@@ -75,7 +75,7 @@ Each topic in the top 10 gets:
 - a decision (`publicar_ahora`, `preparar`, `esperar`, `no_es_tema_caliente`) and its reasons;
 - a Spanish brief and up to five evidence articles;
 - a **community line**: what researchers, practitioners, builders, Y Combinator's Requests for Startups and AI's
-  critics published about it that week. It comes from 25 public sources (Hugging Face papers and models, AI
+  critics published about it that week. It comes from 24 public sources (Hugging Face papers and models, AI
   Engineer, DataTalksClub, Vanishing Gradients, Gradient Dissent, W&B, The Batch, safety and critic organisations).
   It is an unvalidated signal and stays out of the backtest.
 
@@ -127,7 +127,7 @@ and agents run on Google Cloud Run. The public chat is rate-limited.
 | Wikipedia resolution and pageviews (WS6) | Done | 11,060 topics resolved (1,916 exact); 368,394 es+pt daily pageview rows; 0 failed requests and 0 rate-limit errors at one request per 6.5 s |
 | Article classifier cascade (WS2b) | Done; the 300-row human check is pending | The teacher panel (Qwen3-235B, DeepSeek-V4-Pro) agrees 96.8% on "is AI".<br>The local student scores F1 0.964 against the panel. On 300 sheet rows, precision is 0.94 for the student and 0.75 for the GDELT rule.<br>Jev was called only for doubtful cases: $0.044 over 981 calls ([report](reports/label_quality.md)) |
 | Evidence articles (WS1d, WS1e) | Done, deduplicated | Up to 5 articles per top topic-week, one per outlet and one per story (site suffixes stripped).<br>1,191 articles over 240 topic-weeks, 0 duplicates; before the fixes, 463 of 1,200 slots were repeat copies.<br>Titles and URLs appear only on the deployed site, never in git |
-| AI community sensor | Done; unvalidated | 3,636 items from 25 public sources over 13 weeks (measured): HF papers and model releases, AI Engineer, DataTalksClub live streams, Vanishing Gradients, Gradient Dissent, CoreWeave, W&B, YC (RFS and videos), The Batch, practitioner newsletters, safety and critic organisations. Kept out of the backtest |
+| AI community sensor | Done; unvalidated | 3,636 items from 23 of 24 registered public sources over 15 weeks (measured): HF papers and model releases, AI Engineer, DataTalksClub live streams, Vanishing Gradients, Gradient Dissent, CoreWeave, W&B, YC (RFS and videos), The Batch, practitioner newsletters, safety and critic organisations. Kept out of the backtest |
 | Spanish briefs | Done on the AI top 10 | 20 briefs (W41-W42); 20/20 pass the Auditor. A check catches coverage claims that contradict the brief's own es/pt count: 8 of 20 did before it, 0 after |
 | Agents | Done, traced and evaluated | 8 agents on Qwen3-30B, plus the leaders and community tools. Release eval v3 (28 questions × 3, AI lexicon): **grounding 0.964 (0.93-1.00)**, decisions and routing 1.000, usefulness (a judge that sees the data) 0.619 (0.60-0.64). Community questions are still weak: 0.50 ([eval](#evaluation-loop)) |
 | Graph views | Done, on the AI graph | cosmos.gl temporal graph of the lexicon topics, coloured by family, and sigma.js story view. Nine question-driven lenses, including **Postura** (promoters vs critics). A graph image when the browser has no WebGL |
