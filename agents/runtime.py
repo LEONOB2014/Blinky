@@ -701,7 +701,7 @@ def run_turn(
         turn.log("media_master", "answer", result_summary="fuera de alcance (ruta por código)")
         answer, bad, decision_vetoed = _audit(turn, refusal, question, [])
         turn.answer_es = answer
-        response = turn.as_response()
+        response = turn.as_response() | {"trace_id": _trace_id()}
         _tag_run(["out_of_scope"], bad, decision_vetoed, week)
         _save_trace(question, response)
         return response
@@ -793,7 +793,7 @@ def run_turn(
     turn.answer_es = answer
     for card in turn.decision_cards:
         card["auditor_ok"] = not bad
-    response = turn.as_response()
+    response = turn.as_response() | {"trace_id": _trace_id()}
     _tag_run(needed, bad, decision_vetoed, week)
     _save_trace(question, response)
     return response
@@ -858,6 +858,12 @@ def _git_sha() -> str:
         [git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False
     )
     return out.stdout.strip() or "unknown"
+
+
+def _trace_id() -> str | None:
+    """The LangSmith trace of this turn, so a reader's thumbs up or down lands on it; None if off."""
+    run = get_current_run_tree()
+    return str(run.trace_id) if run is not None else None
 
 
 def _tag_run(needed: list[str], bad: list[str], decision_vetoed: bool, week: str | None) -> None:
