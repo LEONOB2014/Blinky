@@ -5,16 +5,56 @@
   "description": "BigQuery radar.topic_sources_weekly from radar.article_segment (ring 1, the org/thm ids of topic_daily, Monday weeks) -> lake/gold/topic_sources_weekly.parquet. WS4 uses it to keep wire-syndication bursts (one outlet or one feed repeated across sites) out of the top 10.",
   "type": "object",
   "x-owner": "WS1",
-  "x-mock": "pending-dev-slice",
+  "x-mock": "dev-slice",
   "properties": {
-    "topic_id": {"type": "string", "description": "'org:<name>' or 'thm:<GKG theme>'; persons never appear"},
-    "week": {"type": "string", "format": "date", "description": "Monday of the ISO week, as edges_weekly"},
-    "n_articles": {"type": "integer", "minimum": 1, "description": "distinct ring-1 articles of the week mentioning the topic"},
-    "n_sources": {"type": "integer", "minimum": 1, "description": "distinct source domains among them"},
-    "top_source_share": {"type": "number", "minimum": 0, "maximum": 1, "description": "share of the articles from the single largest source"},
-    "top3_source_share": {"type": "number", "minimum": 0, "maximum": 1, "description": "share from the three largest sources"},
-    "top_theme_pattern_share": {"type": ["number", "null"], "minimum": 0, "maximum": 1, "description": "share of the articles carrying the week's most common exact set of the topic's top co-mentioned entities (a syndicated-copy signal); null if not computed"}
+    "topic_id": {
+      "type": "string",
+      "description": "'org:<name>' or 'thm:<GKG theme>'; persons never appear"
+    },
+    "week": {
+      "type": "string",
+      "format": "date",
+      "description": "Monday of the ISO week, as edges_weekly"
+    },
+    "n_articles": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "distinct ring-1 articles of the week mentioning the topic"
+    },
+    "n_sources": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "distinct source domains among them"
+    },
+    "top_source_share": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "share of the articles from the single largest source"
+    },
+    "top3_source_share": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "share from the three largest sources"
+    },
+    "top_theme_pattern_share": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "share of the articles carrying the week's most common exact set of the topic's top co-mentioned entities (a syndicated-copy signal); null if not computed"
+    }
   },
-  "required": ["topic_id", "week", "n_articles", "n_sources", "top_source_share", "top3_source_share"],
+  "required": [
+    "topic_id",
+    "week",
+    "n_articles",
+    "n_sources",
+    "top_source_share",
+    "top3_source_share"
+  ],
   "additionalProperties": false
 }
