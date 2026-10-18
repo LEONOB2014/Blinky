@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "Q182477": {
+      "type": "item",
+      "id": "Q182477",
+      "labels": {
+        "es": {
+          "language": "es",
+          "value": "Nvidia"
+        },
+        "en": {
+          "language": "en",
+          "value": "Nvidia"
+        },
+        "pt": {
+          "language": "pt",
+          "value": "Nvidia"
+        }
+      },
+      "sitelinks": {
+        "eswiki": {
+          "site": "eswiki",
+          "title": "NVIDIA"
+        },
+        "enwiki": {
+          "site": "enwiki",
+          "title": "Nvidia"
+        },
+        "ptwiki": {
+          "site": "ptwiki",
+          "title": "Nvidia"
+        }
+      },
+      "claims": {
+        "P31": [
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P31",
+              "datavalue": {
+                "value": {
+                  "entity-type": "item",
+                  "numeric-id": 891723,
+                  "id": "Q891723"
+                },
+                "type": "wikibase-entityid"
+              },
+              "datatype": "wikibase-item"
+            },
+            "type": "statement"
+          },
+          {
+            "mainsnak": {
+              "snaktype": "value",
+              "property": "P31",
+              "datavalue": {
+                "value": {
+                  "entity-type": "item",
+                  "numeric-id": 4830453,
+                  "id": "Q4830453"
+                },
+                "type": "wikibase-entityid"
+              },
+              "datatype": "wikibase-item"
+            },
+            "type": "statement"
+          }
+        ]
+      }
+    }
+  },
+  "success": 1
+}
