@@ -27,9 +27,21 @@ PRIMARY_WEEKS = 4  # weeks t-3..t
 NO_SUBTOPIC = ""
 
 
+def min_articles_week() -> int:
+    """The weekly article minimum of the active source (models.source): 20 for GDELT topics."""
+    from models import source
+
+    floor = source.current().min_articles_week
+    return MIN_ARTICLES_WEEK if floor is None else floor
+
+
 def in_universe(col: str = "topic_id") -> pl.Expr:
     """True for the topic ids the radar may rank (before the weekly article minimum)."""
+    from models import source
+
     c = pl.col(col)
+    if (prefix := source.current().prefix) is not None:
+        return c.str.starts_with(prefix)
     deny = [f"org:{name}" for name in RULES.get("org_deny") or []]
     org = c.str.starts_with("org:") & ~c.is_in(deny) if RULES.get("org") else pl.lit(False)
     thm = pl.lit(False)

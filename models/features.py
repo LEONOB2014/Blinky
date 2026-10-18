@@ -77,23 +77,25 @@ def subtopic_daily() -> pl.DataFrame:
 
 
 def topic_daily() -> pl.DataFrame:
-    """WS1's `topic_daily` (entity and theme topics) as unit series, ranked universe only.
+    """WS1's `topic_daily` (or the active source's table, models.source) as unit series, ranked
+    universe only.
 
     Only topics in the taxonomy's ranked universe that reach the weekly article minimum in at
     least one ISO week are kept (the rest can never be ranked). The contract carries mean tone and
     polarity but not the tail counts, so `n_pos_x`/`n_neg_x` (and with them controversy) are NULL
     at topic level; tone sums are rebuilt from the means.
     """
-    from models import universe  # local: universe reads the taxonomy, features stays generic
+    from models import source, universe  # local: universe reads the taxonomy
 
-    d = _as_date(pl.read_parquet(gold("topic_daily")))
+    src = source.current()
+    d = _as_date(pl.read_parquet(gold(src.topic_table)))
     if "segment" in d.columns:
         d = d.filter(pl.col("segment") == "ai")
     d = d.filter(universe.in_universe("topic_id"))
     weekly = d.group_by("topic_id", pl.col("dt").dt.strftime("%G-W%V").alias("w")).agg(
         pl.col("n_articles").sum()
     )
-    keep = weekly.filter(pl.col("n_articles") >= universe.MIN_ARTICLES_WEEK)["topic_id"].unique()
+    keep = weekly.filter(pl.col("n_articles") >= universe.min_articles_week())["topic_id"].unique()
     d = d.filter(pl.col("topic_id").is_in(keep.implode()))
     tone_ok = pl.col("mean_tone").is_not_null()
     return (
