@@ -67,7 +67,7 @@ deploy-serve: ## Temporary Modal URL for the API (no secret: /api/chat answers 5
 deploy-api: ## Deploy the API on Modal (needs the radar-nebius secret; maintainer's approval)
 	uv run --extra deploy modal deploy deploy/modal_app.py
 
-deploy-cloudrun-stage: ## Stage the Cloud Run build context in build/cloudrun/ (code + 7 lake tables)
+deploy-cloudrun-stage: ## Stage the Cloud Run build context in build/cloudrun/ (code + the API's lake tables)
 	RADAR_PROFILE=full uv run python deploy/cloudrun_stage.py
 
 deploy-cloudrun-local: deploy-cloudrun-stage ## Build and run the Cloud Run image locally on :18080

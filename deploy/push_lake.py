@@ -1,5 +1,7 @@
 """Upload the lake tables the API reads to the Modal Volume `radar-lake` (as gold/<name>.parquet).
 
+`TABLES` is also the list the Cloud Run image stages (deploy/cloudrun_stage.py).
+
 Only the listed tables: public GDELT aggregates, no persons as ranked topics, no titles or URLs.
 `edges_weekly` (~440 MB) is never uploaded: the API reads the precomputed 1-hop ring instead.
 
@@ -21,6 +23,13 @@ TABLES = (
     "daily_topic_rolling",
     "daily_totals",
     "node_metrics_weekly",
+    # Read by the agents' tools on the live API (briefs and evidence for the Editor and the Signal
+    # analyst, source diversity, the topic's subtopics). topic_evidence_weekly holds public news
+    # titles and URLs: they reach the image and the deployed site, never git.
+    "topic_briefs_weekly",
+    "topic_evidence_weekly",
+    "topic_sources_weekly",
+    "topic_subtopic_weekly",
 )
 NEVER = {"edges_weekly"}
 

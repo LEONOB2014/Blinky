@@ -6,11 +6,50 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 redeploy of `develop` e4518d2) · committed locally, the orchestrator pushes.
+2026-10-18 05:30 UTC-5 · branch `feat/ws9-final-data` · committed locally, the orchestrator pushes.
+
+Previous: 2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 redeploy of `develop` e4518d2) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+
+## Final data fixes (orchestrator's decisions on the 05:00 findings), branch `feat/ws9-final-data`
+
+The findings themselves and the 05:00 redeploy record are on `docs/ws9-redeploy-0500` (the orchestrator
+lands it).
+
+1. **The image stages all 11 lake tables.** `deploy/push_lake.py` `TABLES`, which
+   `deploy/cloudrun_stage.py` reuses, adds `topic_briefs_weekly`, `topic_evidence_weekly`,
+   `topic_sources_weekly` and `topic_subtopic_weekly`.
+   - Dry run: 87.6 MiB in total (was 81.8), measured.
+   - **Not deployed:** the final redeploy comes after the design work merges. Until then the live
+     chat's `get_topic_brief` and `get_topic_evidence` still answer "not available".
+2. **Evidence deduplicated by normalized title** (`bq_sql/s14_topic_evidence_weekly.sql`).
+   - The normalized title is lowercase with every run of non-letters and non-digits collapsed. An
+     empty or missing title counts as its own title.
+   - Order: keep the earliest copy of each title, then one article per outlet, then the relevance
+     order, refilled to 5 from other titles. The rule is in `why_selected`.
+   - Re-run on the same 240 topic-weeks (top 30 of the 8 weeks 2026-08-24..2026-10-12, checked
+     identical): billed **1.12 GiB** (measured).
+   - **Before:** **177 of 240** topic-weeks (74%) had duplicate titles, and **463 of the 1,200**
+     article slots (39%) were repeat copies. In the worst cases, `org:ai safety institute` (W38),
+     `org:australian recording industry association` (W35) and `org:marsh mclennan` (W42), all 5
+     slots were one title.
+   - **After:** 0 duplicates; 1,191 rows. 235 topic-weeks have 5 articles; 5 have fewer because
+     they lack 5 distinct titles (1 has 2, 2 have 3, 2 have 4). `org:marsh mclennan` W42 now shows 5
+     distinct titles from 5 outlets.
+   - The lake file was re-exported (1,000 sampled rows valid).
+   - A new data test fails on any duplicated normalized title per topic-week; the evidence data
+     tests pass.
+   - The static JSON was regenerated (`web/public/data/evidence/topics/`, 212 files, git-ignored);
+     the final redeploy ships it.
+   - What the duplicates say: in three topic-weeks of four, the evidence used to be partly one
+     syndicated story. The radar's volume counts (`topic_sources_weekly.n_articles`) still count
+     each copy. WS4's guard limits that with the pattern share and the top-source share, not with
+     titles.
+3. Items 3 (the "medido" label on audience fit) and 4 (the raw markdown in the trust panel) went to
+   Grok's design lane.
 
 ## Redeploy of `develop` e4518d2 (orchestrator's order, ~04:50 UTC-5)
 

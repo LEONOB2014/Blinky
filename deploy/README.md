@@ -10,9 +10,9 @@ needs the live API; every other panel works from the static files.
 
 | File | What it does |
 |---|---|
-| `cloudrun/Dockerfile`, `cloudrun_stage.py` | The API image for Cloud Run: `cloudrun_stage.py` stages `build/cloudrun/` (the code the API imports, `contracts/`, `reports/` and the 7 lake tables; never `.env` or `edges_weekly`) |
+| `cloudrun/Dockerfile`, `cloudrun_stage.py` | The API image for Cloud Run: `cloudrun_stage.py` stages `build/cloudrun/` (the code the API imports, `contracts/`, `reports/` and the API's lake tables (`push_lake.TABLES`, 11); never `.env` or `edges_weekly`) |
 | `modal_app.py` | `api/app.py` on Modal: CPU, `@modal.asgi_app`, Volume `radar-lake` at `/lake`, `RADAR_PROFILE=full`, Secret `radar-nebius` |
-| `push_lake.py` | Uploads the 7 tables the API reads (81.8 MiB, measured) to the Volume; never `edges_weekly` |
+| `push_lake.py` | Uploads the 11 tables the API reads (`TABLES`) to the Volume; never `edges_weekly` |
 | `export_static.py` | Writes `web/public/data/` from the full lake through the real API handlers; refuses unless `RADAR_PROFILE=full` |
 | `web/src/api.ts` | Live API first; on a network error or 5xx (or with no API URL in a production build) it reads the static files |
 
@@ -70,7 +70,7 @@ and only after the lake writer has finished: a table rewritten mid-stage ships a
 
 ```bash
 uv run --extra deploy modal secret create radar-nebius NEBIUS_API_KEY=<paste the key>
-make deploy-push-lake                 # the 7 tables to the Volume radar-lake
+make deploy-push-lake                 # the API's tables to the Volume radar-lake
 make deploy-serve                     # temporary URL; make deploy-api for a stable one
 ```
 
