@@ -33,6 +33,10 @@ ALLOWED_COLUMNS: dict[str, set[str]] = {
         "mean_polarity", "is_missing",
     },
     "topic_subtopic_weekly": {"topic_id", "week", "subtopic", "n_articles", "n_topic_articles"},
+    "topic_sources_weekly": {
+        "topic_id", "week", "n_articles", "n_sources", "top_source_share", "top3_source_share",
+        "top_theme_pattern_share",
+    },
     "topic_wikidata": {
         "topic_id", "qid", "label_es", "article_es", "article_pt", "article_en", "match",
         "confidence",

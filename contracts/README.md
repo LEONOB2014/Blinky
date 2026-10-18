@@ -13,6 +13,7 @@ Changing a contract is a breaking change: open a PR with `feat(contracts)!:` and
 | `daily_topic_rolling` | WS1 Scout | the same, with 7-day signals and baselines |
 | `topic_daily` | WS1 Scout | day × ranked topic (entity or theme in ring 1) × language |
 | `topic_subtopic_weekly` | WS1 Scout | week × ranked topic × AI subtopic (the topic's primary subtopic for WS4) |
+| `topic_sources_weekly` | WS1 Scout | week × ranked topic: distinct outlets and source concentration (syndication guard) |
 | `edges_weekly` | WS1 Scout | one weekly co-occurrence edge with NPMI |
 | `topic_context_1hop` | WS3 Cartographer | one neighbour in a topic's 1-hop ring |
 | `topic_scores_weekly` | WS4 Signal analyst | one ranked topic in one week, with its decision |

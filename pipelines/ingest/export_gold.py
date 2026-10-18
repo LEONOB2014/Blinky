@@ -36,6 +36,7 @@ TABLES = {
     "topic_daily": ("radar.topic_daily", False),
     "edges_weekly": ("radar.edges_weekly", False),
     "topic_subtopic_weekly": ("radar.topic_subtopic_weekly", False),
+    "topic_sources_weekly": ("radar.topic_sources_weekly", False),
 }
 PAGE = 100_000
 WORKERS = 8

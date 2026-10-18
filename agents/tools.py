@@ -352,7 +352,7 @@ _VIEW_VALIDATOR = Draft202012Validator(load_schema("view_command"))
 def update_view(
     view: str,
     caption_es: str,
-    color_by: str = "tone",
+    color_by: str = "decision",
     week: str | None = None,
     focus_topic: str | None = None,
     highlight: list[str] | None = None,
