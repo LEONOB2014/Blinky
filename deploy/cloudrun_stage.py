@@ -1,4 +1,4 @@
-"""Stage the Cloud Run build context: code, contracts, reports and the 7 lake tables, nothing else.
+"""Stage the Cloud Run build context: code, contracts, reports and the API's lake tables only.
 
 The context is a fresh directory (default: build/cloudrun/, git-ignored as build output) so the
 repository's .env, the 440 MB edges_weekly and the rest of the lake never reach the image or
@@ -15,7 +15,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from push_lake import plan  # the same 7 tables as the Modal Volume, never edges_weekly
+from push_lake import plan  # push_lake.TABLES, as the Modal Volume; never edges_weekly
 
 from radar.paths import gold
 

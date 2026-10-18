@@ -4,7 +4,52 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 01:45 UTC-5 · addendum 2 step 1 done · committed locally; the orchestrator pushes.
+2026-10-18 05:05 UTC-5 · grounding gaps closed (fix/ws0-grounding-gaps) · committed locally; the orchestrator pushes.
+
+## Grounding gaps closed (05:05 UTC-5, branch `fix/ws0-grounding-gaps`, committed locally; the orchestrator pushes)
+
+- `get_cost_ledger` now returns:
+  - BigQuery bytes billed (*measured*) and the month's share of the 1 TiB free tier;
+  - the USD it implies at USD 6.25/TiB, with and without the free tier (*estimate*, source stated);
+  - Jev's USD total (*measured*): $0.0443 over 981 calls.
+- The old share divided by 1 TB instead of 1 TiB: 0.38 -> 0.346.
+- `get_context_1hop` now states the ring's thresholds: n >= 3, NPMI > 0.1, hubs and persons dropped,
+  top 20. A test checks them against `graph/`.
+- grounding-gaps (3 x 25, *measured*) vs final-develop:
+  - grounding 1.000 [1.00-1.00] vs 0.973 [0.92-1.00]; the ranges touch at 1.00;
+  - usefulness_v2 0.593 [0.54-0.63] vs 0.567; v1 0.460 vs 0.457;
+  - decisions, routing and entities 1.000 (no lost runs);
+  - tokens 6,035 vs 5,824 (beyond the spread: larger tool outputs).
+- q20 cites the real cost in 3 of 3 runs. q12 no longer invents a threshold, but no graph answer
+  cites one either.
+- **Open:** two q22 runs say "$2.20 por semana", an invented weekly cost the Auditor missed.
+  - Cause: `untraced_numbers` divides every number by 100, not only percentages.
+  - Proposed fix: divide only "%" tokens, and keep the cost ledger out of the trust route.
+  - Not done here: outside this brief.
+
+## Final regression check (04:55 UTC-5, branch `chore/final-eval`, committed locally; the orchestrator pushes)
+
+- `final-develop` on `develop` 7634781 (briefs, evidence tools and graph lenses merged).
+  25 questions x 3 repetitions, concurrency 4, all *measured*.
+- Results against auditor-cards-r3 (spread in brackets):
+
+  | Metric | auditor-cards-r3 | final-develop |
+  |---|---|---|
+  | usefulness v1 | 0.500 [0.47-0.55] | 0.457 [0.43-0.48] |
+  | usefulness_v2 | 0.550 | 0.567 [0.51-0.60] |
+  | grounding | 1.000 | 0.973 [0.92-1.00] |
+  | decisions, routing, entities | 1.000 | 0.987 each |
+  | latency | 12.6 s | 7.8 s |
+  | tokens per turn | 5,812 | 5,824 |
+
+- **Decisions, routing and entities:** each lost the same single run, a q11 run that hit a DNS error
+  before any agent ran. Over the 74 completed runs, all three are 1.00.
+- **Grounding** is the only metric outside the old spread: 2 of 75 runs.
+  - The model made up an "nPMI > 0.85" threshold (q12) and a "$114.23" cost (q20).
+  - The Auditor caught and labelled both.
+  - Neither tool path changed in the diff, so this is sampling, not a regression from the merge.
+- **Usefulness v1:** dips, but the spreads overlap.
+- Verdict: no regression attributable to the merged changes. Detail in `agents/README.md`.
 
 ## Done
 

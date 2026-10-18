@@ -6,9 +6,167 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
+2026-10-18 05:34 UTC-5 · branch `docs/ws9-predeploy-check` (pre-deploy check of `develop` e830a28, no deploy) · committed locally, not pushed.
+
+Previous: 2026-10-18 05:30 UTC-5 · branch `feat/ws9-final-data` · committed locally, the orchestrator pushes.
+
+Previous: 2026-10-18 04:54 UTC-5 · branch `docs/ws9-redeploy-0500` (the 05:00 redeploy of `develop` e4518d2) · committed locally, the orchestrator pushes.
+
+Previous: 2026-10-18 02:26 UTC-5 · branch `feat/ws9-demo-hardening` (WS9b) · committed locally, the orchestrator pushes.
 
 Previous: 2026-10-18 01:14 UTC-5 · branch `feat/ws9-submission-kit` · committed locally, the orchestrator pushes.
+
+## Pre-deploy check of `develop` e830a28 (orchestrator's order, 05:38; no deploy)
+
+The `deploy-develop` checkout was moved to `origin/develop` e830a28. Its API ran locally on
+**port 8011** (`RADAR_PROFILE=full`, LangSmith tracing off so the test questions stay out of the
+traces) over the shared lake, and was stopped afterwards (checked: 8011 free).
+
+**Result: 3 checks; 2 pass outright. The chat check passes the Auditor 4/4 but fails on content
+2 of 4.**
+
+1. `RADAR_API_URL=http://127.0.0.1:8011 scripts/demo_check.py`: **7/7 PASS** (measured). The site
+   checks still read the live Netlify site; local `/api/radar` equals Netlify's static top 10.
+2. **Chat, 4 questions that need the new tables** (Marsh McLennan, the W42 #1):
+
+   | # | Question | Tools that ran (data available) | Auditor | Answers from the tool data? |
+   |---|---|---|---|---|
+   | 1 | ¿Qué contenido preparo esta semana sobre Marsh McLennan? | `get_topic_brief`, `get_topic_evidence`, scores, series | pass | **pass**: the brief's format, angle, 92 and 65 |
+   | 2 | ¿Qué artículos respaldan a Marsh McLennan…? | `get_topic_evidence` (5 articles, 5 outlets), scores | pass | **fail**: names no article and no outlet; answers about growth instead |
+   | 3 | ¿Cuántos medios distintos cubren a Marsh McLennan…? | scores, series, evidence; **no tool reads `topic_sources_weekly`** | pass | **fail, wrong fact**: "44 medios distintos". 44 is the article count; the measured outlet count is 39. |
+   | 4 | ¿En qué subtemas de IA cae Marsh McLennan…? | scores (`subtopics`), series, evidence; **no tool reads `topic_subtopic_weekly`** | pass | **pass**: inversión y mercados, chips e infraestructura, from the scores row |
+
+   - Auditor 4/4 (no veto: "todos los números de la respuesta tienen fuente"); content 2/4 (judged
+     by reading each answer against its tool results).
+   - "más del 900%" in answer 3 traces to the scores' "cuota 7d más de 10 veces", so it is not
+     invented.
+   - Latency 12.5 / 8.0 / 6.5 / 6.5 s.
+   - **Spend:** 29,946 tokens in total for the 4 turns. At Qwen3-30B rates this is well under the
+     $0.10 limit (estimate: under $0.01).
+3. `deploy/export_static.py` into a scratch folder: **PASS**. 212 evidence files, 240 topic-weeks,
+   1,191 articles, **0 topic-weeks with duplicate titles** (measured).
+
+**Defects (for the orchestrator; nothing changed here):**
+
+- **D1, no tool for two of the four new tables.** `topic_sources_weekly` and `topic_subtopic_weekly`
+  are now staged in the image (PR #44), but no agent tool reads them.
+  - "¿cuántos medios?" gets a wrong number: the article count presented as the outlet count. The
+    Auditor cannot catch it, because 44 is a real number in the data.
+  - Fix: a `get_topic_sources(topic_id, week)` tool returning `n_articles`, `n_sources` and the top
+    source shares, added to the Signal analyst's plan for named topics. Subtopics already come from
+    the scores row, so `topic_subtopic_weekly` (per-subtopic article shares) is optional.
+- **D2, evidence is fetched but not shown.** For an evidence question the Media Master does not list
+  the outlets, dates or titles that `get_topic_evidence` returned. Fix: route "artículos /
+  evidencia / fuentes / medios" questions to a code-written evidence block (outlet, date, language,
+  title), as the decision line is written by code.
+- **D3, the same invented framing in every answer.** All four end with a made-up story ("cómo la
+  firma está redefiniendo la gestión de riesgos en América Latina", "cómo las aseguradoras usan IA
+  en riesgos financieros"). No tool data supports it, and the number-only Auditor cannot see it.
+  Answer 1 also reads the subtopic categories as the company's business ("su expansión en mercados
+  de financiamiento e infraestructura de chips"), the overclaim the briefs' prompt now forbids. Fix:
+  the same rules in the Media Master's prompt (no causes or narratives beyond the data; subtopics
+  are categories).
+
+## Final data fixes (orchestrator's decisions on the 05:00 findings), branch `feat/ws9-final-data`
+
+The findings themselves and the 05:00 redeploy record are on `docs/ws9-redeploy-0500` (the orchestrator
+lands it).
+
+1. **The image stages all 11 lake tables.** `deploy/push_lake.py` `TABLES`, which
+   `deploy/cloudrun_stage.py` reuses, adds `topic_briefs_weekly`, `topic_evidence_weekly`,
+   `topic_sources_weekly` and `topic_subtopic_weekly`.
+   - Dry run: 87.6 MiB in total (was 81.8), measured.
+   - **Not deployed:** the final redeploy comes after the design work merges. Until then the live
+     chat's `get_topic_brief` and `get_topic_evidence` still answer "not available".
+2. **Evidence deduplicated by normalized title** (`bq_sql/s14_topic_evidence_weekly.sql`).
+   - The normalized title is lowercase with every run of non-letters and non-digits collapsed. An
+     empty or missing title counts as its own title.
+   - Order: keep the earliest copy of each title, then one article per outlet, then the relevance
+     order, refilled to 5 from other titles. The rule is in `why_selected`.
+   - Re-run on the same 240 topic-weeks (top 30 of the 8 weeks 2026-08-24..2026-10-12, checked
+     identical): billed **1.12 GiB** (measured).
+   - **Before:** **177 of 240** topic-weeks (74%) had duplicate titles, and **463 of the 1,200**
+     article slots (39%) were repeat copies. In the worst cases, `org:ai safety institute` (W38),
+     `org:australian recording industry association` (W35) and `org:marsh mclennan` (W42), all 5
+     slots were one title.
+   - **After:** 0 duplicates; 1,191 rows. 235 topic-weeks have 5 articles; 5 have fewer because
+     they lack 5 distinct titles (1 has 2, 2 have 3, 2 have 4). `org:marsh mclennan` W42 now shows 5
+     distinct titles from 5 outlets.
+   - The lake file was re-exported (1,000 sampled rows valid).
+   - A new data test fails on any duplicated normalized title per topic-week; the evidence data
+     tests pass.
+   - The static JSON was regenerated (`web/public/data/evidence/topics/`, 212 files, git-ignored);
+     the final redeploy ships it.
+   - What the duplicates say: in three topic-weeks of four, the evidence used to be partly one
+     syndicated story. The radar's volume counts (`topic_sources_weekly.n_articles`) still count
+     each copy. WS4's guard limits that with the pattern share and the top-source share, not with
+     titles.
+3. Items 3 (the "medido" label on audience fit) and 4 (the raw markdown in the trust panel) went to
+   Grok's design lane.
+
+## Redeploy of `develop` e4518d2 (orchestrator's order, ~04:50 UTC-5)
+
+Run from `../radar-worktrees/deploy-develop`, a detached checkout of `origin/develop` at e4518d2: graph
+lenses and full screen, cards, briefs, evidence, feedback endpoint, LangSmith on Cloud Run.
+
+- `uv sync --extra api --extra graph`, then
+  `RADAR_PROFILE=full uv run --extra graph python -m graph.export_views` (12 s, measured):
+  - temporal: 1,000 nodes and 44,005 edges over 13 weeks (2026-07-20..2026-10-12), 3.79 MB;
+  - story of `org:marsh mclennan` 2026-W42, plus 14 other stories.
+- `.env` here lacked `NETLIFY_SITE_ID` (the script's precondition); added from the WS8 `.env`
+  (git-ignored). The LangSmith secret `radar-langsmith-key` exists and the Cloud Run service
+  account can read it (checked).
+- `make redeploy-all ARGS=--run`, **3 min 17 s** (measured):
+  - scores stable;
+  - Cloud Run revision **`radar-api-00005-8sm`** (09:49 UTC), built with Cloud Build;
+  - static export, web build;
+  - Netlify production deploy (575 files);
+  - `make demo-check`: **7/7 passed**.
+- `make demo-check ARGS=--chat`: **8/8 passed** (chat turn 8.95 s, 8 trace steps, 3 cards; measured).
+- **Feedback:** a chat turn returned `trace_id` `01a14e6c-1306-71c0-99db-b85e9400ced6` (10.8 s).
+  `POST /api/feedback` on it answered **202**, `{"recorded": true}`, in 0.54 s (measured). Its
+  comment says "deploy check 2026-10-18 (not a user rating)", so it can be filtered out of the real
+  usefulness scores.
+- **Public site** (https://radar-senal-temprana.netlify.app), walked in a **headed** Chrome window
+  over the DevTools protocol, the same approach as `graph/views/measure.mjs`. Screenshots are in
+  `lake/submission/shots/` (not in git).
+  - `00_site_full.png`, `01_cards.png`: the cards with the "Confianza" button, view tabs and the
+    Brief and Evidencia expanders.
+  - `02_brief.png`: the #1 brief with "verificado por el Auditor" and its cited numbers.
+  - `03_evidence.png`: 5 evidence articles.
+  - `04_trust.png`: the trust panel (BigQuery 380.75 GB in 66 jobs, Jev 981 calls, the
+    label-quality report verbatim).
+  - `05_temporal.png`: the GPU temporal graph; `window.__metrics`: ANGLE Metal on the M1 Pro, first
+    frame 1.24 s, 1,000 nodes, 3,463 edges in W42, week switch 3.5 ms (measured).
+  - `06_story.png`: "Historia 1-salto" switches the temporal graph to the Historia lens focused on
+    the #1 topic.
+- All the static data files answer 200 (views, briefs, per-topic evidence, `evidence/backtest.json`,
+  `label_quality.json`, `ledgers.json`). The page logs 404s only for evidence of the UI's default
+  context entities (nvidia, google, microsoft, openai group, TECH_AUTOMATION), which are not in a
+  top 10 and so have no evidence file. Harmless, but console noise.
+
+**Found in the checks (for the orchestrator; nothing changed here):**
+
+1. **The Cloud Run image does not ship the briefs or the evidence.**
+   - `deploy/push_lake.py` `TABLES` (used by `cloudrun_stage.py`) still lists the original 7.
+     `topic_briefs_weekly`, `topic_evidence_weekly`, `topic_sources_weekly` and
+     `topic_subtopic_weekly` exist in the lake but not in the image.
+   - The live chat's `get_topic_brief` and `get_topic_evidence` return "not available". A chat
+     about Marsh & McLennan called only `get_top10` and `get_topic_series`.
+   - The cards are fine: they read the static files.
+   - Fix: add the four tables to `TABLES` and rerun `make deploy-cloudrun` (~2.5 min). One line in
+     `deploy/`; I can do it on your word.
+2. **The #1 topic's evidence is one wire story five times.** `org:marsh mclennan` W42's 5 evidence
+   articles are the same syndicated title from five outlets.
+   - It passed WS4's guard (pattern share 0.66 < 0.9, 39 sources) because the copies carry varied
+     co-mentions.
+   - The evidence rule (one per outlet) does not dedupe identical titles.
+   - Two candidate fixes: S14 keeps one article per title, and WS4 adds a title-duplication signal
+     to the guard. Both are cheap (S14 about 1.1 GiB).
+3. **The card labels audience fit as measured.** "Encaje LatAm: 65% (medido)" on the card, while its
+   own bullet and the contract call it an estimate (regla v1). WS5, one word.
+4. The trust panel shows `label_quality.md` as raw markdown (tables as pipes). Readable, but it
+   looks unfinished in the video.
 
 ## WS9b: demo hardening
 

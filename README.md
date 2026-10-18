@@ -39,7 +39,7 @@ The full plan is in [docs/plan/MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf), and 
 
 ## Status
 
-<sub>Updated 2026-10-18 03:30 UTC-5. Every number is measured unless marked otherwise.</sub>
+<sub>Updated 2026-10-18 05:20 UTC-5. Every number is measured unless marked otherwise.</sub>
 
 | Part | State | Evidence |
 |---|---|---|
@@ -47,15 +47,15 @@ The full plan is in [docs/plan/MASTER_PLAN.pdf](docs/plan/MASTER_PLAN.pdf), and 
 | Graph metrics, 1-hop ring (WS3) | Done, 51 weeks | 473,275 node-weeks; 4,773,204 ring rows, no persons |
 | Link-prediction baselines (WS7) | Done | EdgeBank MRR 0.0050 on new edges, persistence 0.0123 on all ([report](reports/tgnn.md)) |
 | Scores, window, decision (WS4) | Merged, with an eligibility gate and a syndication guard | 16,904 topic-weeks; a topic headlines only if established or an exact Wikidata match, with >= 5 sources, no outlet above 50% and no single copy pattern above 90% (thresholds estimated from the data) |
-| Backtest (WS4) | Secondary label done; primary label near full coverage | Secondary label (es+pt GDELT growth, 43 weeks): precision@10 13.3% (9.5-17.2) vs base rate 6.7%, persistence 12.8% (a tie) and raw-count growth 0.2%; the guard adds +5.8 points (2.8-9.1). The primary label (Wikipedia es+pt pageviews, exact matches) is reported once every ranker passes 90% coverage ([report](reports/backtest.md)) |
-| Wikipedia resolution and pageviews (WS6) | Fetching the last topics | 11,060 topics resolved (1,916 exact); es+pt daily pageviews for the backtest's topics; 0 rate-limit errors at one request per 6.5 s |
+| Backtest (WS4) | Both labels reported | Primary label (Wikipedia es+pt pageview growth, exact matches, 43 weeks): published radar precision@10 29.2% (24.4-34.0; coverage 92.7%) vs base rate 25.4%, persistence 18.1% and raw-count growth 31.7%: it beats persistence even in the worst case (+6.4, 0.7-12.0) but not raw-count growth. Secondary label (es+pt GDELT growth): 13.3% (9.5-17.2) vs base 6.7%, a tie with persistence; median lead 3.0 weeks (2.0-4.0). The syndication guard helps on the secondary label and costs precision on the primary ([report](reports/backtest.md)) |
+| Wikipedia resolution and pageviews (WS6) | Merged | 11,060 topics resolved (1,916 exact); 368,394 es+pt daily pageview rows; 0 failed requests and 0 rate-limit errors at one request per 6.5 s |
 | Article classifier cascade (WS2b) | Merged; human labels next (04:00) | Teacher panel (Qwen3-235B, DeepSeek-V4-Pro) agrees 96.8% on "is AI"; local student F1 0.964 on a frozen test split; on 300 sheet rows the GDELT rule's precision is 0.75 against the student's 0.94, subtopic agreement 0.11 (regex) against 0.54. Reference is the teacher panel until the human labels land. Jev spend $0.044 over 981 calls ([report](reports/label_quality.md)) |
 | API and UI (WS5, WS5b) | Merged, on the full lake | 5 of 5 endpoints; privacy guards for persons and deny-listed orgs; 10 API tests |
 | Agents | Merged, traced and evaluated | 8 agents on Qwen3-30B; LangSmith traces per turn; frozen 25-question set, 3 repetitions: grounding 1.00, routing 1.00, usefulness (judge that sees the data) 0.383 -> 0.567 after the quality work |
-| Graph views (GPU, temporal) | Lenses and full screen being fixed after review | cosmos.gl temporal sweep and sigma story view work; split view, full screen and question-driven lenses (decision, ring, bridge, momentum, novelty, tone, window) are being fixed after a code review found the lens was not applied |
+| Graph views (GPU, temporal) | Merged; demo layout being redesigned | cosmos.gl temporal graph and sigma story view; split view and full screen; question-driven lenses (decision, ring, bridge, momentum, novelty, community, tone, window) with a real re-layout; per-week betweenness, sector crossing, momentum and edge state |
 | Deploy | Live and public, redeployed after the guard | UI on Netlify ([radar-senal-temprana.netlify.app](https://radar-senal-temprana.netlify.app)), API and agents on Cloud Run; public chat rate-limited; the static fallback carries the evidence and trust numbers; one command redeploys everything |
 | Evidence articles (WS1d) | Merged | up to 5 representative articles per top topic-week, one per outlet, Spanish and Portuguese first; titles and URLs only on the deployed site, never in git |
-| Spanish briefs | In progress | one Auditor-checked brief per top-10 topic: what happened, why it matters in LatAm, angle, hook, format |
+| Spanish briefs | Merged | 20 briefs (top 10 of 2026-W41 and W42), 20/20 pass the Auditor (3 retried for overclaims), shown on each card with the evidence articles |
 
 ## Architecture
 

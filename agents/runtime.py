@@ -280,7 +280,8 @@ def untraced_numbers(answer: str, results: list[dict[str, Any]], question: str) 
         value = _as_float(token)
         if abs(value) <= 12 and value == int(value):
             continue  # small counts such as "top 10" or "2 ganchos"
-        candidates = [value, value / 100] if token.endswith("%") else [value, value / 100]
+        # only a percentage may match a share (34,6% <- 0.346); a plain number must match itself
+        candidates = [value, value / 100] if token.endswith("%") else [value]
         decimals = len(token.rstrip("%").replace(",", ".").partition(".")[2])
         tol = 0.5 * 10**-decimals
         if not any(abs(s - c) <= max(tol, abs(c) * 0.005) for s in sources for c in candidates):
