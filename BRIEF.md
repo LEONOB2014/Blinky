@@ -6,7 +6,7 @@ Written by the orchestrator, 2026-10-17 23:20 UTC-5. Read `AGENTS.md`, then this
 ## Goal
 
 Prove, on a small real slice, that the demo's graph views can be produced in time: the data export for
-the temporal view and the story view, and one working GPU-rendered temporal view. The full graph phase
+the temporal view and the story view, and one working GPU-rendered temporal view, with no cloud service and no account. The full graph phase
 (G) still starts only after the gate; this lane measures how long it will take and finds the blockers now.
 
 ## Plan reference
@@ -31,16 +31,22 @@ WS4 is changing the top 10 tonight, so read it, never hard-code topics). Persons
    - **story**: for one topic and week, the topic, its 1-hop ring (up to 20), the edges among those
      neighbours, and the scores row. JSON shaped for sigma.js (`nodes`, `edges`, attributes).
    Written to `lake/views/` (git-ignored). Contract-free for now; document the fields in `graph/README.md`.
-2. **Graphistry smoke test** (`graph/graphistry_smoke.py`): upload the temporal export of the last 4
-   weeks to Graphistry Hub with the time column set, and record the upload time, node/edge counts and
-   whether the timebar animates. Credentials: `GRAPHISTRY_USERNAME` / `GRAPHISTRY_PASSWORD` in `.env`
-   (**empty today**: if they are still empty when you get here, write `BLOCKED: Graphistry credentials`
-   for this output only and continue with output 3).
-3. **Local fallback that needs no account:** one HTML page under `lake/views/` that renders the story
-   JSON with sigma.js (WebGL, so the GPU draws it) from a CDN, opened with `python -m http.server`. A
-   screenshot path in the status. This is a smoke test, not the final UI (WS5 owns `web/`).
-4. `status/WS3.md` (WS3c section): sizes, timings (export, upload, first render), what broke, and a
-   recommendation for G: Graphistry, sigma.js, or both, with the hours each needs (estimate).
+2. **GPU temporal view, no cloud service** (`lake/views/temporal.html` + its JSON): the maintainer
+   rejected the Graphistry cloud, and a self-hosted Graphistry server is a licensed product, so the live
+   graph uses **cosmos.gl** (`@cosmos.gl/graph`, MIT, verified): force layout and drawing both run on the
+   viewer's GPU through WebGL. Load the 13-week export, play the weeks in order (edges of week t shown,
+   node size by that week's PageRank, ranked topics coloured by decision), with a week slider and
+   play/pause. Load it from a CDN allowed by the page (jsDelivr or unpkg); serve with
+   `python -m http.server`. Measure on this Mac: nodes/edges loaded, time to first frame, frames per
+   second while playing (the browser's performance panel or `requestAnimationFrame` timing).
+3. **Story view** (`lake/views/story.html`): the story JSON rendered with sigma.js (WebGL, MIT): the topic
+   in the centre, its ring, edge width by co-mentions, the scores row as a side panel. A screenshot path
+   in the status. Smoke tests only, not the final UI (WS5 owns `web/`).
+4. `status/WS3.md` (WS3c section): sizes, timings (export, first frame, fps), what broke, the largest
+   graph that stays smooth, and the hours G needs to move both views into `web/` (estimate).
+5. Optional, only if outputs 1-4 are done: pre-compute a stable layout per week with `pygraphistry`'s
+   local (CPU) tools or networkx, so the sweep does not re-layout from scratch each week. No server, no
+   upload.
 
 ## Files you may touch
 
@@ -58,8 +64,7 @@ WS4 is changing the top 10 tonight, so read it, never hard-code topics). Persons
 
 ## Paid or outward actions needing approval
 
-The Graphistry upload sends public GDELT entity names (orgs and themes, no persons) to Graphistry Hub:
-**approved for the 4-week smoke test only.** `git push` and the PR: the orchestrator.
+None: everything runs locally, nothing is uploaded. `git push` and the PR: the orchestrator.
 
 ## Deadline (UTC-5)
 
