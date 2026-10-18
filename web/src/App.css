@@ -550,6 +550,42 @@ li {
   background: rgba(248, 250, 252, 0.82);
 }
 
+.graph-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow: auto;
+}
+
+.graph-fallback p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.graph-fallback img {
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  object-fit: contain;
+  background: #0f172a;
+}
+
+.story-graph-container.story-no-webgl .story-canvas-wrap {
+  display: none;
+}
+
+.story-graph-container.story-no-webgl .story-neighbors-aside {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
 .temporal-labels-overlay {
   position: absolute;
   inset: 0;

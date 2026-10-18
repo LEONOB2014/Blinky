@@ -1,5 +1,6 @@
 import { Graph, type GraphConfig } from "@cosmos.gl/graph";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { browserHasGraphics } from "../graphics";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
 import type { TemporalGraphData, TemporalMover, TemporalNodeEntry } from "../types/views";
@@ -94,6 +95,7 @@ export function TemporalGraph({
   const dataRef = useRef<TemporalGraphData | null>(null);
   const [data, setData] = useState<TemporalGraphData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [noGraphics, setNoGraphics] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [weekIdx, setWeekIdx] = useState<number>(0);
   const [playing, setPlaying] = useState<boolean>(false);
@@ -915,7 +917,13 @@ export function TemporalGraph({
 
   // Initialize cosmos.gl Graph once `data` and `canvasHostRef` are available
   useEffect(() => {
-    if (!data || !canvasHostRef.current) return;
+    if (!data) return;
+    if (!browserHasGraphics()) {
+      setNoGraphics(true);
+      setLoading(false);
+      return;
+    }
+    if (!canvasHostRef.current) return;
     // A new graph has not seen a lens yet. StrictMode's second setup must reheat
     // a focused story instead of treating the destroyed graph's key as current.
     reheatKeyRef.current = null;
@@ -1340,6 +1348,15 @@ export function TemporalGraph({
 
       <div className="temporal-split">
         <div className="temporal-canvas-wrap">
+          {noGraphics ? (
+            <div className="graph-fallback" data-testid="graph-fallback">
+              <p>
+                Este navegador no tiene aceleración gráfica activada; mostramos una imagen del grafo
+              </p>
+              <img src="/data/views/temporal.png" alt="Grafo temporal semanal" />
+            </div>
+          ) : (
+            <>
           {loading && (
             <div className="graph-loading-overlay">
               Cargando el grafo…
@@ -1488,6 +1505,8 @@ export function TemporalGraph({
               </>
             )}
           </div>
+            </>
+          )}
         </div>
 
         <aside className="temporal-movers-aside" aria-label="Mayores subidas de la semana">

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "copy-views": "mkdir -p public/data/views && if [ -d ../lake/views ]; then cp -f ../lake/views/*.json public/data/views/ 2>/dev/null || true; fi; uv run --project .. python scripts/write_coverage.py || true",
+    "copy-views": "mkdir -p public/data/views && if [ -d ../lake/views ]; then cp -f ../lake/views/*.json public/data/views/ 2>/dev/null || true; cp -f ../lake/views/temporal.png public/data/views/temporal.png 2>/dev/null || true; fi; uv run --project .. python scripts/write_coverage.py || true",
     "dev": "bun run copy-views && vite --host 127.0.0.1 --port 5173",
     "build": "bun run copy-views && tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173"

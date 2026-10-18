@@ -1,6 +1,7 @@
 import Graph from "graphology";
 import Sigma from "sigma";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { browserHasGraphics } from "../graphics";
 import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
 import type {
@@ -134,6 +135,7 @@ export function StoryGraph({
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [storyData, setStoryData] = useState<StoryGraphData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [noGraphics, setNoGraphics] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [unmatchedTopicNotice, setUnmatchedTopicNotice] = useState<string | null>(null);
   const activeLens = graphLensFromColorBy(colorBy);
@@ -225,7 +227,13 @@ export function StoryGraph({
 
   // Instantiate Sigma 3.0.3 when `storyData` changes
   useEffect(() => {
-    if (!storyData || !sigmaContainerRef.current) return;
+    if (!storyData) return;
+    if (!browserHasGraphics()) {
+      setNoGraphics(true);
+      setLoading(false);
+      return;
+    }
+    if (!sigmaContainerRef.current) return;
     const container = sigmaContainerRef.current;
     const t0 = performance.now();
 
@@ -421,7 +429,7 @@ export function StoryGraph({
 
   return (
     <div
-      className={`story-graph-container${isFullscreen ? " story-fullscreen" : ""}`}
+      className={`story-graph-container${isFullscreen ? " story-fullscreen" : ""}${noGraphics ? " story-no-webgl" : ""}`}
       data-testid="story-graph"
     >
       {/* Top Banner with Caption, Lens switcher, and Fullscreen Toggle */}
