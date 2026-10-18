@@ -3,6 +3,7 @@
 import export_gold
 import polars as pl
 import pytest
+import yaml
 
 from radar import paths
 from radar.contracts import load_schema, validate_records
@@ -104,3 +105,22 @@ def test_lake_spans_the_backfill():
     span = lf.select(pl.col("dt").min().alias("lo"), pl.col("dt").max().alias("hi")).collect()
     lo, hi = span.row(0)
     assert (hi - lo).days >= 180  # at least 6 months of history for the backtest
+
+
+def test_topic_subtopic_weekly_is_consistent():
+    lf = _gold("topic_subtopic_weekly")
+    bad = lf.filter(pl.col("n_articles") > pl.col("n_topic_articles"))
+    assert bad.select(pl.len()).collect().item() == 0
+    dup = lf.group_by(["topic_id", "week", "subtopic"]).len().filter(pl.col("len") > 1)
+    assert dup.select(pl.len()).collect().item() == 0
+    # One denominator per topic and week, whatever the subtopic.
+    denoms = lf.group_by(["topic_id", "week"]).agg(pl.col("n_topic_articles").n_unique().alias("k"))
+    assert denoms.filter(pl.col("k") > 1).select(pl.len()).collect().item() == 0
+    # Weeks are Mondays (the edges_weekly key) and topics are topic_daily ids.
+    assert lf.filter(pl.col("week").dt.weekday() != 1).select(pl.len()).collect().item() == 0
+    subs = lf.select(pl.col("subtopic").drop_nulls().unique()).collect()["subtopic"].to_list()
+    taxonomy = yaml.safe_load((paths.REPO_ROOT / "contracts" / "taxonomy.yaml").read_text())
+    assert set(subs) <= set(taxonomy["subtopics"])
+    topics = _gold("topic_daily").select(pl.col("topic_id").unique())
+    orphans = lf.select(pl.col("topic_id").unique()).join(topics, on="topic_id", how="anti")
+    assert orphans.select(pl.len()).collect().item() == 0
