@@ -40,7 +40,13 @@ def test_missing_report_is_marked_unavailable(tmp_path):
 def test_evidence_files_match_the_committed_reports(tmp_path):
     evidence.write_evidence(tmp_path)
     names = {p.name for p in tmp_path.iterdir()}
-    assert names == {"backtest.json", "label_quality.json", "ledgers.json", "index.json"}
+    assert names == {
+        "backtest.json",
+        "label_quality.json",
+        "ledgers.json",
+        "trust_summary.json",
+        "index.json",
+    }
     ledgers = json.loads((tmp_path / "ledgers.json").read_text(encoding="utf-8"))
     with (REPORTS / "bq_ledger.csv").open(newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
@@ -52,3 +58,24 @@ def test_evidence_files_match_the_committed_reports(tmp_path):
     assert ledgers["jev"]["calls"] == len(jev)
     quality = json.loads((tmp_path / "label_quality.json").read_text(encoding="utf-8"))
     assert quality["available"] is True and any(s["tables"] for s in quality["sections"])
+
+
+@pytest.mark.unit
+def test_the_trust_summary_comes_from_the_reports_and_matches_the_chat_line(tmp_path):
+    from agents import runtime, tools, trust
+
+    evidence.write_evidence(tmp_path)
+    summary = json.loads((tmp_path / "trust_summary.json").read_text(encoding="utf-8"))
+    points = {p["id"]: p for p in summary["points"]}
+    bt = tools.backtest_summary((REPORTS / "backtest.md").read_text(encoding="utf-8"))
+    # the panel and the chat say the same precision and baselines, word for word
+    assert trust.beats_sentence(bt) == points["baselines"]["texto"]
+    turn = runtime.Turn("t")
+    turn.tool_results.append({"tool": "get_backtest", "result": tools.get_backtest()})
+    assert trust.precision_sentence(bt) in runtime.trust_line(turn)
+    assert points["precision"]["texto"].startswith(
+        trust.precision_sentence(bt, "El top 10 publicado del radar")
+    )
+    assert points["bigquery_usd"]["kind"] == "estimate"
+    assert all(p["kind"] in {"measured", "estimate", "status", "rule"} for p in summary["points"])
+    assert summary["points"][-1]["texto"] == trust.EARLY_SIGNAL

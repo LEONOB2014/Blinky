@@ -69,6 +69,19 @@ export interface LedgerSide {
   kind?: string;
 }
 
+/** evidence/trust_summary.json (deploy/evidence.py, built by agents/trust.py). */
+export interface TrustSummaryPoint {
+  id: string;
+  texto: string;
+  kind: "measured" | "estimate" | "status" | "rule";
+}
+
+export interface TrustSummaryFile {
+  available?: boolean;
+  points: TrustSummaryPoint[];
+  sources?: string[];
+}
+
 export interface LedgersFile {
   bigquery?: LedgerSide;
   jev?: LedgerSide;
