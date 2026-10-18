@@ -597,6 +597,47 @@ def _display_name(turn: Turn, topic_id: str) -> str:
     return topic_name(scored[0] if scored else {"topic_id": topic_id})
 
 
+_OUTLET_COUNT_Q = re.compile(r"cu[aá]ntos\s+(?:\w+\s+){0,2}medios", re.I)
+_OUTLETS_SAID = re.compile(r"(?<![\d.,])(\d[\d.,]*)\s+medios\b", re.I)
+
+
+def _sources_result(turn: Turn) -> dict[str, Any] | None:
+    return next(
+        (
+            r["result"]
+            for r in turn.tool_results
+            if r["tool"] == "get_topic_sources" and r["result"].get("available")
+        ),
+        None,
+    )
+
+
+def outlet_count_line(turn: Turn) -> str:
+    """The answer to "¿cuántos medios?", written by code from get_topic_sources."""
+    src = _sources_result(turn)
+    if not src:
+        return ""
+    name = _display_name(turn, src["topic_id"])
+    return (
+        f"Medios distintos que cubrieron a {name} en {src['week']}: {src['n_medios']} "
+        f"(en {src['n_articulos']} artículos)."
+    )
+
+
+def wrong_outlet_counts(answer: str, turn: Turn) -> list[str]:
+    """'N medios' in the answer where N is not the measured outlet count (44 articles != 39)."""
+    src = _sources_result(turn)
+    if not src:
+        return []
+    bad = []
+    for m in _OUTLETS_SAID.finditer(answer):
+        if answer[max(0, m.start() - 15) : m.start()].rstrip().endswith("artículos de"):
+            continue  # "44 artículos de 39 medios": the block's own phrasing
+        if int(re.sub(r"[.,]", "", m.group(1))) != src["n_medios"]:
+            bad.append(m.group(0))
+    return bad
+
+
 def coverage_line(turn: Turn) -> str:
     """Spanish and Portuguese coverage of the topic, written by code from get_language_coverage."""
     cov = next(
@@ -1005,6 +1046,9 @@ def run_turn(
         facts = graph_facts_line(turn, entity) if "cartographer" in needed else ""
         if facts:
             line = f"{line}\n\n{facts}" if line else facts
+        count = outlet_count_line(turn) if _OUTLET_COUNT_Q.search(question) else ""
+        if count:
+            line = f"{line}\n\n{count}" if line else count
         coverage = coverage_line(turn) if decides or entity else ""
         if coverage:
             line = f"{line}\n\n{coverage}" if line else coverage
@@ -1027,6 +1071,12 @@ def run_turn(
                 f" El sistema ya escribe cómo se arma el grafo: «{facts}». No lo repitas y no "
                 "menciones otros umbrales, mínimos de co-menciones ni valores de NPMI."
                 if facts
+                else ""
+            )
+            + (
+                f" El sistema ya escribe cuántos medios distintos hubo: «{count}». No des otro "
+                "número de medios: el número de artículos no es el de medios."
+                if count
                 else ""
             )
             + (
@@ -1119,6 +1169,16 @@ def _audit(
             "\n\n⚠️ El Auditor: los datos no muestran artículos de este tema en español ni en "
             "portugués esta semana; lo que se diga de su crecimiento o presencia en Latinoamérica "
             "no tiene respaldo."
+        )
+    if wrong := wrong_outlet_counts(answer, turn):
+        turn.log(
+            "auditor",
+            "veto",
+            result_summary=f"número de medios que no es el medido: {', '.join(wrong)}",
+        )
+        answer += (
+            f"\n\n⚠️ El Auditor: el número de medios distintos medido es "
+            f"{_sources_result(turn)['n_medios']}; no {', '.join(wrong)}."
         )
     bad = untraced_numbers(answer, turn.tool_results, question)
     if bad:
