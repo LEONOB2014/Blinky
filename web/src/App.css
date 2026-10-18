@@ -1,8 +1,26 @@
 :root {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: #0f172a;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --radius-sm: 4px;
+  --radius: 8px;
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --ink: #0f172a;
+  --muted: #475569;
+  --surface: #ffffff;
+  --line: #e2e8f0;
+  --accent: #1d4ed8;
+  --decision-now: #22c55e;
+  --decision-prep: #38bdf8;
+  --decision-wait: #f59e0b;
+  --decision-cold: #64748b;
+  font-family: var(--font);
+  color: var(--ink);
   background-color: #f8fafc;
   line-height: 1.45;
+  font-size: 16px;
 }
 
 * {
@@ -159,8 +177,8 @@ li {
 }
 
 .pill-active {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #ffffff;
 }
 
@@ -207,23 +225,27 @@ li {
 }
 
 .decision-publicar_ahora {
-  background: #dcfce7;
-  color: #166534;
+  background: color-mix(in srgb, var(--decision-now) 18%, white);
+  color: #14532d;
+  border: 1px solid var(--decision-now);
 }
 
 .decision-preparar {
-  background: #dbeafe;
-  color: #1e40af;
+  background: color-mix(in srgb, var(--decision-prep) 22%, white);
+  color: #0c4a6e;
+  border: 1px solid var(--decision-prep);
 }
 
 .decision-esperar {
-  background: #fef3c7;
-  color: #92400e;
+  background: color-mix(in srgb, var(--decision-wait) 24%, white);
+  color: #78350f;
+  border: 1px solid var(--decision-wait);
 }
 
 .decision-no_es_tema_caliente {
-  background: #f1f5f9;
-  color: #475569;
+  background: color-mix(in srgb, var(--decision-cold) 16%, white);
+  color: #334155;
+  border: 1px solid var(--decision-cold);
 }
 
 .chip {
@@ -374,7 +396,7 @@ li {
   display: inline-block;
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
-  font-size: 0.72rem;
+  font-size: 12px;
   font-weight: 600;
   background: #e2e8f0;
 }
@@ -416,7 +438,7 @@ li {
 }
 
 .topic-id {
-  font-size: 0.7rem;
+  font-size: 12px;
   font-weight: 400;
   opacity: 0.7;
 }
@@ -464,7 +486,7 @@ li {
 }
 
 .graph-btn-active {
-  background: #dc2626;
+  background: var(--accent);
 }
 
 .graph-slider-label {
@@ -612,7 +634,7 @@ li {
   border: 1px solid rgba(148, 163, 184, 0.45);
   border-radius: 4px;
   padding: 1px 5px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -621,25 +643,25 @@ li {
 }
 
 .graph-label-publicar_ahora {
-  border-color: #22c55e;
+  border-color: var(--decision-now);
   color: #bbf7d0;
 }
 
 .graph-label-preparar {
-  border-color: #38bdf8;
+  border-color: var(--decision-prep);
   color: #bae6fd;
 }
 
 .graph-label-esperar {
-  border-color: #f59e0b;
+  border-color: var(--decision-wait);
   color: #fde68a;
 }
 
 .graph-label-focused {
-  background: #be123c;
-  border-color: #fda4af;
+  background: var(--accent);
+  border-color: #ffffff;
   color: #ffffff;
-  font-size: 11.5px;
+  font-size: 12px;
   z-index: 3;
 }
 
@@ -656,7 +678,7 @@ li {
   color: #e2e8f0;
   padding: 0.3rem 0.55rem;
   border-radius: 5px;
-  font-size: 0.72rem;
+  font-size: 12px;
 }
 
 .graph-legend-light {
@@ -679,15 +701,15 @@ li {
 }
 
 .legend-pub {
-  background: #22c55e;
+  background: var(--decision-now);
 }
 
 .legend-prep {
-  background: #38bdf8;
+  background: var(--decision-prep);
 }
 
 .legend-esp {
-  background: #f59e0b;
+  background: var(--decision-wait);
 }
 
 .legend-grow {
@@ -695,7 +717,7 @@ li {
 }
 
 .legend-ctx {
-  background: #64748b;
+  background: var(--decision-cold);
 }
 
 .temporal-movers-aside,
@@ -758,12 +780,12 @@ li {
 
 .mover-meta {
   color: #475569;
-  font-size: 0.72rem;
+  font-size: 12px;
   margin-top: 0.15rem;
 }
 
 .graph-perf-footer {
-  font-size: 0.72rem;
+  font-size: 12px;
   color: #334155;
   background: #f1f5f9;
   border-radius: 4px;
@@ -1582,4 +1604,27 @@ body {
   border-top: 1px solid #e2e8f0;
   padding: 0.2rem 0.35rem;
   vertical-align: top;
+}
+
+.workspace {
+  font-size: 14px;
+}
+
+.workspace button,
+.workspace select,
+.workspace input[type="text"],
+.workspace .pill {
+  min-height: 36px;
+}
+
+.workspace :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.workspace .freshness-line,
+.workspace .answer-text,
+.workspace .why-list,
+.workspace .empty-state p {
+  font-size: 14px;
 }

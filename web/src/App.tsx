@@ -1292,16 +1292,16 @@ function TimelineChart({
             />
           )),
         )}
-        <text x={padX} y={14} fontSize="11" fill="#475569">
+        <text x={padX} y={14} fontSize="12" fill="#475569">
           Máx diario: {maxArticles} artículos (los días sin datos quedan en —)
         </text>
-        <text x={padX} y={height - 4} fontSize="10" fill="#64748b">
+        <text x={padX} y={height - 4} fontSize="12" fill="#64748b">
           {dates[0]}
         </text>
         <text
           x={width - padX}
           y={height - 4}
-          fontSize="10"
+          fontSize="12"
           fill="#64748b"
           textAnchor="end"
         >
