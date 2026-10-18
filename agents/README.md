@@ -160,3 +160,38 @@ none, so false positives count (earlier rows scored only the 6 entity questions,
 Decision faithfulness is back to 1.00 and no question resolves a topic it does not name (75 of 75);
 usefulness moves within the repetition spread (all *measured*). Latency was high on both runs tonight
 (Nebius returned 502s); token counts are flat, so it is the API, not the turn.
+
+### Regression check before the demo (2026-10-18, `develop` after the briefs and evidence tools)
+
+`develop` at 7634781 adds the Editor's pre-written Spanish brief (`get_topic_brief`), the evidence
+articles of a named topic (`get_topic_evidence`, for the Signal analyst and the Editor) and the
+Cartographer's graph lenses. Same 25 questions x 3 repetitions, same judges (all *measured*;
+spread = min-max of the three repetition means).
+
+| Experiment (sha) | Change | usefulness v1 | usefulness_v2 | grounding | decisions | routing | entities (n=75) | latency | tokens/turn |
+|---|---|---|---|---|---|---|---|---|---|
+| auditor-cards-r3 (7d99229) | before | 0.500 [0.47-0.55] | 0.550 [0.50-0.59] | 1.000 | 1.000 | 1.000 | 1.00 | 12.6 s | 5,812 |
+| final-develop (7634781) | develop after briefs and evidence tools | 0.457 [0.43-0.48] | 0.567 [0.51-0.60] | 0.973 [0.92-1.00] | 0.987 [0.96-1.00] | 0.987 [0.96-1.00] | 0.987 [0.96-1.00] | 7.8 s | 5,824 |
+
+- **Decisions, routing, entities:** each lost exactly one run, the same one: a q11 run (Taiwan
+  Semiconductor) died on a DNS error before any agent ran, so it has no answer. Over the 74 runs
+  that completed, all three are 1.00.
+- **Grounding** is the one metric outside the previous spread: 2 of 75 runs (was 0 of 75).
+  - Both are numbers the model made up, not tool data: a q12 run wrote "nPMI > 0.85" (a threshold;
+    the ring's real values 0.875, 0.855 and 0.833 were cited correctly), and a q20 run wrote a
+    "$114.23" BigQuery cost the ledger does not contain.
+  - The Auditor caught and labelled both as not verified, so the reader saw the warning.
+  - No cause in the diff: q20's tools (Scout: freshness, cost ledger) did not change, and q12's
+    only change is the `update_view` caption and lens. The other two runs of each were clean.
+  - This is model sampling, at the rate seen in earlier rounds (baseline-r3 0.947, human-numbers-r3
+    0.987).
+- **Usefulness:**
+  - v1 is lower (0.457 vs 0.500), but the spreads overlap (0.47-0.48), and v2 is flat
+    (0.567 vs 0.550).
+  - The per-question changes are mixed. The Editor questions that now read the brief rose under v2
+    (q18 0.42 -> 1.00, q19 0.75 -> 1.00 per question, 3 runs each). q20 and q23 fell.
+  - The empty q11 run is scored as unuseful.
+- **Latency and tokens:** latency fell (12.6 -> 7.8 s; the earlier run was slowed by Nebius 502s).
+  Tokens per turn are flat (5,812 -> 5,824), so the new tools add no measurable prompt load.
+
+Reading: no regression attributable to the merged changes. The demo can run on `develop` as is.
