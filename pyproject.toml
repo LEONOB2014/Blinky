@@ -21,7 +21,8 @@ dependencies = [
     "jsonschema>=4.23.0",
     "pyyaml>=6.0.2",
     "python-dotenv>=1.0.0",
-    "httpx>=0.27.0",  # agents/: OpenAI-compatible chat (Nebius)
+    "httpx>=0.27.0", # agents/: OpenAI-compatible chat (Nebius)
+    "langsmith>=0.14",
 ]
 
 # One extra per workstream, so an agent installs only what its directory needs:
@@ -29,7 +30,7 @@ dependencies = [
 #   uv sync --extra models    (WS4)   uv sync --extra api     (WS5)
 [project.optional-dependencies]
 bq = ["google-cloud-bigquery>=3.27.0", "google-cloud-bigquery-storage>=2.27.0"]
-labels = ["httpx>=0.27.0", "tenacity>=9.0.0"]
+labels = ["httpx>=0.27.0", "tenacity>=9.0.0", "scikit-learn>=1.5.0", "lightgbm>=4.5.0"]
 graph = ["igraph>=0.11.8", "leidenalg>=0.10.2", "graphistry>=0.34.0"]
 models = ["scikit-learn>=1.5.0", "lightgbm>=4.5.0", "shap>=0.46.0"]
 api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.32.0"]

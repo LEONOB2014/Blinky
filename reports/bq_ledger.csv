@@ -61,3 +61,4 @@ ts_utc,job_id,script,workstream,dry_run_bytes,billed_bytes,cap_gib,note
 2026-10-18T02:28:01Z,radar_export_gold_20261018T022736_924d64,export_gold.py (radar.daily_topic_rolling),WS1,4679492,20971520,50,gold export of a view (measured)
 2026-10-18T03:32:22Z,radar_s12_topic_subtopic_weekly_20261018T033152_c6fbc5,s12_topic_subtopic_weekly.sql,WS1,1526319470,1526726656,50,"topic_subtopic_weekly, full span (measured)"
 2026-10-18T03:32:28Z,radar_chk_s12_20261018T033224_e520d0,chk_s12.sql,WS1,79968170,80740352,50,check: topic_subtopic_weekly (measured)
+2026-10-18T03:53:27Z,radar_sample_20261018T035232_c91f93,sample.sql,WS2,9334569319,9335472128,30,WS2b stratified sample Aug-Oct 2026 + active learning pool (measured)
