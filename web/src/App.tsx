@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchFreshness,
   fetchRadar,
@@ -381,6 +381,8 @@ export function App() {
 
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showTrust, setShowTrust] = useState(false);
+  const trustButtonRef = useRef<HTMLButtonElement>(null);
+  const returnTrustFocus = useRef(false);
   const [isCardsDrawerOpen, setIsCardsDrawerOpen] = useState<boolean>(false);
   const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(false);
   const activeLens = lensFromCommand(
@@ -403,6 +405,11 @@ export function App() {
           target.tagName === "TEXTAREA" ||
           target.isContentEditable);
       if (e.key === "Escape") {
+        if (showTrust) {
+          returnTrustFocus.current = true;
+          setShowTrust(false);
+          return;
+        }
         setIsFullscreen(false);
         setIsCardsDrawerOpen(false);
       } else if (
@@ -418,7 +425,14 @@ export function App() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [showTrust]);
+
+  useEffect(() => {
+    if (!showTrust && returnTrustFocus.current) {
+      returnTrustFocus.current = false;
+      trustButtonRef.current?.focus();
+    }
+  }, [showTrust]);
 
   useEffect(() => {
     void fetchFreshness()
@@ -660,6 +674,7 @@ export function App() {
             </select>
           </label>
           <button
+            ref={trustButtonRef}
             type="button"
             className={showTrust ? "pill pill-active" : "pill"}
             data-testid="trust-toggle"
