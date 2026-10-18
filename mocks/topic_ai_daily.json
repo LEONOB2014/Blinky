@@ -1,0 +1,90 @@
+[
+  {
+    "dt": "2026-10-16",
+    "is_missing": false,
+    "lang_bucket": "eng",
+    "mean_polarity": 5.1456097558255305,
+    "mean_tone": 0.4930159349878651,
+    "n_articles": 631,
+    "segment": "ai",
+    "share_of_day": 0.00571697788408397,
+    "topic_id": "ai:infra:nvidia"
+  },
+  {
+    "dt": "2026-10-16",
+    "is_missing": false,
+    "lang_bucket": "eng",
+    "mean_polarity": 6.446222418241429,
+    "mean_tone": -1.2302767595038537,
+    "n_articles": 312,
+    "segment": "ai",
+    "share_of_day": 0.002826778288168302,
+    "topic_id": "ai:lab:microsoft_ai"
+  },
+  {
+    "dt": "2026-10-16",
+    "is_missing": false,
+    "lang_bucket": "eng",
+    "mean_polarity": 5.640242062364304,
+    "mean_tone": 0.29197817643895846,
+    "n_articles": 285,
+    "segment": "ai",
+    "share_of_day": 0.0025821532439998913,
+    "topic_id": "ai:lab:google_ai"
+  },
+  {
+    "dt": "2026-10-16",
+    "is_missing": false,
+    "lang_bucket": "other",
+    "mean_polarity": 6.01617946794954,
+    "mean_tone": 0.4791427327097938,
+    "n_articles": 236,
+    "segment": "ai",
+    "share_of_day": 0.0015889794846589418,
+    "topic_id": "ai:infra:nvidia"
+  },
+  {
+    "dt": "2026-10-16",
+    "is_missing": false,
+    "lang_bucket": "eng",
+    "mean_polarity": 7.332544051070683,
+    "mean_tone": -1.5587008652509733,
+    "n_articles": 198,
+    "segment": "ai",
+    "share_of_day": 0.0017939169905683454,
+    "topic_id": "ai:lab:openai"
+  },
+  {
+    "dt": "2026-10-16",
+    "is_missing": false,
+    "lang_bucket": "eng",
+    "mean_polarity": 6.0845552210445675,
+    "mean_tone": 0.3846051355002345,
+    "n_articles": 169,
+    "segment": "ai",
+    "share_of_day": 0.0015311715727578303,
+    "topic_id": "ai:tech:agents"
+  },
+  {
+    "dt": "2026-10-18",
+    "is_missing": true,
+    "lang_bucket": "eng",
+    "mean_polarity": 4.13223140495868,
+    "mean_tone": 0.118063754427391,
+    "n_articles": 1,
+    "segment": "ai",
+    "share_of_day": null,
+    "topic_id": "ai:tech:robotics"
+  },
+  {
+    "dt": "2026-10-18",
+    "is_missing": true,
+    "lang_bucket": "eng",
+    "mean_polarity": 3.5,
+    "mean_tone": -1.5,
+    "n_articles": 1,
+    "segment": "ai",
+    "share_of_day": null,
+    "topic_id": "ai:product:coding_assistants"
+  }
+]

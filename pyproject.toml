@@ -34,7 +34,11 @@ labels = ["httpx>=0.27.0", "tenacity>=9.0.0", "scikit-learn>=1.5.0", "lightgbm>=
 graph = ["igraph>=0.11.8", "leidenalg>=0.10.2", "graphistry>=0.34.0"]
 models = ["scikit-learn>=1.5.0", "lightgbm>=4.5.0", "shap>=0.46.0"]
 api = ["fastapi>=0.115.0", "uvicorn[standard]>=0.32.0"]
-crosssource = ["httpx>=0.27.0", "tenacity>=9.0.0"]
+crosssource = [
+    "defusedxml>=0.7.1",
+    "httpx>=0.27.0",
+    "tenacity>=9.0.0",
+]
 deploy = [
     "modal>=1.0",
 ]

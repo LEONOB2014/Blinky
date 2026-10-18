@@ -95,6 +95,11 @@ and agents run on Google Cloud Run. The public chat is rate-limited.
 
 ### System overview
 
+![End-to-end system](docs/media/architecture.svg)
+
+Animated lines show data in blue, LLM calls in purple, and traces in orange. The editable sources are in
+[`docs/diagrams/`](docs/diagrams/).
+
 ```mermaid
 flowchart LR
   subgraph SRC["Public sources"]
@@ -238,6 +243,8 @@ flowchart TB
 
 ### One question, end to end
 
+![One question through the agents](docs/media/agents.svg)
+
 ```mermaid
 sequenceDiagram
   autonumber
@@ -292,6 +299,10 @@ Each node and edge carries properties computed per week:
 
 A lens re-lays out and recolours the graph by one property. The Cartographer picks a lens from the question ("¿qué
 temas hacen de puente?" opens the bridge lens) and highlights the topics it talks about.
+
+### Build, evaluate, ship
+
+![Build, evaluate, ship](docs/media/delivery.svg)
 
 ### Evaluation loop
 
