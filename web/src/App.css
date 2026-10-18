@@ -411,3 +411,367 @@ li {
   font-weight: 400;
   opacity: 0.7;
 }
+
+.view-mode-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.view-cards-hint {
+  margin: 0.65rem 0 0.15rem;
+}
+
+/* TemporalGraph (cosmos.gl) & StoryGraph (sigma) */
+.temporal-graph-container,
+.story-graph-container {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+}
+
+.graph-btn {
+  background: #0f172a;
+  color: #ffffff;
+  border: none;
+  border-radius: 5px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.graph-btn-active {
+  background: #dc2626;
+}
+
+.graph-slider-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  flex: 1;
+  min-width: 200px;
+}
+
+.graph-slider-label input[type="range"] {
+  flex: 1;
+  accent-color: #2563eb;
+}
+
+.graph-week-badge {
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.graph-stats-chip {
+  font-size: 0.76rem;
+  color: #334155;
+  background: #f1f5f9;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.temporal-split,
+.story-split {
+  display: grid;
+  grid-template-columns: 1.45fr 0.85fr;
+  gap: 0.65rem;
+  align-items: stretch;
+}
+
+@media (max-width: 1180px) {
+  .temporal-split,
+  .story-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.temporal-canvas-wrap {
+  position: relative;
+  height: 440px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+  background: #0f172a;
+}
+
+.temporal-canvas-host {
+  width: 100%;
+  height: 100%;
+}
+
+.story-canvas-wrap {
+  position: relative;
+  height: 430px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+}
+
+.story-sigma-host {
+  width: 100%;
+  height: 100%;
+}
+
+.graph-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.story-canvas-wrap .graph-loading-overlay {
+  color: #1e293b;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.temporal-labels-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.graph-node-label {
+  position: absolute;
+  transform: translate(-50%, -115%);
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.84);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  line-height: 1.25;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.graph-label-publicar_ahora {
+  border-color: #22c55e;
+  color: #bbf7d0;
+}
+
+.graph-label-preparar {
+  border-color: #38bdf8;
+  color: #bae6fd;
+}
+
+.graph-label-esperar {
+  border-color: #f59e0b;
+  color: #fde68a;
+}
+
+.graph-label-focused {
+  background: #be123c;
+  border-color: #fda4af;
+  color: #ffffff;
+  font-size: 11.5px;
+  z-index: 3;
+}
+
+.graph-legend {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  right: 8px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  background: rgba(15, 23, 42, 0.84);
+  color: #e2e8f0;
+  padding: 0.3rem 0.55rem;
+  border-radius: 5px;
+  font-size: 0.72rem;
+}
+
+.graph-legend-light {
+  background: rgba(255, 255, 255, 0.92);
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-pub {
+  background: #22c55e;
+}
+
+.legend-prep {
+  background: #38bdf8;
+}
+
+.legend-esp {
+  background: #f59e0b;
+}
+
+.legend-grow {
+  background: #2dd4bf;
+}
+
+.legend-ctx {
+  background: #64748b;
+}
+
+.temporal-movers-aside,
+.story-neighbors-aside {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  max-height: 440px;
+  overflow-y: auto;
+}
+
+.movers-header h4 {
+  margin: 0;
+  font-size: 0.86rem;
+  color: #0f172a;
+}
+
+.movers-list {
+  list-style: none;
+  margin: 0.45rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.mover-item {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.76rem;
+}
+
+.mover-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mover-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1d4ed8;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mover-link:hover {
+  text-decoration: underline;
+}
+
+.mover-meta {
+  color: #475569;
+  font-size: 0.72rem;
+  margin-top: 0.15rem;
+}
+
+.graph-perf-footer {
+  font-size: 0.72rem;
+  color: #334155;
+  background: #f1f5f9;
+  border-radius: 4px;
+  padding: 0.3rem 0.45rem;
+  margin-top: 0.35rem;
+}
+
+.story-selector-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+}
+
+.story-selector-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.story-selector-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #334155;
+  margin-right: 0.2rem;
+}
+
+.story-notice-banner {
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.story-scores-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+}
+
+.story-center-title {
+  font-size: 0.9rem;
+  color: #0f172a;
+}

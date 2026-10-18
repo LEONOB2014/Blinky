@@ -23,4 +23,15 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "cosmos-vendor": ["@cosmos.gl/graph"],
+          "sigma-vendor": ["sigma", "graphology"],
+        },
+      },
+    },
+  },
 });

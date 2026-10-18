@@ -6,6 +6,8 @@ import {
   fetchTopicTimeline,
   sendChatTurn,
 } from "./api";
+import { StoryGraph } from "./components/StoryGraph";
+import { TemporalGraph } from "./components/TemporalGraph";
 import type {
   AgentTraceStep,
   DecisionCard,
@@ -17,6 +19,7 @@ import type {
   TopicScoreWeekly,
   TopicWindow,
   ViewCommand,
+  ViewMode,
 } from "./types/contracts";
 
 const SUBTOPICS: Array<{ id: string; label_es: string }> = [
@@ -61,10 +64,80 @@ function withSelected(ids: string[], selected: string): string[] {
 }
 
 const QUICK_QUESTIONS = [
+  "Muéstrame el grafo de la semana",
+  "¿Qué está pasando con Nvidia? Muéstramelo en el grafo",
   "¿Qué tema de IA sube esta semana y por qué? Muéstramelo en el grafo",
   "¿Cuál es el ángulo para ejecutivos de LatAm esta semana?",
   "¿Qué tan frescos están los datos y cuánto ha costado en BigQuery?",
 ];
+
+const KNOWN_CHAT_TOPICS: Array<{ pattern: RegExp; topic_id: string }> = [
+  { pattern: /\bnvidia\b/i, topic_id: "org:nvidia" },
+  { pattern: /\bmicrosoft\b/i, topic_id: "org:microsoft" },
+  { pattern: /\bgoogle\b/i, topic_id: "org:google" },
+  { pattern: /\bopenai\b/i, topic_id: "org:openai group" },
+  { pattern: /\bmarsh\s*mclennan\b/i, topic_id: "org:marsh mclennan" },
+  { pattern: /\bbroadcom\b/i, topic_id: "org:broadcom" },
+  { pattern: /\boracle\b/i, topic_id: "org:oracle" },
+  { pattern: /\btsmc\b|\btaiwan semiconductor\b/i, topic_id: "org:taiwan semiconductor manufacturing" },
+  { pattern: /\bautomatizaci[oó]n\b|\btech_automation\b/i, topic_id: "thm:TECH_AUTOMATION" },
+];
+
+function resolveChatViewCommand(
+  message: string,
+  commands: ViewCommand[],
+  defaultWeek?: string,
+): ViewCommand | null {
+  const matchedTopic = KNOWN_CHAT_TOPICS.find((k) => k.pattern.test(message))?.topic_id ?? null;
+  const asksWeeklyTemporal =
+    /\bgrafo\s+(?:de\s+la\s+semana|temporal|semanal)\b/i.test(message) && !matchedTopic;
+  const asksGraph = /\bgrafo\b|\bmapa\b|\bvisualiza/i.test(message);
+
+  if (commands.length > 0) {
+    const last = { ...commands[commands.length - 1] };
+    if (asksWeeklyTemporal) {
+      last.view = "temporal";
+    } else if (matchedTopic && last.view === "story" && !last.focus_topic) {
+      last.focus_topic = matchedTopic;
+    } else if (matchedTopic && asksGraph) {
+      last.view = "story";
+      last.focus_topic = last.focus_topic || matchedTopic;
+    }
+    return last;
+  }
+
+  if (asksWeeklyTemporal) {
+    return {
+      view: "temporal",
+      week: defaultWeek ?? null,
+      focus_topic: null,
+      highlight: [],
+      color_by: "tone",
+      caption_es: "Grafo temporal de co-menciones de la semana (cosmos.gl GPU)",
+    };
+  }
+  if (asksGraph && matchedTopic) {
+    return {
+      view: "story",
+      week: defaultWeek ?? null,
+      focus_topic: matchedTopic,
+      highlight: [matchedTopic],
+      color_by: "tone",
+      caption_es: `Historia de 1 salto para ${matchedTopic}`,
+    };
+  }
+  if (asksGraph) {
+    return {
+      view: "temporal",
+      week: defaultWeek ?? null,
+      focus_topic: null,
+      highlight: [],
+      color_by: "tone",
+      caption_es: "Grafo temporal de la semana",
+    };
+  }
+  return null;
+}
 
 const LANG_COLORS: Record<LangBucket, string> = {
   eng: "#2563eb",
@@ -94,6 +167,44 @@ function formatWindow(w: TopicWindow): string {
   }
 }
 
+function getInitialViewFromUrl(): ViewCommand {
+  if (typeof window === "undefined") {
+    return {
+      view: "cards",
+      week: null,
+      focus_topic: null,
+      highlight: [],
+      color_by: "tone",
+      caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
+    };
+  }
+  const params = new URLSearchParams(window.location.search);
+  const v = params.get("view") as ViewMode | null;
+  const topic = params.get("topic");
+  const wk = params.get("week");
+  if (v === "temporal" || v === "story") {
+    return {
+      view: v,
+      week: wk,
+      focus_topic: topic,
+      highlight: topic ? [topic] : [],
+      color_by: "tone",
+      caption_es:
+        v === "temporal"
+          ? "Grafo temporal semanal (13 semanas · cosmos.gl GPU)"
+          : `Anillo de historia de 1 salto (${topic ?? "Top #1"})`,
+    };
+  }
+  return {
+    view: "cards",
+    week: null,
+    focus_topic: null,
+    highlight: [],
+    color_by: "tone",
+    caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
+  };
+}
+
 export function App() {
   const [freshness, setFreshness] = useState<FreshnessResponse | null>(null);
   const [radarItems, setRadarItems] = useState<TopicScoreWeekly[]>([]);
@@ -113,14 +224,7 @@ export function App() {
   const [chatAnswer, setChatAnswer] = useState<string | null>(null);
   const [chatCards, setChatCards] = useState<DecisionCard[]>([]);
   const [traceSteps, setTraceSteps] = useState<AgentTraceStep[]>([]);
-  const [activeView, setActiveView] = useState<ViewCommand>({
-    view: "cards",
-    week: null,
-    focus_topic: null,
-    highlight: [],
-    color_by: "tone",
-    caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
-  });
+  const [activeView, setActiveView] = useState<ViewCommand>(getInitialViewFromUrl);
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
@@ -252,11 +356,24 @@ export function App() {
       setChatAnswer(res.answer_es);
       setChatCards(res.decision_cards);
       setTraceSteps(res.trace);
-      if (res.view_commands.length > 0) {
-        setActiveView(res.view_commands[res.view_commands.length - 1]);
+      const resolvedCmd = resolveChatViewCommand(
+        trimmed,
+        res.view_commands,
+        contextWeek,
+      );
+      if (resolvedCmd) {
+        setActiveView(resolvedCmd);
+        if (resolvedCmd.focus_topic) {
+          selectTopic(resolvedCmd.focus_topic);
+        }
       }
     } catch (err: unknown) {
       setChatError(err instanceof Error ? err.message : String(err));
+      // Even if the LLM backend errors/times out, allow graph view commands to open from chat intent
+      const fallbackCmd = resolveChatViewCommand(trimmed, [], contextWeek);
+      if (fallbackCmd) {
+        setActiveView(fallbackCmd);
+      }
     } finally {
       setChatLoading(false);
     }
@@ -349,7 +466,21 @@ export function App() {
                         ? "topic-card topic-card-selected"
                         : "topic-card"
                     }
-                    onClick={() => selectTopic(card.topic_id)}
+                    data-testid={`radar-card-${card.rank ?? card.topic_id}`}
+                    onClick={() => {
+                      selectTopic(card.topic_id);
+                      setActiveView({
+                        view: "story",
+                        week: card.week,
+                        focus_topic: card.topic_id,
+                        highlight: [card.topic_id],
+                        color_by: "tone",
+                        caption_es: `Historia de 1 salto: ${topicName(
+                          card.topic_id,
+                          card.label_es,
+                        )} (${card.topic_id})`,
+                      });
+                    }}
                   >
                     <div className="card-top">
                       <span className="rank-badge">#{card.rank ?? "-"}</span>
@@ -529,7 +660,7 @@ export function App() {
           </section>
         </div>
 
-        {/* Right column: View Command placeholder + Chat panel + Agent Trace panel */}
+        {/* Right column: View Command graph panel + Chat panel + Agent Trace panel */}
         <div className="right-col">
           <section
             className="panel view-placeholder"
@@ -538,7 +669,64 @@ export function App() {
           >
             <div className="panel-header">
               <h2 id="view-heading">Vista controlada por agentes (`view_command`)</h2>
-              <span className="badge">Vista activa: {activeView.view}</span>
+              <div className="view-mode-switcher">
+                <button
+                  type="button"
+                  className={
+                    activeView.view === "cards" ? "pill pill-active" : "pill"
+                  }
+                  data-testid="view-btn-cards"
+                  onClick={() =>
+                    setActiveView((prev) => ({
+                      ...prev,
+                      view: "cards",
+                      caption_es:
+                        "Vista de tarjetas activa (haz clic en una tarjeta o pide el grafo al Cartógrafo)",
+                    }))
+                  }
+                >
+                  Tarjetas
+                </button>
+                <button
+                  type="button"
+                  className={
+                    activeView.view === "temporal" ? "pill pill-active" : "pill"
+                  }
+                  data-testid="view-btn-temporal"
+                  onClick={() =>
+                    setActiveView((prev) => ({
+                      ...prev,
+                      view: "temporal",
+                      caption_es:
+                        "Grafo temporal semanal de co-menciones (13 semanas · cosmos.gl GPU)",
+                    }))
+                  }
+                >
+                  Grafo temporal (GPU)
+                </button>
+                <button
+                  type="button"
+                  className={
+                    activeView.view === "story" ? "pill pill-active" : "pill"
+                  }
+                  data-testid="view-btn-story"
+                  onClick={() =>
+                    setActiveView((prev) => ({
+                      ...prev,
+                      view: "story",
+                      focus_topic:
+                        prev.focus_topic ??
+                        (selectedTopic.includes(":") ? selectedTopic : null),
+                      caption_es: `Historia de 1 salto (${
+                        prev.focus_topic ?? selectedTopic
+                      })`,
+                    }))
+                  }
+                >
+                  Historia 1-salto
+                </button>
+                <span className="badge">Vista activa: {activeView.view}</span>
+              </div>
             </div>
             <p className="view-caption">{activeView.caption_es}</p>
             <div className="chips-row">
@@ -557,6 +745,43 @@ export function App() {
                 </span>
               )}
             </div>
+
+            {activeView.view === "temporal" && (
+              <TemporalGraph
+                week={activeView.week ?? contextWeek}
+                focusTopic={activeView.focus_topic}
+                highlight={activeView.highlight}
+                onSelectTopic={(topicId) => selectTopic(topicId)}
+                onOpenStory={(topicId) => {
+                  selectTopic(topicId);
+                  setActiveView({
+                    view: "story",
+                    week: activeView.week ?? contextWeek ?? null,
+                    focus_topic: topicId,
+                    highlight: [topicId],
+                    color_by: "tone",
+                    caption_es: `Historia de 1 salto: ${topicId}`,
+                  });
+                }}
+              />
+            )}
+
+            {activeView.view === "story" && (
+              <StoryGraph
+                focusTopic={activeView.focus_topic}
+                highlight={activeView.highlight}
+                onSelectTopic={(topicId) => selectTopic(topicId)}
+              />
+            )}
+
+            {activeView.view === "cards" && (
+              <p className="muted view-cards-hint">
+                Haz clic en cualquier tarjeta del Top 10 a la izquierda para abrir su
+                anillo de 1 salto en <code>sigma</code>, o pulsa{" "}
+                <strong>Grafo temporal (GPU)</strong> / pregunta al Maestro de Medios{" "}
+                <em>«Muéstrame el grafo de la semana»</em>.
+              </p>
+            )}
           </section>
 
           <section className="panel" aria-labelledby="chat-heading">
