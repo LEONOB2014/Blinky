@@ -4,7 +4,7 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 
 ## Last update
 
-2026-10-18 06:10 UTC-5 · pre-deploy defects D1-D3 (fix/agents-trust-cost): D1, D2 fixed; D3 not fully · committed locally; the orchestrator lands it.
+2026-10-18 06:10 UTC-5 · pre-deploy defects D1-D3 (fix/agents-trust-cost): D1, D2 and the Auditor's date false positive fixed; D3 not fully · committed locally; the orchestrator lands it.
 
 ## Pre-deploy defects D1-D3 fixed (06:10 UTC-5, branch `fix/agents-trust-cost`, committed locally; the orchestrator lands it)
 
@@ -46,6 +46,19 @@ repetition means.
   q21 fell (1.00 -> 0.50, the two flagged runs).
 - **Tokens** rose by 324 per turn (beyond the range): the sources tool's output and the longer
   Media Master prompt.
+
+**Auditor date fix** (06:12, 17cf402):
+- **Change:** `_numbers` no longer splits dates into loose numbers. A date in the answer (ISO, or
+  "18 de octubre", year optional) is traced when the same day appears in the tool data; a
+  different date is flagged, and numbers beside a date are still checked. A unit test covers
+  "2026-10-18" next to an untraced 9999.
+- **Result,** iso-dates-q21 (q21 x 3, *measured*):
+  - grounding 3/3 = 1.000 [1.00-1.00], was 1/3 in predeploy-fixes;
+  - usefulness_v2 0.583 [0.50-0.75], was 0.50;
+  - every run says "18 de octubre de 2026" and passes.
+- **Left as is:** q21 still volunteers the cost, because the Scout reads the ledger for freshness
+  by design. One run calls Jev's $0.0443 "costo total de procesamiento".
+- **Spend:** 5,620 agent tokens (*measured*); under $0.01 (*estimate*).
 
 **claude-work's 4 questions, run by hand** (full lake, tracing off, read against the tool results):
 
