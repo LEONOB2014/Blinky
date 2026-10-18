@@ -48,9 +48,12 @@ violations, measured). It also uses WS6's larger `topic_wikidata` (01:27: 11,060
   - Caveat in the report: the guard was designed after seeing W42; its thresholds come from
     WS1's distributions, not from the label.
 - **Backtest, primary label** (Addendum 4b: exact Wikidata matches only; the alias-included run is
-  a separate section). At the 01:39 write, coverage for the published radar is 96/440 (21.8%)
-  exact and 93/440 (21.1%) with aliases, so precision is withheld for both (measured). The
-  missing-topic list for WS6 still stands (below).
+  a separate section). At the 01:50 write, coverage for the published radar is 142/440 (32.3%)
+  exact and 139/440 (31.6%) with aliases, so precision is withheld for both (measured).
+- **Needed topics, recomputed for exact matches (01:51):** 540 topics are needed, 124 already have
+  pageviews, 416 do not. Of those 416, **292 are not on WS6's priority list** (measured), so WS6
+  will never fetch them as things stand. Updated lists: `lake/labels/ws4_backtest_needed_topics.parquet`
+  and `ws4_backtest_needed_missing.parquet` (the 292).
 - Addendum 5b: done as written (the pattern share as a gate on headlining only, and the top
   source share for one-outlet weeks). The guard also needs >= 5 sources, a stricter extra
   condition 5b does not ask for. In W42 it alone holds 6 topics, all below the top-10 cutoff
