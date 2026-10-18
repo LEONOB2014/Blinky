@@ -167,3 +167,59 @@ screen, Radar lens, Story lens for the #1 topic, one chat question that rearrang
 during re-layout and time to settle, in `status/WS5.md`.
 
 Deadline: must list by **05:00**; nice items by **06:00** or dropped.
+
+## Addendum 3 (orchestrator, 02:25 UTC-5): graph properties that make the lenses speak
+
+The lenses need properties to encode. `node_metrics_weekly` already gives per node and week:
+`deg_w`, `deg_growth`, `new_nbr_rate`, `pagerank`, `pr_rank_delta`, `kcore`, `is_hub`
+(`community_id` is unstable across weeks: use communities **within one week only**). But the temporal
+export's edges carry only `source`, `target`, `week`: no strength. Compute the rest in
+`graph/export_views.py` on the pruned graph (1,000 nodes, ~3.5k edges a week: igraph does all of this
+in well under a second per week), ship it in `temporal.json` and the story JSONs, and document every
+field in `graph/README.md` with its formula.
+
+### Must
+
+**Edges** (per week):
+- `n` (co-mentions) and `npmi` from `edges_weekly`: width = log(n), alpha = NPMI.
+- `edge_state`: `new` (absent the week before), `persisting`, `growing` (n up >= 50% vs last week),
+  `fading` (down >= 50%). Novelty lens: new edges bright, persisting muted, fading dashed or dim.
+- `n_growth` = log((n + 1) / (n_prev + 1)).
+
+**Nodes** (per week):
+- `betweenness` (normalised, igraph, on the week's pruned graph, weights as distances = 1 / npmi):
+  the "bridge" lens's size.
+- `cross_ring_share`: share of the node's edge weight going to neighbours of another ring (AI / IT /
+  AI x domain); take the ring from `topic_daily.segment` / `article_segment` aggregates already in the
+  lake, or from the node's prefix where that is all there is; say which. The "bridge" lens's colour:
+  the product's whole point is AI crossing into other domains.
+- `momentum`: `pr_rank_delta` and `deg_growth` already exist; combine into one documented score (for
+  example the mean of their within-week percentiles). The "momentum" lens's size and a glow for the
+  top decile.
+- `community_week`: Leiden on the week's pruned graph (seed fixed, within-week only), for the
+  `community` lens; never compare ids across weeks.
+- `importance`: one size default for every lens, the within-week percentile of PageRank, so sizes
+  stay comparable between lenses.
+
+### Nice
+
+- `kcore` as a depth cue (outer shell more transparent).
+- Brokerage (Burt's constraint) as an alternative bridge measure, if betweenness looks noisy.
+- Per-node tooltip: label, decision, the 3 strongest neighbours, betweenness and momentum percentiles,
+  edge state counts.
+
+### Lenses using them (extends Addendum 2; values merged in PRs #26 and #27, merge origin/develop)
+
+| `color_by` | Node colour | Node size | Edges |
+|---|---|---|---|
+| `decision` (default) | decision | importance | width log(n), alpha NPMI |
+| `segment` (story) | ring | importance | the focus topic's edges strong |
+| `bridge` | cross_ring_share (sequential) | betweenness | cross-ring edges highlighted |
+| `momentum` | momentum (diverging) | importance, glow top decile | growing edges bright |
+| `novelty` | new_nbr_rate | importance | edge_state (new bright, fading dim) |
+| `community` | community_week | importance | intra-community edges stronger in the layout |
+| `tone` / `window` | as in Addendum 2 | importance | as `decision` |
+
+Keep every measure per week, persons never included, and report their distributions (median, p90) in
+`status/WS5.md`. Deadline: edge properties and betweenness / cross-ring / momentum by **04:00**,
+together with Addendum 2's must list by **05:00**.
