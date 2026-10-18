@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The final redeploy of the radar, in order: lake check, Cloud Run (Cloud Build), static export,
-# web build, Netlify, live check. Dry run by default: it runs the read-only checks and prints every
-# deploy command without running it. `--run` deploys (approved in advance by the orchestrator for the
-# 05:30-06:00 run; anything else changing the live service needs the maintainer).
+# graph views, web build, Netlify, live check. Dry run by default: it runs the read-only checks and
+# prints every deploy command without running it. `--run` deploys (approved in advance by the
+# orchestrator for the 05:30-06:00 run; anything else changing the live service needs the maintainer).
 #
 #   bash scripts/redeploy_all.sh          # dry run
 #   bash scripts/redeploy_all.sh --run    # deploy
@@ -59,6 +59,11 @@ fi
 
 step "3. static fallback from the same lake (top 10s, timelines, rings, evidence)"
 run make deploy-static
+
+# export_static.py deletes web/public/data, including the views JSON. The no-WebGL image is
+# tracked at web/public/fallback/temporal.png, so that wipe does not remove it.
+step "3b. graph views, rewritten after the static export wipes web/public/data"
+run "RADAR_PROFILE=full uv run --extra graph python -m graph.export_views"
 
 step "4. web build pointing at the API"
 run make deploy-web API_URL="$API_URL"
