@@ -7,6 +7,9 @@ CLI (gcloud login); every job's bytes are printed for reports/bq_ledger.csv.
     uv run python scripts/export_dev_slice.py --project <gcp-project-id>
     RADAR_PROFILE=full uv run python scripts/export_dev_slice.py --topics-from-lake
 
+`--sources-from-lake` cuts `topic_sources_weekly` from the lake for the same weeks and the same
+topic ids as the committed `topic_daily` dev cut (no query, nothing billed).
+
 `--topics-from-lake` cuts `topic_daily` and `topic_subtopic_weekly` from the exported lake (no
 query, nothing billed): the same 8 weeks, ranked universe only (contracts/taxonomy.yaml
 `ranked_universe`), cut to the top topics by articles until each file is under 1 MB.
@@ -162,6 +165,34 @@ def topics_from_lake() -> None:
         print(f"{name}: {frame.height} rows, {sizes[name] / 1024:.0f} KiB")
 
 
+def sources_from_lake() -> None:
+    """topic_sources_weekly for the topics and weeks of the committed topic_daily dev cut."""
+    topics = pl.read_parquet(DEV_DIR / "topic_daily.parquet", columns=["topic_id"])["topic_id"]
+    start, end = pl.lit(START).str.to_date(), pl.lit(END).str.to_date()
+    frame = (
+        pl.scan_parquet(lake() / "gold" / "topic_sources_weekly.parquet")
+        .filter(
+            (pl.col("week") >= start)
+            & (pl.col("week") < end)
+            & pl.col("topic_id").is_in(topics.unique().to_list())
+        )
+        .sort(["topic_id", "week"])
+        .collect()
+    )
+    extra = set(frame.columns) - ALLOWED_COLUMNS["topic_sources_weekly"]
+    if extra:
+        raise SystemExit(f"topic_sources_weekly: columns outside the allow-list: {sorted(extra)}")
+    path = DEV_DIR / "topic_sources_weekly.parquet"
+    frame.write_parquet(path, compression="zstd", compression_level=19)
+    size = path.stat().st_size
+    if size >= MAX_BYTES:
+        raise SystemExit(f"{path.name} is {size} bytes, over the fixture limit")
+    print(
+        f"topic_sources_weekly: {frame.height} rows, {frame['topic_id'].n_unique()} topics, "
+        f"{size / 1024:.0f} KiB"
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--project")
@@ -169,7 +200,15 @@ def main() -> None:
     ap.add_argument(
         "--topics-from-lake", action="store_true", help="cut the topic tables from lake/gold"
     )
+    ap.add_argument(
+        "--sources-from-lake",
+        action="store_true",
+        help="cut topic_sources_weekly from lake/gold for the topic_daily dev cut",
+    )
     args = ap.parse_args()
+    if args.sources_from_lake:
+        sources_from_lake()
+        return
     if args.topics_from_lake:
         topics_from_lake()
         return

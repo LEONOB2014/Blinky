@@ -1,0 +1,74 @@
+[
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-24",
+  "n_articles": 7747,
+  "n_sources": 1140,
+  "top_source_share": 0.16148186394733446,
+  "top3_source_share": 0.287595198141216,
+  "top_theme_pattern_share": 0.4696011359235833
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-08-31",
+  "n_articles": 5436,
+  "n_sources": 955,
+  "top_source_share": 0.17770419426048564,
+  "top3_source_share": 0.3934878587196468,
+  "top_theme_pattern_share": 0.4139072847682119
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-09-07",
+  "n_articles": 4421,
+  "n_sources": 828,
+  "top_source_share": 0.1949785116489482,
+  "top3_source_share": 0.43858855462565033,
+  "top_theme_pattern_share": 0.54489934403981
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-09-14",
+  "n_articles": 5886,
+  "n_sources": 1188,
+  "top_source_share": 0.14322120285423037,
+  "top3_source_share": 0.31889228678219506,
+  "top_theme_pattern_share": 0.5227658851512063
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-09-21",
+  "n_articles": 3989,
+  "n_sources": 946,
+  "top_source_share": 0.2040611682125846,
+  "top3_source_share": 0.351215843569817,
+  "top_theme_pattern_share": 0.39759338179994985
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-09-28",
+  "n_articles": 5415,
+  "n_sources": 1366,
+  "top_source_share": 0.15069252077562326,
+  "top3_source_share": 0.23693444136657432,
+  "top_theme_pattern_share": 0.506371191135734
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-10-05",
+  "n_articles": 4271,
+  "n_sources": 973,
+  "top_source_share": 0.17255911964411144,
+  "top3_source_share": 0.2570826504331538,
+  "top_theme_pattern_share": 0.38866775930695385
+ },
+ {
+  "topic_id": "org:nvidia",
+  "week": "2026-10-12",
+  "n_articles": 4166,
+  "n_sources": 863,
+  "top_source_share": 0.16250600096015363,
+  "top3_source_share": 0.24651944311089774,
+  "top_theme_pattern_share": 0.43903024483917424
+ }
+]
