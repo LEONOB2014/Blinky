@@ -1255,9 +1255,8 @@ body {
 .workspace-header .subtitle {
   margin: 0.1rem 0 0;
   font-size: 0.82rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
+  white-space: normal;
 }
 
 .workspace-header .header-actions {
@@ -1355,7 +1354,7 @@ body {
 }
 
 .rail-list .topic-card {
-  padding: 0.25rem 0.4rem;
+  padding: 0.15rem 0.4rem;
 }
 
 .workspace-stage {

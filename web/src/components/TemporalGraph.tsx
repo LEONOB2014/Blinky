@@ -1404,7 +1404,7 @@ export function TemporalGraph({
                   <span className="legend-dot legend-esp" /> Esperar
                 </span>
                 <span className="legend-item">
-                  <span className="legend-dot legend-ctx" /> Muted / otro
+                  <span className="legend-dot legend-ctx" /> Otros temas
                 </span>
               </>
             )}
