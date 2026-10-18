@@ -2,8 +2,11 @@
 
 `TABLES` is also the list the Cloud Run image stages (deploy/cloudrun_stage.py).
 
-Only the listed tables: public GDELT aggregates, no persons as ranked topics, no titles or URLs.
-`edges_weekly` (~440 MB) is never uploaded: the API reads the precomputed 1-hop ring instead.
+Only the listed tables: public GDELT aggregates, no persons as ranked topics, no titles or URLs
+(except the evidence table). `plan()` checks both before anything is staged. `edges_weekly` (~440
+MB) is never uploaded: the API reads the precomputed 1-hop ring instead. `edges_ai_weekly` is left
+out too: no live reader (the agents' graph tools still read `edges_weekly`, which is absent on the
+service), and the AI graph is exported offline into `views/` by `graph/export_views.py`.
 
     RADAR_PROFILE=full uv run --extra deploy python deploy/push_lake.py
     RADAR_PROFILE=full uv run --extra deploy python deploy/push_lake.py --dry-run
@@ -30,8 +33,19 @@ TABLES = (
     "topic_evidence_weekly",
     "topic_sources_weekly",
     "topic_subtopic_weekly",
+    # The AI radar (RADAR_SOURCE=ai): scores, series and briefs of the AI-lexicon run, the Wikipedia
+    # pageviews behind its backtest label, and the AI community signal (/api/community). Sources and
+    # evidence for ai: topics are rows of the shared tables above.
+    "topic_ai_scores_weekly",
+    "topic_ai_daily",
+    "topic_ai_briefs_weekly",
+    "wiki_pageviews_ai_daily",
+    "community_topic_weekly",
 )
-NEVER = {"edges_weekly"}
+NEVER = {"edges_weekly", "edges_ai_weekly"}
+# Tables allowed to carry article titles and URLs (public news, image and deployed site, never git).
+TEXT_ALLOWED = {"topic_evidence_weekly"}
+TEXT_COLUMNS = ("title", "url")
 
 
 def plan() -> list[tuple[str, int]]:
@@ -43,7 +57,24 @@ def plan() -> list[tuple[str, int]]:
     missing = [t for t in TABLES if not gold(t).exists()]
     if missing:
         raise SystemExit(f"missing in the lake: {missing}")
+    for t in TABLES:
+        guard(t)
     return [(t, gold(t).stat().st_size) for t in TABLES]
+
+
+def guard(table: str) -> None:
+    """Refuse a table with persons as topics, or with title/URL columns it may not carry."""
+    import polars as pl
+
+    frame = pl.scan_parquet(gold(table))
+    cols = frame.collect_schema().names()
+    text = [c for c in cols if c.lower() in TEXT_COLUMNS]
+    if text and table not in TEXT_ALLOWED:
+        raise SystemExit(f"refusing: {table} has title/URL columns {text}")
+    if "topic_id" in cols:
+        persons = frame.select(pl.col("topic_id").str.starts_with("per:").sum()).collect().item()
+        if persons:
+            raise SystemExit(f"refusing: {table} has {persons} person rows (per:)")
 
 
 def main(argv: list[str] | None = None) -> int:

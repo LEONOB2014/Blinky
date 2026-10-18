@@ -6,7 +6,32 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-18 08:30 UTC-5 · branch `docs/ws9-challenge-map` (submission mapped to the 30X brief) · committed locally, not pushed.
+2026-10-18 09:48 UTC-5 · branch `feat/ws9-deploy-ai` (deploy wiring for the AI radar, develop 1c6d287 merged) · committed locally, not pushed, not deployed.
+
+## Deploy wiring for the AI radar (09:48 UTC-5)
+
+`RADAR_SOURCE` (default `ai`; `gdelt` reproduces v0.2) reaches Cloud Run, the static export, the graph views
+(`export_views --ai`) and demo-check. All numbers *measured*.
+
+- **Image:** `push_lake.TABLES` adds `topic_ai_scores_weekly`, `topic_ai_daily`, `topic_ai_briefs_weekly`,
+  `wiki_pageviews_ai_daily`, `community_topic_weekly`. Staged context **89.8 MiB** (16 tables, 89 MiB of lake)
+  against 92 MiB on disk for the last staged one; the AI tables add about 1.3 MiB. The final image size is
+  known only after Cloud Build (base image and dependencies on top).
+- `edges_ai_weekly` is not shipped: no live reader (the agents' graph tools read `edges_weekly`, which is not
+  on the service either) and the AI graph is exported offline into `views/`.
+- Guards: `plan()` refuses `per:` topics in any shipped table, and title/URL columns outside
+  `topic_evidence_weekly`. All 16 tables pass.
+- **Dry run** `make redeploy-all`: preconditions and the scores check pass (`topic_ai_scores_weekly`, md5
+  eab2e304…, 1,704 s old); every deploy step printed, none run.
+- **Local check under `RADAR_SOURCE=ai`** (API test client): top 10 all `ai:`, #1 `ai:biz:mergers_deals`
+  with 351 days of timeline; demo-check's chat turn would name `ai:lab:google_deepmind`.
+- **Open, for WS3 and the API:** the 1-hop ring of `ai:` topics is empty (`topic_context_1hop` has 0 `ai:`
+  rows), so demo-check's "1-hop ring of #1" will fail after the deploy, and the UI's ring panel is empty
+  for AI topics. The UI's context picker (`CONTEXT_ENTITIES` in App.tsx) still offers `org:` entities,
+  which have no series under `ai`.
+- **Order:** step 3b's `--ai` flag exists only on `feat/ws3-ai-graph`; merge it before the deploy.
+
+Previous: 2026-10-18 08:30 UTC-5 · branch `docs/ws9-challenge-map` (submission mapped to the 30X brief) · committed locally, not pushed.
 
 Previous: 2026-10-18 07:55 UTC-5 · branch `docs/ws9-submission-refresh` (submission kit refresh) · committed locally, not pushed.
 
