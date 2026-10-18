@@ -1,17 +1,10 @@
 import { Graph } from "@cosmos.gl/graph";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
 import type { TemporalGraphData, TemporalMover, TemporalNodeEntry } from "../types/views";
 
-export type LensMode =
-  | "decision"
-  | "segment"
-  | "bridge"
-  | "momentum"
-  | "novelty"
-  | "community"
-  | "tone"
-  | "window";
+export type LensMode = GraphLens;
 
 export interface TemporalGraphProps {
   week?: string | null;
@@ -23,6 +16,7 @@ export interface TemporalGraphProps {
   onToggleFullscreen?: () => void;
   onSelectTopic?: (topicId: string) => void;
   onOpenStory?: (topicId: string) => void;
+  onLensChange?: (lens: LensMode) => void;
 }
 
 interface LabelItem {
@@ -51,17 +45,6 @@ const DECISION_LABELS_ES: Record<DecisionValue, string> = {
   no_es_tema_caliente: "No es tema caliente",
 };
 
-const LENS_NAMES: Record<LensMode, string> = {
-  decision: "Radar (Decisión)",
-  segment: "Historia (Anillos IA/IT)",
-  bridge: "Puente (Conexión cross-ring)",
-  momentum: "Momento (Aceleración)",
-  novelty: "Novedad (Nuevos enlaces)",
-  community: "Comunidades (Leiden)",
-  tone: "Emoción (Tono GDELT)",
-  window: "Ventana (Horizonte)",
-};
-
 // Qualitative categorical palette for Leiden communities
 const COMMUNITY_COLORS: Array<[number, number, number]> = [
   [56, 189, 248], // sky blue
@@ -84,6 +67,7 @@ export function TemporalGraph({
   onToggleFullscreen,
   onSelectTopic,
   onOpenStory,
+  onLensChange,
 }: TemporalGraphProps) {
   const canvasHostRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Graph | null>(null);
@@ -93,7 +77,7 @@ export function TemporalGraph({
   const [error, setError] = useState<string | null>(null);
   const [weekIdx, setWeekIdx] = useState<number>(0);
   const [playing, setPlaying] = useState<boolean>(false);
-  const [activeLens, setActiveLens] = useState<LensMode>("decision");
+  const activeLens = graphLensFromColorBy(colorBy);
   const [labels, setLabels] = useState<LabelItem[]>([]);
   const [hoveredTooltip, setHoveredTooltip] = useState<TooltipItem | null>(null);
   const [metricsSnapshot, setMetricsSnapshot] = useState<{
@@ -103,13 +87,6 @@ export function TemporalGraph({
     fpsRelayout?: number;
     settleTimeMs?: number;
   }>({});
-
-  // Sync prop colorBy to internal activeLens when changed
-  useEffect(() => {
-    if (colorBy && colorBy in LENS_NAMES) {
-      setActiveLens(colorBy as LensMode);
-    }
-  }, [colorBy]);
 
   const highlightSet = useMemo(() => {
     const s = new Set<string>(highlight.map((h) => h.toLowerCase()));
@@ -282,13 +259,9 @@ export function TemporalGraph({
 
         switch (lens) {
           case "decision": {
-            if (isFocused) {
-              r = 244 / 255;
-              gCol = 63 / 255;
-              b = 94 / 255;
-              a = 1.0;
-              sz = Math.max(sz, 16.0);
-            } else if (dec === "publicar_ahora") {
+            // Highlight is a halo (size), not a new colour: the cartographer
+            // highlights the whole top 10, and those nodes must keep their decision.
+            if (dec === "publicar_ahora") {
               r = 34 / 255;
               gCol = 197 / 255;
               b = 94 / 255;
@@ -309,7 +282,8 @@ export function TemporalGraph({
               b = 139 / 255;
               a = 0.45;
             }
-            if (isTop10) sz = Math.max(sz, 13.0);
+            if (isFocused) sz = Math.max(sz, 16.0);
+            else if (isTop10) sz = Math.max(sz, 13.0);
             break;
           }
 
@@ -913,9 +887,9 @@ export function TemporalGraph({
     };
   }, [weekIdx, activeLens, data, applyLensToGraph]);
 
-  // Handle lens change with animation reheat
+  // Pill clicks write the same color_by a chat answer writes (App.onLensChange).
   const handleSelectLens = (lens: LensMode) => {
-    setActiveLens(lens);
+    onLensChange?.(lens);
     reheatSimulation();
   };
 

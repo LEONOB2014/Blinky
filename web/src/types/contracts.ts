@@ -110,7 +110,16 @@ export interface DecisionCard {
 
 /** `contracts/view_command.schema.json` */
 export type ViewMode = "story" | "temporal" | "cards";
-export type ViewColorBy = "tone" | "arousal" | "community" | "segment";
+export type ViewColorBy =
+  | "decision"
+  | "segment"
+  | "bridge"
+  | "momentum"
+  | "novelty"
+  | "community"
+  | "tone"
+  | "window"
+  | "arousal";
 
 export interface ViewFilter {
   segment?: Segment[];

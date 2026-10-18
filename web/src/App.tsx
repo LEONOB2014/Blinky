@@ -8,6 +8,7 @@ import {
 } from "./api";
 import { StoryGraph } from "./components/StoryGraph";
 import { TemporalGraph } from "./components/TemporalGraph";
+import { LENS_NAMES, type GraphLens, lensForQuestion, lensFromCommand } from "./lenses";
 import type {
   AgentTraceStep,
   DecisionCard,
@@ -103,17 +104,19 @@ function resolveChatViewCommand(
       last.view = "story";
       last.focus_topic = last.focus_topic || matchedTopic;
     }
+    last.color_by = lensFromCommand(last.color_by, message, last.focus_topic ?? matchedTopic);
     return last;
   }
 
+  const lens = lensForQuestion(message, matchedTopic);
   if (asksWeeklyTemporal) {
     return {
       view: "temporal",
       week: defaultWeek ?? null,
       focus_topic: null,
       highlight: [],
-      color_by: "tone",
-      caption_es: "Grafo temporal de co-menciones de la semana (cosmos.gl GPU)",
+      color_by: lens === "segment" ? "decision" : lens,
+      caption_es: "Grafo temporal de co-menciones de la semana",
     };
   }
   if (asksGraph && matchedTopic) {
@@ -122,7 +125,7 @@ function resolveChatViewCommand(
       week: defaultWeek ?? null,
       focus_topic: matchedTopic,
       highlight: [matchedTopic],
-      color_by: "tone",
+      color_by: lens,
       caption_es: `Historia de 1 salto para ${matchedTopic}`,
     };
   }
@@ -132,7 +135,7 @@ function resolveChatViewCommand(
       week: defaultWeek ?? null,
       focus_topic: null,
       highlight: [],
-      color_by: "tone",
+      color_by: lens === "segment" ? "decision" : lens,
       caption_es: "Grafo temporal de la semana",
     };
   }
@@ -174,7 +177,7 @@ function getInitialViewFromUrl(): ViewCommand {
       week: null,
       focus_topic: null,
       highlight: [],
-      color_by: "tone",
+      color_by: "decision",
       caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
     };
   }
@@ -188,10 +191,10 @@ function getInitialViewFromUrl(): ViewCommand {
       week: wk,
       focus_topic: topic,
       highlight: topic ? [topic] : [],
-      color_by: "tone",
+      color_by: v === "story" ? "segment" : "decision",
       caption_es:
         v === "temporal"
-          ? "Grafo temporal semanal (13 semanas · cosmos.gl GPU)"
+          ? "Grafo temporal semanal (13 semanas)"
           : `Anillo de historia de 1 salto (${topic ?? "Top #1"})`,
     };
   }
@@ -200,7 +203,7 @@ function getInitialViewFromUrl(): ViewCommand {
     week: null,
     focus_topic: null,
     highlight: [],
-    color_by: "tone",
+    color_by: "decision",
     caption_es: "Vista inicial de tarjetas (esperando comando del Cartógrafo)",
   };
 }
@@ -235,6 +238,15 @@ export function App() {
   const [isCardsDrawerOpen, setIsCardsDrawerOpen] = useState<boolean>(false);
   const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(true);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const activeLens = lensFromCommand(
+    activeView.color_by,
+    "",
+    activeView.focus_topic ?? null,
+  );
+
+  const selectLens = useCallback((lens: GraphLens) => {
+    setActiveView((prev) => ({ ...prev, color_by: lens }));
+  }, []);
 
   // Keyboard shortcut listener: F/f for fullscreen toggle, Esc for exit
   useEffect(() => {
@@ -557,7 +569,7 @@ export function App() {
                         week: card.week,
                         focus_topic: card.topic_id,
                         highlight: [card.topic_id],
-                        color_by: "tone",
+                        color_by: "segment",
                         caption_es: `Historia de 1 salto: ${topicName(
                           card.topic_id,
                           card.label_es,
@@ -1000,8 +1012,8 @@ export function App() {
               <span className="chip">
                 Modo: <code>{activeView.view}</code>
               </span>
-              <span className="chip">
-                Color por: <code>{activeView.color_by}</code>
+              <span className="chip" data-testid="active-lens-chip">
+                Color por: <strong>{LENS_NAMES[activeLens]}</strong>
               </span>
               <span className="chip">
                 Semana: <code>{activeView.week ?? "última con datos"}</code>
@@ -1018,6 +1030,10 @@ export function App() {
                 week={activeView.week ?? contextWeek}
                 focusTopic={activeView.focus_topic}
                 highlight={activeView.highlight}
+                colorBy={activeLens}
+                captionEs={activeView.caption_es}
+                isFullscreen={isFullscreen}
+                onLensChange={selectLens}
                 onSelectTopic={(topicId) => selectTopic(topicId)}
                 onOpenStory={(topicId) => {
                   selectTopic(topicId);
@@ -1026,7 +1042,7 @@ export function App() {
                     week: activeView.week ?? contextWeek ?? null,
                     focus_topic: topicId,
                     highlight: [topicId],
-                    color_by: "tone",
+                    color_by: "segment",
                     caption_es: `Historia de 1 salto: ${topicId}`,
                   });
                 }}
@@ -1037,6 +1053,10 @@ export function App() {
               <StoryGraph
                 focusTopic={activeView.focus_topic}
                 highlight={activeView.highlight}
+                colorBy={activeLens}
+                captionEs={activeView.caption_es}
+                isFullscreen={isFullscreen}
+                onLensChange={selectLens}
                 onSelectTopic={(topicId) => selectTopic(topicId)}
               />
             )}
@@ -1075,7 +1095,7 @@ export function App() {
                           week: card.week,
                           focus_topic: card.topic_id,
                           highlight: [card.topic_id],
-                          color_by: "tone",
+                          color_by: "segment",
                           caption_es: `Historia de 1 salto: ${topicName(
                             card.topic_id,
                             card.label_es,

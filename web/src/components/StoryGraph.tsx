@@ -1,6 +1,7 @@
 import Graph from "graphology";
 import Sigma from "sigma";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { type GraphLens, LENS_NAMES, graphLensFromColorBy } from "../lenses";
 import type { DecisionValue } from "../types/contracts";
 import type {
   StoriesIndexData,
@@ -16,6 +17,7 @@ export interface StoryGraphProps {
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onSelectTopic?: (topicId: string) => void;
+  onLensChange?: (lens: GraphLens) => void;
 }
 
 const DECISION_LABELS_ES: Record<DecisionValue, string> = {
@@ -123,6 +125,7 @@ export function StoryGraph({
   isFullscreen = false,
   onToggleFullscreen,
   onSelectTopic,
+  onLensChange,
 }: StoryGraphProps) {
   const sigmaContainerRef = useRef<HTMLDivElement | null>(null);
   const sigmaRef = useRef<Sigma | null>(null);
@@ -133,11 +136,7 @@ export function StoryGraph({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [unmatchedTopicNotice, setUnmatchedTopicNotice] = useState<string | null>(null);
-  const [activeLens, setActiveLens] = useState<string>(colorBy || "segment");
-
-  useEffect(() => {
-    if (colorBy) setActiveLens(colorBy);
-  }, [colorBy]);
+  const activeLens = graphLensFromColorBy(colorBy);
 
   const highlightSet = useMemo(
     () => new Set(highlight.map((h) => h.toLowerCase())),
@@ -402,6 +401,8 @@ export function StoryGraph({
         <div className="lens-banner-left">
           <span className="lens-current-badge">
             Historia de 1 salto: <strong>{storyData?._meta?.label_es ?? "Cargando..."}</strong>
+            {" · "}
+            Lente: <strong>{LENS_NAMES[activeLens]}</strong>
           </span>
           {captionEs && <span className="lens-caption-text">{captionEs}</span>}
         </div>
@@ -409,28 +410,28 @@ export function StoryGraph({
           <button
             type="button"
             className={`pill lens-pill${activeLens === "segment" ? " pill-active" : ""}`}
-            onClick={() => setActiveLens("segment")}
+            onClick={() => onLensChange?.("segment")}
           >
             Anillos (IA/IT)
           </button>
           <button
             type="button"
             className={`pill lens-pill${activeLens === "bridge" ? " pill-active" : ""}`}
-            onClick={() => setActiveLens("bridge")}
+            onClick={() => onLensChange?.("bridge")}
           >
             Puente (Cross-ring)
           </button>
           <button
             type="button"
             className={`pill lens-pill${activeLens === "momentum" ? " pill-active" : ""}`}
-            onClick={() => setActiveLens("momentum")}
+            onClick={() => onLensChange?.("momentum")}
           >
             Momento
           </button>
           <button
             type="button"
             className={`pill lens-pill${activeLens === "novelty" ? " pill-active" : ""}`}
-            onClick={() => setActiveLens("novelty")}
+            onClick={() => onLensChange?.("novelty")}
           >
             Novedad
           </button>
