@@ -74,6 +74,18 @@ Owner: Claude #4 (claude-cacho) · Branch: `feat/ws0-agents-quality` · Director
 - Tests (offline, scripted model): fenced and bad JSON, the Auditor catching an invented "380%",
   a wrong decision, ids/viral and overclaims, retry-then-pass, fail-twice-kept-and-flagged, contract
   validation, humanized theme codes.
+- Addendum 03:35, done: `get_topic_evidence(topic_id, week)` in `agents/tools.py` reads WS1d's
+  `topic_evidence_weekly`.
+  - It returns up to 5 articles (outlet, date, language, title) and their article and outlet
+    counts; the URL never reaches the model.
+  - The Signal analyst and the Editor call it when a named topic is asked about.
+  - Two offline tests: the tool never returns a URL and caps at 5; a named-topic turn reads it and
+    no URL is in any message sent to the model.
+  - Checked on the full lake: `org:marsh mclennan`, 2026-W42, 5 articles from 5 outlets, all
+    English (measured).
+  - The briefs keep citing the week's real article and outlet counts from `topic_sources_weekly`
+    (for example 44 artículos de 39 medios). The evidence's 5 of 5 is a selection, not the
+    volume. They never cite titles.
 - Regenerate at 06:00 if the final scores change (`--weeks 2`, about 20-25 calls).
 
 **Two examples** (as written; no titles, URLs or person names):
