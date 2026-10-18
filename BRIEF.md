@@ -81,3 +81,10 @@ Items 1-4 by **06:45**; 5-7 by **07:30**.
 11. **FINDING-002 follow-up (medium):** the rail's one-line reason still shows internal terms
     ("z_7d 13.5, cuota 7d ..."). Show a plain reason instead, e.g. "Crece 10x frente a la semana pasada"
     or the decision's plain sentence; keep the raw line in the detail and "Detalles técnicos".
+
+## Addendum (orchestrator, 05:35 UTC-5): review of FINDING-005
+
+12. **FINDING-005 follow-up (medium):** at 1400 px the rail cuts the three signals with an ellipsis
+    ("Emergencia 92.4 ...", "Ángulo Explicador n..."), and "pct" is jargon. Let the signals wrap onto
+    two lines (or show them as short chips), and write them in plain words: "Emergencia p92", "Ventana ~12 días"
+    (or "Ventana sin estimar"), "Ángulo Giro". No ellipsis on any of the 10 rows at 1280 px and 1440 px.
