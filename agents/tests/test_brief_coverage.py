@@ -47,3 +47,11 @@ def test_a_contradicted_sentence_is_replaced_by_the_code_written_line():
     )
     assert briefs.coverage_contradictions(fixed, _data(18, 28)) == []
     assert fixed["headline_es"] == fields["headline_es"]  # other fields untouched
+
+
+def test_a_contradicted_headline_keeps_the_topic_name():
+    data = _data(152, 785)
+    data.row = {"topic_id": "ai:product:chatgpt", "label_es": "ChatGPT"}
+    fields = _fields("Sin datos.") | {"headline_es": "ChatGPT: casi nadie lo cuenta en español"}
+    fixed = briefs.fix_coverage(fields, data)
+    assert fixed["headline_es"] == "ChatGPT: 152 artículos en español y portugués esta semana"

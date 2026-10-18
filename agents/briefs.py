@@ -98,6 +98,13 @@ def coverage_line(data: "TopicData") -> str:
     return f"Esta semana hubo {es} artículos en español y portugués, frente a {en} en inglés."
 
 
+def _headline_coverage(data: "TopicData") -> str:
+    """A headline keeps the topic's name: "ChatGPT: 152 artículos en español y portugués"."""
+    es = data.facts["articulos_en_espanol_y_portugues_por_semana"][-1]
+    name = topic_name(data.row) if getattr(data, "row", None) else "El tema"
+    return f"{name}: {es} artículos en español y portugués esta semana"
+
+
 def coverage_contradictions(fields: dict[str, str], data: "TopicData") -> list[str]:
     """Sentences whose Spanish/Portuguese coverage claim disagrees with the brief's own count
     (none when the brief's data has no weekly language counts)."""
@@ -128,7 +135,9 @@ def fix_coverage(fields: dict[str, str], data: "TopicData") -> dict[str, str]:
         for sentence in _SENTENCES.split(text):
             if sentence.strip() in bad:
                 if not used:
-                    parts.append(coverage_line(data))
+                    parts.append(
+                        _headline_coverage(data) if name == "headline_es" else coverage_line(data)
+                    )
                     used = True
                 continue
             parts.append(sentence)
