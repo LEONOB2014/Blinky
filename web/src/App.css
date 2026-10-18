@@ -1606,6 +1606,31 @@ body {
   vertical-align: top;
 }
 
+.trust-table-scroll {
+  overflow: auto;
+  max-width: 100%;
+  margin: var(--space-2) 0;
+}
+
+.trust-report .trust-table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 12px;
+}
+
+.trust-report .trust-table th,
+.trust-report .trust-table td {
+  border: 1px solid var(--line);
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.trust-report .trust-table th {
+  background: #f8fafc;
+}
+
 .workspace {
   font-size: 14px;
 }

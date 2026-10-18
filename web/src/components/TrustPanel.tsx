@@ -5,14 +5,15 @@ import {
   type TrustReport,
   readStaticJson,
 } from "../demoCards";
+import { MarkdownReport } from "../markdownReport";
 import { markForKind } from "../publicCopy";
 
 function ReportBody({ report }: { report: TrustReport }) {
   if (report.markdown) {
     return (
-      <pre className="trust-markdown" data-testid="trust-markdown">
-        {report.markdown}
-      </pre>
+      <div data-testid="trust-markdown">
+        <MarkdownReport markdown={report.markdown} />
+      </div>
     );
   }
   return (
