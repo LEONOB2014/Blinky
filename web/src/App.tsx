@@ -1,4 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { communityLine, familyForTopic } from "./aiLexicon";
 import {
   fetchFreshness,
   fetchRadar,
@@ -231,6 +232,29 @@ function shortWindow(w: TopicWindow): string {
     default:
       return "Ventana sin estimar";
   }
+}
+
+function FamilyChip({
+  topicId,
+  family,
+  familyEs,
+}: {
+  topicId: string;
+  family?: string | null;
+  familyEs?: string | null;
+}) {
+  const entry = familyForTopic(topicId, family);
+  if (!entry) return null;
+  return (
+    <span className="family-chip" style={{ color: entry.color, borderColor: entry.color }}>
+      {familyEs || entry.label}
+    </span>
+  );
+}
+
+function CommunityNote({ card }: { card: TopicScoreWeekly }) {
+  if (!card.topic_id.startsWith("ai:") && card.community == null) return null;
+  return <p className="community-line">{communityLine(card.community)}</p>;
 }
 
 function RowSignals({ card }: { card: TopicScoreWeekly }) {
@@ -799,6 +823,14 @@ export function App() {
                       <span className="rank-badge">#{card.rank ?? "-"}</span>
                       <span className="rail-name">
                         {topicName(card.topic_id, card.label_es)}
+                        <FamilyChip
+                          topicId={card.topic_id}
+                          family={card.family}
+                          familyEs={card.family_es}
+                        />
+                        {(card.topic_id.startsWith("ai:") || card.community != null) && (
+                          <span className="community-line">{communityLine(card.community)}</span>
+                        )}
                       </span>
                       <span className={`decision-badge decision-${card.decision}`}>
                         {DECISION_LABELS[card.decision]}
@@ -1145,7 +1177,9 @@ function TopicDetail({
           </span>
         )}
         {card.framing_angle && <span className="chip">Ángulo: {card.framing_angle}</span>}
+        <FamilyChip topicId={card.topic_id} family={card.family} familyEs={card.family_es} />
       </div>
+      <CommunityNote card={card} />
       {card.why.length > 0 && (
         <ul className="why-list">
           {card.why.map((reason, idx) => (

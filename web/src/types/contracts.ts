@@ -2,6 +2,8 @@
  * TypeScript definitions derived directly from `contracts/*.schema.json` and `contracts/api.yaml`.
  */
 
+import type { CommunitySignal } from "../aiLexicon";
+
 export type Profile = "dev" | "full";
 export type Segment = "ai" | "it" | "ai_domain";
 export type LangBucket = "eng" | "spa" | "por" | "other";
@@ -54,6 +56,11 @@ export interface TopicScoreWeekly {
   evidence_ids: string[];
   has_wikipedia_es_pt?: boolean;
   profile: Profile;
+  /** Lexicon family, when the card is an `ai:` topic. */
+  family?: string | null;
+  family_es?: string | null;
+  /** WP4 community sensor. Absent until that table is joined. */
+  community?: CommunitySignal | null;
 }
 
 /** `contracts/topic_daily.schema.json` */
@@ -119,6 +126,8 @@ export type ViewColorBy =
   | "community"
   | "tone"
   | "window"
+  | "family"
+  | "postura"
   | "arousal";
 
 export interface ViewFilter {

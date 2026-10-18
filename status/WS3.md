@@ -6,7 +6,7 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 23:48 UTC-5 · `feat/ws3-graph-smoke` (WS3c graph-view smoke test) · committed locally; the orchestrator pushes
+2026-10-18 09:05 UTC-5 · `feat/ws3-ai-graph` (WP3 AI graph: family colour, Postura) · committed locally; the orchestrator pushes
 
 ## Done
 
@@ -108,11 +108,15 @@ layout covers the sweep for now.
 
 ## In progress
 
-- Nothing. The addendum is done; the push waits for the maintainer.
+- WP3 code is on `feat/ws3-ai-graph` (local commit; not pushed). The AI tables
+  `edges_ai_weekly` and `topic_ai_daily` are not in the lake yet, so this branch
+  does not write a new `temporal.json`. Run later with
+  `uv run --extra graph python -m graph.export_views --ai`.
 
 ## Blocked on
 
-Nothing outside the brief. Waiting on the scheduled WS1 input above.
+- Nothing in this branch. The lexicon file is not on `feat/ws3-ai-graph`; the
+  coverage list below is a read of the copy on `feat/ws0-ai-lexicon`.
 
 ## Notes for the lead
 
@@ -197,3 +201,59 @@ Jaccard >= 0.3 `community_id` has almost no continuity on full data. Diagnosis o
   Communities are large (largest 2,997 and 3,217 nodes) on a dense graph (~800k edges, ~10k nodes).
 
 Distributions over node-weeks (measured): median `new_nbr_rate` 0.606, median `deg_growth` -0.008.
+
+## WP3 AI graph (2026-10-18 09:05 UTC-5)
+
+`graph/export_views.py` takes `--edges`, `--topics`, `--scores`, `--lexicon` and `--ai`.
+`--ai` reads `edges_ai_weekly` and `topic_ai_daily`, keeps only `ai:` nodes, overlays
+`label_es` from the lexicon, and writes `family`, `family_es`, `stance`, `default_color_by`
+and the Spanish legends. NPMI, edge state, betweenness, momentum, community and importance
+are still computed on the pruned edges. With two or more critics, the layout seats that camp
+on the left. The org graph stays on the decision lens when the yaml is present.
+
+The Postura lens colours by stance and sizes by the absolute weekly GDELT tone. Questions
+"¿quién se opone?", "críticos" and "regulación" select it, after tone so a tone question
+still wins. The rail and the topic card show a family chip when the id is `ai:` or the card
+has `family`. The Comunidad IA line reads `community` when WP4 sends it, and otherwise says
+there is no signal this week. It does not invent paper or talk counts.
+
+Tests (measured, this machine): `uv run --extra graph pytest graph/tests/test_ai_graph.py
+graph/tests/test_export_views.py agents/tests/test_runtime.py` — 48 passed. The AI-export
+test is a 4-node fixture, not the lake. `bun install` then `tsc -b` in `web/` passed with
+no errors. The UI was not opened in a browser.
+
+### Lexicon coverage (second opinion)
+
+Read of `contracts/ai_lexicon.yaml` at `024938e` on `feat/ws0-ai-lexicon` (measured):
+110 entries. Stances: 64 promoter, 28 neutral, 18 critic. The file is not on this branch.
+
+Already covered, so not gaps: Chinese labs DeepSeek, Qwen, Kimi, Zhipu/GLM, ERNIE,
+Doubao, Hunyuan, MiniMax and Huawei/Pangu; `model:open_chinese` and
+`model:deepseek_models`; Hugging Face (`research:hugging_face`); open-source patterns
+for PyTorch, LangChain, LlamaIndex, vLLM, Ollama and llama.cpp; agents as `tech:agents`
+plus MCP; the critics' camp (pause, FLI/CAIS/MIRI, protests, artists including SAG-AFTRA,
+copyright, jobs, existential risk, the EU AI Act).
+
+Gaps an editor would still miss:
+
+1. No pattern for 01.AI / Yi, Baichuan, StepFun, SenseTime / SenseNova, or iFlytek / Spark.
+   A headline that only names Yi or SenseNova matches neither those labs nor
+   `model:open_chinese`.
+2. No node for the EU AI Office, AI Factories, EuroHPC, InvestAI, or the GPAI Code of
+   Practice. `policy:eu_ai_act` matches `eu ai` and "European Commission … AI", so those
+   stories collapse into the Act.
+3. Agent frameworks are not nodes. `tech:agents` matches "ai agent" / "agentic", not
+   LangGraph, CrewAI, AutoGen, smolagents, Dify or n8n. LangChain only sits inside
+   `research:open_source_projects`.
+4. Open-source runtimes absent from that pattern list: SGLang, Unsloth, MLX, Open WebUI,
+   LM Studio. vLLM, Ollama and llama.cpp are present.
+5. Named regulators are not entries: FTC, UK CMA, CNIL, ICO, Ofcom, NIST. "Safety
+   institute" matches `risk:ai_safety`, so a UK or US AISI story does not land on a
+   regulator node in the critics' camp.
+6. No LMSYS / Chatbot Arena entry. "leaderboard" only matches
+   `research:papers_benchmarks`.
+7. Empty `wikipedia.es` on Moonshot, Zhipu, ByteDance, Tencent, MiniMax and Huawei, so
+   those labs get no Spanish pageview series until a title is added.
+
+Family ids in that yaml are `techniques`, `business`, `safety`, `opposition` and
+`society` (35 of 110 entries: 11 + 8 + 6 + 5 + 5). The graph palette uses those ids.
