@@ -1,3 +1,6 @@
+READY FOR WS4 (01:30 UTC-5): `lake/gold/topic_sources_weekly.parquet` exists (270,888 rows, validated). See
+the WS1c section below for thresholds.
+
 # WS1 status
 
 Owner: claude-work · Directories: `pipelines/ingest/`
@@ -6,7 +9,9 @@ Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 22:45 UTC-5 · branch `feat/ws1-gdelt-loop` · Addendum 2 done, push waits for the maintainer
+2026-10-18 01:30 UTC-5 · branch `feat/ws1-topic-sources` (WS1c) · committed locally, the orchestrator pushes.
+
+Previous: 2026-10-17 22:45 UTC-5 · branch `feat/ws1-gdelt-loop` · Addendum 2 done, push waits for the maintainer
 
 Previous: 2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` · draft PR #7
 
@@ -29,6 +34,78 @@ Previous: 2026-10-17 21:40 UTC-5 · branch `feat/ws1-gdelt-loop` · draft PR #7
 - `x-mock` NOT changed: with `dev-slice`, `make test-ws` fails (`test_mock_matches_contract[topic_daily]`,
   checked) because it needs `mocks/<name>.json`, which this brief does not let me write. For the
   orchestrator: copy records from the two fixtures into `mocks/` and then flip both `x-mock` values.
+
+## WS1c: source diversity per topic-week (the syndication guard)
+
+- `bq_sql/s13_topic_sources_weekly.sql` -> `radar.topic_sources_weekly`, exactly as the contract:
+  ring-1 articles, the topic ids of `topic_daily`, Monday weeks.
+- `top_theme_pattern_share` is computed, never null:
+  - The pattern is the topic-week's 5 most co-mentioned *specific* entities: orgs and themes in at
+    most 10% of that week's ring-1 articles, the topic itself excluded.
+  - Each article carries the sorted subset of those 5 it mentions. The share is the most common
+    subset's articles over the topic-week's articles.
+  - The first version, without the 10% cut, picked background themes (2026-W42:
+    `EPU_ECONOMY_HISTORIC` in 49% of ring-1 articles, `WB_133` ICT in 48%, `TAX_ECON_PRICE` in 34%;
+    measured on `edges_weekly`). It put 31% of ranked topic-weeks at >= 0.9, for example
+    `org:national stock exchange` at 1.00.
+  - With the cut, the 5 W42 flags match the WS9 diagnostic exactly, and National Stock Exchange
+    falls to 0.62.
+- Bills (measured): 1,356,857,344 bytes (1.26 GiB) per run, two runs (v1, then v2 with the cut);
+  the dry run equals the bill. Both rows are in `reports/bq_ledger.csv`.
+- Rows (measured): 270,888 topic-weeks, 9,123 topics, 51 weeks, 0 nulls.
+- Lake: `lake/gold/topic_sources_weekly.parquet` (2.2 MiB), 1,000 sampled rows valid.
+  `RADAR_PROFILE=full uv run pytest -m data` checks the contract, `n_sources <= n_articles`,
+  `top_source_share <= top3_source_share`, Monday weeks, unique keys and topic ids within
+  `topic_daily`.
+- Dev cut: `fixtures/dev/topic_sources_weekly.parquet`, 9,183 rows, the same 1,757 topics and 8 weeks
+  as the `topic_daily` dev cut, 91 KiB, 0 contract violations
+  (`scripts/export_dev_slice.py --sources-from-lake`). `x-mock` is still pending: the mock is the
+  orchestrator's.
+
+**2026-W42 top 10 (current `topic_scores_weekly`, measured):**
+
+| Rank | Topic | Articles | Sources | Top source share | Top-3 share | Pattern share |
+|---|---|---|---|---|---|---|
+| 1 | `org:marsh mclennan` | 44 | 39 | 0.05 | 0.14 | 0.66 |
+| 2 | `org:euronext` | 149 | 86 | 0.01 | 0.04 | 0.97 |
+| 3 | `org:adani enterprises` | 51 | 50 | 0.04 | 0.08 | 0.96 |
+| 4 | `org:rocket lab` | 24 | 13 | 0.21 | 0.46 | 0.25 |
+| 5 | `org:national stock exchange` | 24 | 17 | 0.08 | 0.25 | 0.62 |
+| 6 | `org:ministry of science` | 82 | 82 | 0.01 | 0.04 | 0.91 |
+| 7 | `org:kioxia holdings` | 72 | 54 | 0.04 | 0.11 | 0.94 |
+| 8 | `org:sterling` | 158 | 91 | 0.03 | 0.06 | 0.92 |
+| 9 | `org:citigroup` | 150 | 112 | 0.05 | 0.13 | 0.39 |
+| 10 | `org:yahoo` | 177 | 43 | 0.60 | 0.73 | 0.60 |
+
+**Distribution over all ranked topic-weeks** (17,154 rows of `topic_scores_weekly` with a rank, 46
+weeks, all matched, measured):
+
+| Column | p10 | median | p90 |
+|---|---|---|---|
+| `n_articles` | 22 | 41 | 165 |
+| `n_sources` | 12 | 28 | 110 |
+| `top_source_share` | 0.024 | 0.10 | 0.34 |
+| `top3_source_share` | 0.062 | 0.23 | 0.62 |
+| `top_theme_pattern_share` | 0.21 | 0.45 | 1.00 |
+
+- Pattern share at or above a threshold, over the 17,154 ranked topic-weeks: >= 0.9 in 4,230 (24.7%),
+  >= 0.8 in 5,088, >= 0.7 in 5,831. In past top 10s (460 topic-weeks), >= 0.9 in 75 (16.3%).
+- By topic-week size:
+
+  | Articles | Topic-weeks | Share >= 0.9 | Median pattern | Median sources |
+  |---|---|---|---|---|
+  | < 30 | 5,680 | 21.1% | 0.43 | 18 |
+  | 30-59 | 5,501 | 26.3% | 0.44 | 29 |
+  | 60-119 | 3,514 | 38.1% | 0.69 | 63 |
+  | >= 120 | 2,459 | 10.0% | 0.41 | 145 |
+
+**What this says for WS4's gate (a reading of the data, the thresholds are WS4's):**
+- Source counts do not catch these bursts: a syndication network republishes one story under many
+  domains. Euronext has 86 sources and a top source share of 0.01, but a pattern share of 0.97.
+- The pattern share does catch them, so a penalty on `top_theme_pattern_share` >= 0.9 would have
+  removed exactly the 5 single-pattern W42 topics.
+- `top_source_share` catches the other failure, one outlet dominating: `org:yahoo` at 0.60.
+- The 60-119 article band has the most single-pattern weeks.
 
 ## Done
 

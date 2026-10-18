@@ -225,3 +225,32 @@ def test_the_route_records_the_resolved_entity():
     )
     step = next(s for s in response["trace"] if s["action"] == "delegate")
     assert step["agent"] == "media_master" and step["arguments"] == {"entity": None}
+
+
+@pytest.mark.parametrize(
+    ("question", "entity", "lens"),
+    [
+        ("Muéstrame el grafo de la semana", None, "decision"),
+        ("¿Qué pasa con Nvidia? Muéstramelo en el grafo", "org:nvidia", "segment"),
+        ("¿Cómo está el tono de las noticias de IA?", None, "tone"),
+        ("¿Qué temas están a punto de llegar al español?", None, "window"),
+        ("¿Qué temas conectan la IA con el clima?", None, "bridge"),
+        ("¿Qué tema está ganando más fuerza?", None, "momentum"),
+        ("¿Qué conexiones nuevas aparecieron esta semana?", None, "novelty"),
+    ],
+)
+def test_the_question_picks_the_graph_lens(question, entity, lens):
+    from agents.runtime import view_lens
+
+    assert view_lens(question, entity) == lens
+
+
+def test_lens_values_are_in_the_contract():
+    import json
+
+    from radar.paths import REPO_ROOT
+
+    schema = json.loads((REPO_ROOT / "contracts" / "view_command.schema.json").read_text())
+    assert {"decision", "segment", "tone", "window", "bridge", "momentum", "novelty"} <= set(
+        schema["properties"]["color_by"]["enum"]
+    )
