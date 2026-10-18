@@ -1,8 +1,9 @@
 # Texto de la entrega (borrador)
 
-Borrador para la entrega de las 11:30. Los huecos `[PENDIENTE: …]` se llenan cuando lleguen los números
-(backtest 05:00; P/R del filtro revisado por humanos 06:30). Cada cifra lleva su fuente en el repo;
-antes de enviar, verificar las que cambian con `make demo-check` y `scripts/showcase_stories.py`.
+Borrador para la entrega de las 11:30. El backtest y los registros ya están llenos desde los
+reportes. La revisión humana del filtro no llegó: se cita el panel de modelos y se dice que sigue
+pendiente. Cada cifra lleva su fuente en el repo; antes de enviar, verificar las que cambian con
+`make demo-check` y `scripts/showcase_stories.py`.
 
 ---
 
@@ -11,9 +12,12 @@ antes de enviar, verificar las que cambian con `make demo-check` y `scripts/show
 **Qué tema de IA está por llegar a LinkedIn en español, por qué, y desde qué ángulo emocional contarlo
 a ejecutivos de LatAm. Solo con fuentes públicas.**
 
-[PENDIENTE: frase de gancho según el backtest. Si la mediana de adelanto es de al menos 1 semana con
-intervalo por encima de cero: "El radar marca temas N semanas antes de que crezca la atención en
-Wikipedia en español (medido, n semanas)". Si no, se queda la frase de arriba.]
+El gancho de arriba se queda. `reports/backtest.md` no deja abrir con la etiqueta principal
+(pageviews de Wikipedia en español y portugués, coincidencias exactas, 43 semanas): la ventaja del
+radar publicado sobre el crecimiento del conteo crudo no se sostiene en el peor caso (−14,3 puntos,
+intervalo −20,2 .. −8,6). El adelanto mediano de 3,0 semanas (intervalo 2,0 .. 4,0, 47 positivos)
+es de la etiqueta secundaria, crecimiento de artículos de GDELT en español y portugués, no de
+Wikipedia.
 
 - Sitio: https://radar-senal-temprana.netlify.app
 - Código: https://github.com/LEONOB2014/Blinky
@@ -59,16 +63,20 @@ venga de una herramienta, y la traza de cada respuesta es visible.
 
 | Qué | Resultado | Fuente |
 |---|---|---|
-| Backtest (adelanto vs. atención en Wikipedia es/pt; precision@10) | [PENDIENTE: backtest] | `reports/backtest.md` |
-| Filtro de IA revisado por humanos (precisión / recall) | [PENDIENTE: P/R humano, 06:30] | `reports/label_quality.md` |
-| Filtro de IA contra el panel de modelos (prueba congelada, n = 800) | F1 0,964 [0,947; 0,979] (medido; referencia = etiquetas del panel, no humanas) | `reports/label_quality.md` |
-| Costo de BigQuery | [actualizar: 376,83 GB facturados en 63 trabajos a la 01:10 (medido)] | `reports/bq_ledger.csv` |
-| Sitio y API en vivo | [actualizar: 8/8 PASS con latencias] | `status/WS9.md` (`make demo-check`) |
+| Backtest, etiqueta principal: pageviews de Wikipedia es+pt, coincidencias exactas, 43 semanas (2025-W49 a 2026-W39). Precisión@10 en casillas etiquetadas | Radar publicado 119/408 = 29,2% (intervalo bootstrap 95% por semanas 24,4% .. 34,0%); cobertura 408/440 = 92,7%; peor caso 27,0%, mejor caso 34,3%. Conteo crudo 120/378 = 31,7% (26,8% .. 37,0%); peor 27,3%, mejor 41,4%. Persistencia 77/426 = 18,1% (14,8% .. 21,3%); peor 17,5%, mejor 20,7%. Tasa base 1036/4085 = 25,4%. Peor caso del radar menos mejor caso del conteo crudo: −14,3 puntos (−20,2 .. −8,6), no se sostiene. Peor caso del radar menos mejor caso de la persistencia: +6,4 puntos (0,7 .. 12,0), se sostiene. Sin el guardia de sindicación la precisión etiquetada es 135/403 = 33,5%: el guardia cuesta precisión en esta etiqueta. No hay adelanto medido en Wikipedia | `reports/backtest.md` |
+| Backtest, etiqueta secundaria: crecimiento de artículos GDELT es+pt, 43 semanas, cobertura 430/430 | Radar publicado 57/430 = 13,3% (9,5% .. 17,2%). Tasa base 1076/15959 = 6,7%. Persistencia 55/430 = 12,8% (9,1% .. 17,0%). Conteo crudo 1/430 = 0,2% (0,0% .. 0,7%). Diferencia contra la persistencia: 0,5 puntos (−3,7 .. 4,9): no le gana a las dos líneas base. Adelanto mediano 3,0 semanas (2,0 .. 4,0) sobre 47 positivos marcados, de la primera marca al pico dentro de 8 semanas | `reports/backtest.md` |
+| Filtro de IA revisado por humanos (precisión / recall) | Verificación humana pendiente. Las 300 filas de `lake/labels/gold_sheet.csv` aún no tienen la etiqueta de la persona. Referencia: panel de modelos | `reports/label_quality.md` |
+| Filtro de IA contra el panel de modelos (prueba congelada, n = 800) | lightgbm, calibración isotónica: precisión 0,9641 [0,9333; 0,9810], recall 0,9641 [0,9333; 0,9810], F1 0,9641 [0,9474; 0,9794] (medido; referencia = etiquetas del panel, no humanas) | `reports/label_quality.md` |
+| El mismo filtro en las 300 filas de oro, contra el panel y no contra personas | Alumno: precisión 0,9432 [0,8738; 0,9755], recall 0,9540 [0,8877; 0,9820], F1 0,9486 [0,9166; 0,9773] (n = 300, medido) | `reports/label_quality.md` |
+| Costo de BigQuery | 380,75 GB decimales (380.749.479.936 bytes facturados en 66 trabajos, medido) | `reports/bq_ledger.csv` |
+| Costo de Jev | 981 llamadas, 0,04428430 USD acumulados (medido) | `reports/jev_ledger.csv` |
+| Evaluación de los agentes (25 preguntas × 3 repeticiones = 75 corridas, lago completo) | Último experimento guardado, `auditor-cards-r3`: utilidad v1 0,500 [0,47; 0,55], utilidad v2 0,550 [0,50; 0,59], comprobación del Auditor 1,000, fidelidad de la decisión 1,000, enrutamiento 1,000, entidades 1,00 (n = 75), latencia 12,6 s, 5812 tokens por turno (medido). La latencia alta coincide con errores 502 del API, no con más tokens | `agents/README.md` |
+| Sitio y API en vivo | 8/8 PASS el 2026-10-18 01:05 UTC-5 (medido, segundos en el portátil, red incluida): página 0,58 s, top 10 estático 0,26 s, frescura 0,75 s, top 10 de la API 1,38 s, igualdad con el estático 0,00 s, serie del primero 0,68 s, anillo de 1 salto 1,00 s, un turno de chat 11,98 s | `status/WS9.md` (`make demo-check`) |
 
-Dónde no hay señal, se dice. En la semana 2026-W42, 5 de los 10 temas del top se sostienen en un solo
-patrón de co-mención (copia sindicada de agencia). Solo 2 de 10 muestran ya un onset en
-español/portugués en 12 semanas (medido, `docs/submission/stories.md`; se regenera con cada
-recálculo).
+Dónde no hay señal, se dice. En la semana 2026-W42, 1 de 10 temas del top se sostiene en un solo
+patrón de co-mención (copia sindicada de agencia) y 1 de 10 muestra ya un onset en
+español o portugués en 12 semanas (medido, `docs/submission/stories.md`, generado 2026-10-18
+06:41 UTC; se regenera con cada recálculo).
 
 ### Fuentes y términos de uso
 
