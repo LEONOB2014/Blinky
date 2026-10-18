@@ -8,6 +8,12 @@
 # Matching: an AI-ring article counts for an entry when any pattern matches txt = lower(title || ' ' || url)
 # (RE2, lowercase, so URL slugs with hyphens match too) or when one of gdelt_orgs is in its GDELT orgs.
 # Topic id: 'ai:' || id. Persons are never entries. A change here is a contract change.
+#
+# ranked (optional, default true): false keeps an entry as context only. It is matched, counted and drawn
+# (topic_ai_daily, edges, the 1-hop ring, the graph views, the leaders as "contexto", the community and the
+# agents' tools) but never ranked: no rank, decision or backtest row. The LatAm sector entries are context:
+# ranked, they spiked in ways the emergence score rewards without predicting es/pt growth (the AI backtest's
+# secondary label fell from 25.6% to 22.1%, below raw-count growth, measured).
 version: 1
 
 families:
@@ -662,34 +668,41 @@ entries:
     label_es: IA en banca, fintech e inclusión financiera
     family: business
     stance: neutral
+    ranked: false
     patterns: ['(ai|ia)\b.{0,40}\b(bank|banking|banca|bancos?|fintech|payments?|pagos|credit scoring|crédito|seguros|insurance|inclusión financiera|financial inclusion)', '(bank|banking|banca|bancos?|fintech|insurers?|aseguradoras?).{0,40}\b(ai|ia|generative|generativa)\b', 'open finance', 'finanzas abiertas']
   - id: biz:ai_agriculture
     label_es: IA en el agro y la alimentación
     family: business
     stance: neutral
+    ranked: false
     patterns: ['(ai|ia)\b.{0,40}\b(agricultor|agricultur|farming|farmers|crops?|cultivos?|agro|agrícola|agricola|ganader|livestock|food security|seguridad alimentaria)', '(agricultur|agtech|agro|farming|farmers|agricultores|cultivos?).{0,40}\b(ai|ia|machine learning)\b', 'precision agriculture', 'agricultura de precisión', 'agricultura de precisao']
   - id: biz:ai_logistics
     label_es: IA en logística y cadena de suministro
     family: business
     stance: neutral
+    ranked: false
     patterns: ['(ai|ia)\b.{0,40}\b(logistics|logística|logistica|supply chain|cadena de suministro|cadeia de suprimentos|warehous|almacén|freight|carga|shipping|ports?|puertos?)', '(logistics|logística|supply chain|cadena de suministro|warehouse|freight).{0,40}\b(ai|ia)\b']
   - id: policy:ai_government
     label_es: IA en el gobierno y los servicios públicos
     family: policy
     stance: neutral
+    ranked: false
     patterns: ['(government|gobierno|governo|public sector|sector público|servicios públicos|public services|ministr|municipal|alcaldía|prefeitura).{0,40}\b(uses?|adopts?|deploys?|usa|adopta|implementa|lanza|launches)\b.{0,30}\b(ai|ia)\b', 'gov ?tech', 'gobierno digital.{0,30}\b(ia|ai)', '(ai|ia)\b.{0,30}\b(en el gobierno|in government|para el estado|servicios públicos)']
   - id: biz:ai_smes
     label_es: IA para pymes y emprendedores
     family: business
     stance: promoter
+    ranked: false
     patterns: ['(ai|ia)\b.{0,40}\b(smes?|small business(es)?|small and medium|pymes?|mipymes?|pequeñas y medianas|emprendedor|pequenas empresas)', '(smes?|small business(es)?|pymes?|mipymes?|emprendedores).{0,40}\b(ai|ia)\b']
   - id: society:indigenous_languages
     label_es: IA y lenguas indígenas y locales
     family: society
     stance: promoter
+    ranked: false
     patterns: ['(indigenous|indígenas?|originari|nativ).{0,30}\b(languages?|lenguas?|idiomas?|línguas?)\b.{0,40}\b(ai|ia|model|modelo|llm|translat|traduc)', '\b(quechua|guaraní|guarani|náhuatl|nahuatl|aymara|mapuche|maya|wayuu)\b.{0,40}\b(ai|ia|model|modelo|translat|traduc|app)', '\b(ai|ia|model|modelo|llm)\b.{0,40}\b(quechua|guaraní|guarani|náhuatl|nahuatl|aymara|mapuche|wayuu|lenguas indígenas|indigenous languages)\b', 'low-resource languages?', 'lenguas de bajos recursos', 'latam-gpt', 'latam gpt']
   - id: risk:climate_resilience
     label_es: IA para clima, desastres y resiliencia
     family: safety
     stance: promoter
+    ranked: false
     patterns: ['(ai|ia)\b.{0,40}\b(climate|clima|weather forecast|pronóstico del tiempo|flood|inundaci|drought|sequía|wildfire|incendios forestales|hurricane|huracán|earthquake|sismo|terremoto|early warning|alerta temprana)', '(climate|clima|flood|wildfire|incendios|disaster|desastres?).{0,40}\b(ai|ia|machine learning)\b.{0,20}\b(predict|forecast|pronóstic|detect|alert)']

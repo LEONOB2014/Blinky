@@ -73,6 +73,7 @@ paths:
                         espt_share: {type: [number, "null"], minimum: 0, maximum: 1}
                         emergence_rank: {type: [integer, "null"]}
                         decision: {type: [string, "null"]}
+                        ranked: {type: boolean, description: "false for a context-only lexicon entry (ranked: false): shown as contexto, never ranked"}
   /api/topic/{topic_id}/timeline:
     get:
       summary: Daily series of one topic by language

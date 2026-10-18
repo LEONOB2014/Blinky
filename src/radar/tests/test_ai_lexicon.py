@@ -44,6 +44,7 @@ def test_entries_are_valid_and_unique(lexicon):
         assert e["family"] in lexicon["families"], e["id"]
         assert e["stance"] in {"promoter", "critic", "neutral"}, e["id"]
         assert e["label_es"] and e["patterns"], e["id"]
+        assert isinstance(e.get("ranked", True), bool), e["id"]
         for p in e["patterns"]:
             re.compile(p)
             # BigQuery runs RE2: no lookarounds or backreferences
@@ -90,3 +91,17 @@ def test_headlines_map_to_ai_topics(lexicon, text, expected):
 )
 def test_non_ai_headlines_match_nothing(lexicon, text):
     assert ids_for(lexicon, text) == set()
+
+
+@pytest.mark.unit
+def test_the_latam_sector_entries_are_context_not_ranked(lexicon):
+    unranked = {e["id"] for e in lexicon["entries"] if e.get("ranked") is False}
+    assert unranked == {
+        "biz:ai_finance_banking",
+        "biz:ai_agriculture",
+        "biz:ai_logistics",
+        "policy:ai_government",
+        "biz:ai_smes",
+        "society:indigenous_languages",
+        "risk:climate_resilience",
+    }
