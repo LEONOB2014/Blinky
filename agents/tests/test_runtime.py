@@ -278,3 +278,13 @@ def test_auditor_matches_shares_only_for_percentages():
     assert untraced_numbers("Usamos el 34,6% de la capa gratuita.", results, "") == []
     assert untraced_numbers("Cuesta $2.20 por semana.", results, "") == ["2.20"]
     assert untraced_numbers("Hay 220 filas.", results, "") == []
+
+
+@pytest.mark.unit
+def test_media_master_forbids_stories_beyond_the_data_like_the_briefs():
+    from agents import briefs
+
+    prompt = runtime.master_prompt()
+    assert runtime.MASTER_NO_NARRATIVE in prompt
+    assert "no el negocio de la empresa" in prompt and "está redefiniendo" in prompt
+    assert runtime.NO_NARRATIVE in briefs.SYSTEM  # one wording for both

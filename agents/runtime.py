@@ -33,6 +33,7 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
             "get_topic_series",
             "get_top10",
             "get_topic_scores",
+            "get_topic_sources",
             "get_topic_evidence",
         ],
         "role": "Mides qué temas de IA crecen, en qué etapa están y su carga emocional, con las "
@@ -77,6 +78,19 @@ SPECIALISTS: dict[str, dict[str, Any]] = {
     },
 }
 
+# no story beyond the data: the same rule the Editor's briefs follow (agents/briefs.py)
+NO_NARRATIVE = (
+    "Los subtemas son categorías del radar, no el negocio de la empresa: no afirmes que el tema "
+    "'está conectado' con ellos ni inventes por qué crece; si no sabes la causa, dilo."
+)
+MASTER_NO_NARRATIVE = (
+    "No agregues causas, historias ni intenciones que los datos no muestren (por ejemplo, que una "
+    "empresa 'está redefiniendo' algo o 'se expande' a un mercado): di solo lo que muestran. "
+    + NO_NARRATIVE
+    + " En 'Qué hacer', el enfoque sale de los datos (decisión, ángulo, cifras), no de una historia "
+    "sobre la empresa."
+)
+
 RULES = (
     "Reglas: responde en español claro para ejecutivos de medios. Usa SOLO números que devuelvan las "
     "herramientas, sin inventar ni redondear de forma engañosa; si una herramienta dice que algo no "
@@ -108,7 +122,7 @@ MASTER_PROMPT = (
 
 
 def master_prompt() -> str:
-    return MASTER_PROMPT + rules()
+    return MASTER_PROMPT + rules() + " " + MASTER_NO_NARRATIVE
 
 
 @dataclass
@@ -478,6 +492,28 @@ def decision_line(turn: Turn, entity: str | None, question: str) -> str:
     return "Decisión del radar: " + "; ".join(parts) + "."
 
 
+_EVIDENCE_Q = re.compile(r"\bart[ií]culos?\b|\bevidencias?\b|\bfuentes?\b|\bmedios\b", re.I)
+LANG_ES = {"spa": "español", "eng": "inglés", "por": "portugués"}
+
+
+def evidence_block(turn: Turn) -> str:
+    """The articles behind a named topic, written by code from get_topic_evidence (and the week's
+    outlet count from get_topic_sources), so an evidence question lists them verbatim."""
+    found = {r["tool"]: r["result"] for r in turn.tool_results if r["result"].get("available")}
+    evidence, sources = found.get("get_topic_evidence"), found.get("get_topic_sources")
+    if not evidence:
+        return ""
+    name = topic_name({"topic_id": evidence["topic_id"]})
+    head = f"Artículos que respaldan a {name} ({evidence['week']})"
+    if sources:
+        head += f": {sources['n_articulos']} artículos de {sources['n_medios']} medios esa semana"
+    lines = [
+        f"- {a['source']}, {a['dt']}, {LANG_ES.get(a['lang_bucket'], 'otro idioma')}: «{a['title']}»"
+        for a in evidence["articles"]
+    ]
+    return head + "; estos son los más representativos:\n" + "\n".join(lines)
+
+
 _WORD = re.compile(r"[\wáéíóúñü&.-]+", re.I)
 _NON_NAME = re.compile(r"[^\w&.-]+")
 
@@ -578,6 +614,7 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
     calls: list[tuple[str, dict[str, Any]]] = {
         "signal_analyst": [("get_topic_series", {"topic": entity or leader or "ai_all"})]
         + ([("get_topic_scores", {"topic_id": entity, "week": week})] if entity else [])
+        + ([("get_topic_sources", {"topic_id": entity, "week": week})] if entity else [])
         + ([("get_topic_evidence", {"topic_id": entity, "week": week})] if entity else []),
         "audience_strategist": [
             ("get_topic_series", {"topic": leader or "ai_all", "lang_bucket": "spa"})
@@ -729,6 +766,8 @@ def run_turn(
     needed = route(question)
     if entity and not needed:  # "¿Qué pasa con X?": its scores and its connections
         needed = ["signal_analyst", "cartographer"]
+    if entity and _EVIDENCE_Q.search(question) and "signal_analyst" not in needed:
+        needed = ["signal_analyst", *needed]  # it reads the topic's articles and outlets
     if not needed:  # unrecognised question: the Media Master delegates freely
         answer = _loop(
             model,
@@ -772,6 +811,9 @@ def run_turn(
         team = "\n\n".join(f"{SPECIALISTS[a]['name_es']}: {n}" for a, n in notes.items())
         decides = "signal_analyst" in needed or "editor" in needed
         line = decision_line(turn, entity, question) if decides else ""
+        block = evidence_block(turn) if _EVIDENCE_Q.search(question) else ""
+        if block:
+            line = f"{line}\n\n{block}" if line else block
         instructions = (
             f"El sistema ya escribe la primera línea, calculada por código: «{line}». No la "
             "repitas ni propongas otra decisión. Escribe solo lo que sigue: 'Por qué:' con 2 o 3 "
@@ -780,6 +822,7 @@ def run_turn(
             if decides
             else "Responde la pregunta directamente en 2 a 4 líneas, usando solo lo que dicen "
             "los informes; no agregues KPIs ni decisiones que no estén en ellos."
+            + (f" El sistema ya lista los artículos: «{block}». No los repitas." if block else "")
         )
         reply = model.chat(
             [
