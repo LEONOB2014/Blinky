@@ -1446,6 +1446,8 @@ def export_story(
                     "n": n,
                     "npmi": npmi,
                     "etype": nb.split(":", 1)[0],
+                    "edge_state": e_state,
+                    "n_growth": e_growth,
                     **_node_extra(nb),
                 },
             }

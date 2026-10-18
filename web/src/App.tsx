@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchFreshness,
   fetchRadar,
@@ -228,6 +228,81 @@ export function App() {
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [chatError, setChatError] = useState<string | null>(null);
 
+  // Split View & Fullscreen state (Addendum 2 Must #2)
+  const [splitPct, setSplitPct] = useState<number>(35);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isCardsDrawerOpen, setIsCardsDrawerOpen] = useState<boolean>(false);
+  const [isFloatingChatOpen, setIsFloatingChatOpen] = useState<boolean>(true);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Keyboard shortcut listener: F/f for fullscreen toggle, Esc for exit
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      if (e.key === "Escape") {
+        setIsFullscreen(false);
+        setIsCardsDrawerOpen(false);
+      } else if (
+        (e.key === "f" || e.key === "F") &&
+        !isInput &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        setIsFullscreen((prev) => !prev);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Dragging handlers for divider
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDividerTouchStart = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    function handleMove(clientX: number) {
+      if (!splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const rawPct = ((clientX - rect.left) / rect.width) * 100;
+      const clamped = Math.min(60, Math.max(20, rawPct));
+      setSplitPct(clamped);
+    }
+    function onMouseMove(e: MouseEvent) {
+      handleMove(e.clientX);
+    }
+    function onTouchMove(e: TouchEvent) {
+      if (e.touches.length > 0) handleMove(e.touches[0].clientX);
+    }
+    function onEnd() {
+      setIsDragging(false);
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onEnd);
+    window.addEventListener("touchmove", onTouchMove);
+    window.addEventListener("touchend", onEnd);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onEnd);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onEnd);
+    };
+  }, [isDragging]);
+
   useEffect(() => {
     void fetchFreshness()
       .then((f) => {
@@ -349,6 +424,9 @@ export function App() {
     const immediateCmd = resolveChatViewCommand(trimmed, [], contextWeek);
     if (immediateCmd) {
       setActiveView(immediateCmd);
+      if (immediateCmd.view === "temporal" || immediateCmd.view === "story") {
+        setIsFullscreen(true);
+      }
       if (immediateCmd.focus_topic) {
         selectTopic(immediateCmd.focus_topic);
       }
@@ -370,6 +448,9 @@ export function App() {
       );
       if (resolvedCmd) {
         setActiveView(resolvedCmd);
+        if (resolvedCmd.view === "temporal" || resolvedCmd.view === "story") {
+          setIsFullscreen(true);
+        }
         if (resolvedCmd.focus_topic) {
           selectTopic(resolvedCmd.focus_topic);
         }
@@ -415,9 +496,9 @@ export function App() {
         </div>
       </header>
 
-      <main className="main-grid">
-        {/* Left column: Top 10 cards + Timeline + 1-hop context */}
-        <div className="left-col">
+      <main className="split-view-container" ref={splitContainerRef}>
+        {/* Left column: Top 10 cards + Chat + Timeline + Context + Trace */}
+        <div className="split-left-pane" style={{ width: `${splitPct}%` }}>
           <section className="panel" aria-labelledby="top10-heading">
             <div className="panel-header">
               <h2 id="top10-heading">Top 10 semanal (`GET /api/radar`)</h2>
@@ -532,6 +613,83 @@ export function App() {
                       </ul>
                     )}
                   </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="panel" aria-labelledby="chat-heading">
+            <div className="panel-header">
+              <h2 id="chat-heading">Maestro de Medios (`POST /api/chat`)</h2>
+              {conversationId && (
+                <span className="badge">Sesión: {conversationId}</span>
+              )}
+            </div>
+
+            <div className="quick-prompts">
+              {QUICK_QUESTIONS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  className="pill"
+                  onClick={() => setChatInput(q)}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+
+            <form className="chat-form" onSubmit={handleChatSubmit}>
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Pregunta al Maestro de Medios en español..."
+                maxLength={2000}
+              />
+              <button type="submit" disabled={chatLoading}>
+                {chatLoading ? "Consultando..." : "Preguntar"}
+              </button>
+            </form>
+
+            {chatError && (
+              <div className="error-box" role="alert">
+                <strong>Estado del runtime:</strong> {chatError}
+              </div>
+            )}
+
+            {chatAnswer && (
+              <div className="chat-answer" data-testid="chat-answer">
+                <pre className="answer-text">{chatAnswer}</pre>
+              </div>
+            )}
+
+            {chatCards.length > 0 && (
+              <div className="decision-cards-list">
+                <h3>Tarjetas de decisión (`decision_card`)</h3>
+                {chatCards.map((dc) => (
+                  <div key={`${dc.topic_id}-${dc.week}`} className="decision-card">
+                    <div className="card-top">
+                      <strong>{dc.topic_id}</strong>
+                      <span className={`decision-badge decision-${dc.decision}`}>
+                        {DECISION_LABELS[dc.decision]}
+                      </span>
+                      <span className="badge">
+                        Auditor: {dc.auditor_ok ? "verificado" : "alerta"}
+                      </span>
+                    </div>
+                    <p>{dc.justification_es}</p>
+                    <div className="chips-row">
+                      {dc.kpis.map((kpi, i) => (
+                        <span key={i} className="chip">
+                          {kpi.name}: <strong>{String(kpi.value)}</strong>{" "}
+                          {kpi.unit ?? ""} (
+                          {kpi.kind === "measured" ? "medido" : "estimado"} ·{" "}
+                          <code>{kpi.source}</code>)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -660,17 +818,92 @@ export function App() {
               </table>
             </div>
           </section>
+
+          <section className="panel" aria-labelledby="trace-heading">
+            <div className="panel-header">
+              <h2 id="trace-heading">
+                Traza de agentes (`agent_trace` · {traceSteps.length} pasos)
+              </h2>
+              <span className="badge">Contrato: agent_trace</span>
+            </div>
+            {traceSteps.length === 0 ? (
+              <p className="muted">
+                Envía una pregunta en el panel del Maestro de Medios para inspeccionar
+                cada delegación, herramienta, latencia y verificación del Auditor.
+              </p>
+            ) : (
+              <div className="table-scroll">
+                <table className="data-table" data-testid="trace-table">
+                  <thead>
+                    <tr>
+                      <th>Paso</th>
+                      <th>Agente</th>
+                      <th>Acción</th>
+                      <th>Herramienta</th>
+                      <th>Latencia</th>
+                      <th>Resumen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {traceSteps.map((s) => (
+                      <tr key={s.step}>
+                        <td>{s.step}</td>
+                        <td>
+                          <code>{s.agent}</code>
+                        </td>
+                        <td>
+                          <span className={`action-tag action-${s.action}`}>
+                            {s.action}
+                          </span>
+                        </td>
+                        <td>
+                          <code>{s.tool ?? "-"}</code>
+                        </td>
+                        <td>{s.latency_ms != null ? `${s.latency_ms} ms` : "-"}</td>
+                        <td className="trace-summary">{s.result_summary ?? "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </div>
 
-        {/* Right column: View Command graph panel + Chat panel + Agent Trace panel */}
-        <div className="right-col">
+        {/* Draggable Divider (Addendum 2 Must #2) */}
+        <div
+          className={`split-divider ${isDragging ? "is-dragging" : ""}`}
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuenow={splitPct}
+          aria-label="Ajustar ancho de paneles"
+          tabIndex={0}
+          onMouseDown={handleDividerMouseDown}
+          onTouchStart={handleDividerTouchStart}
+          title="Arrastra para cambiar la proporción de paneles"
+        >
+          <div className="divider-grip" />
+        </div>
+
+        {/* Right column: Graph panel with Fullscreen & Drawer & Floating Chat */}
+        <div
+          className="split-right-pane"
+          style={{ width: `calc(${100 - splitPct}% - 12px)` }}
+        >
           <section
-            className="panel view-placeholder"
+            className={
+              isFullscreen
+                ? "panel view-placeholder view-panel-fullscreen"
+                : "panel view-placeholder"
+            }
             aria-labelledby="view-heading"
             data-testid="view-command-area"
           >
             <div className="panel-header">
-              <h2 id="view-heading">Vista controlada por agentes (`view_command`)</h2>
+              <h2 id="view-heading">
+                {isFullscreen ? "⛶ Pantalla completa · " : ""}
+                Vista controlada por agentes (`view_command`)
+              </h2>
               <div className="view-mode-switcher">
                 <button
                   type="button"
@@ -727,6 +960,38 @@ export function App() {
                 >
                   Historia 1-salto
                 </button>
+                {isFullscreen ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-drawer-toggle"
+                      onClick={() => setIsCardsDrawerOpen((prev) => !prev)}
+                      aria-expanded={isCardsDrawerOpen}
+                    >
+                      {isCardsDrawerOpen ? "✕ Ocultar tarjetas" : "☰ Tarjetas Top 10"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-fullscreen-exit"
+                      onClick={() => {
+                        setIsFullscreen(false);
+                        setIsCardsDrawerOpen(false);
+                      }}
+                      title="Presiona Esc para salir"
+                    >
+                      ✕ Salir (Esc)
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-fullscreen-toggle"
+                    onClick={() => setIsFullscreen(true)}
+                    title="Presiona F para pantalla completa"
+                  >
+                    ⛶ Pantalla completa (F)
+                  </button>
+                )}
                 <span className="badge">Vista activa: {activeView.view}</span>
               </div>
             </div>
@@ -784,132 +1049,112 @@ export function App() {
                 <em>«Muéstrame el grafo de la semana»</em>.
               </p>
             )}
-          </section>
 
-          <section className="panel" aria-labelledby="chat-heading">
-            <div className="panel-header">
-              <h2 id="chat-heading">Maestro de Medios (`POST /api/chat`)</h2>
-              {conversationId && (
-                <span className="badge">Sesión: {conversationId}</span>
-              )}
-            </div>
-
-            <div className="quick-prompts">
-              {QUICK_QUESTIONS.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  className="pill"
-                  onClick={() => setChatInput(q)}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-
-            <form className="chat-form" onSubmit={handleChatSubmit}>
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Pregunta al Maestro de Medios en español..."
-                maxLength={2000}
-              />
-              <button type="submit" disabled={chatLoading}>
-                {chatLoading ? "Consultando..." : "Preguntar"}
-              </button>
-            </form>
-
-            {chatError && (
-              <div className="error-box" role="alert">
-                <strong>Estado del runtime:</strong> {chatError}
-              </div>
-            )}
-
-            {chatAnswer && (
-              <div className="chat-answer" data-testid="chat-answer">
-                <pre className="answer-text">{chatAnswer}</pre>
-              </div>
-            )}
-
-            {chatCards.length > 0 && (
-              <div className="decision-cards-list">
-                <h3>Tarjetas de decisión (`decision_card`)</h3>
-                {chatCards.map((dc) => (
-                  <div key={`${dc.topic_id}-${dc.week}`} className="decision-card">
-                    <div className="card-top">
-                      <strong>{dc.topic_id}</strong>
-                      <span className={`decision-badge decision-${dc.decision}`}>
-                        {DECISION_LABELS[dc.decision]}
-                      </span>
-                      <span className="badge">
-                        Auditor: {dc.auditor_ok ? "verificado" : "alerta"}
-                      </span>
-                    </div>
-                    <p>{dc.justification_es}</p>
-                    <div className="chips-row">
-                      {dc.kpis.map((kpi, i) => (
-                        <span key={i} className="chip">
-                          {kpi.name}: <strong>{String(kpi.value)}</strong>{" "}
-                          {kpi.unit ?? ""} (
-                          {kpi.kind === "measured" ? "medido" : "estimado"} ·{" "}
-                          <code>{kpi.source}</code>)
+            {/* Collapsible drawer in fullscreen */}
+            {isFullscreen && isCardsDrawerOpen && (
+              <aside className="fullscreen-cards-drawer" aria-label="Cajón de tarjetas Top 10">
+                <div className="drawer-header">
+                  <h3>Tarjetas Top 10 semanal</h3>
+                  <button
+                    type="button"
+                    className="btn-fullscreen-exit"
+                    onClick={() => setIsCardsDrawerOpen(false)}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="drawer-cards-list">
+                  {radarItems.map((card) => (
+                    <div
+                      key={card.topic_id}
+                      className="drawer-card-item"
+                      onClick={() => {
+                        selectTopic(card.topic_id);
+                        setActiveView({
+                          view: "story",
+                          week: card.week,
+                          focus_topic: card.topic_id,
+                          highlight: [card.topic_id],
+                          color_by: "tone",
+                          caption_es: `Historia de 1 salto: ${topicName(
+                            card.topic_id,
+                            card.label_es,
+                          )} (${card.topic_id})`,
+                        });
+                        setIsCardsDrawerOpen(false);
+                      }}
+                    >
+                      <div className="drawer-card-top">
+                        <span className="rank-badge">#{card.rank ?? "-"}</span>
+                        <span className={`decision-badge decision-${card.decision}`}>
+                          {DECISION_LABELS[card.decision]}
                         </span>
+                      </div>
+                      <div className="drawer-card-name">
+                        {topicName(card.topic_id, card.label_es)}
+                      </div>
+                      <div className="chips-row">
+                        <span className="chip">{formatWindow(card.window)}</span>
+                        {card.emergence_pct != null && (
+                          <span className="chip">
+                            Emergencia: {card.emergence_pct.toFixed(0)} pct
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            )}
+
+            {/* Fullscreen Floating Chat */}
+            {isFullscreen && (
+              <aside
+                className="fullscreen-floating-chat"
+                aria-label="Chat flotante del Maestro de Medios"
+              >
+                <div className="floating-chat-header">
+                  <h4>💬 Maestro de Medios</h4>
+                  <button
+                    type="button"
+                    className="pill"
+                    onClick={() => setIsFloatingChatOpen((prev) => !prev)}
+                  >
+                    {isFloatingChatOpen ? "▼ Minimizar" : "▲ Expandir"}
+                  </button>
+                </div>
+                {isFloatingChatOpen && (
+                  <div className="floating-chat-body">
+                    <div className="quick-prompts">
+                      {QUICK_QUESTIONS.slice(0, 3).map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          className="pill"
+                          onClick={() => setChatInput(q)}
+                        >
+                          {q}
+                        </button>
                       ))}
                     </div>
+                    <form className="chat-form" onSubmit={handleChatSubmit}>
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="Pregunta en pantalla completa..."
+                        maxLength={2000}
+                      />
+                      <button type="submit" disabled={chatLoading}>
+                        {chatLoading ? "..." : "Enviar"}
+                      </button>
+                    </form>
+                    {chatAnswer && (
+                      <pre className="answer-text">{chatAnswer}</pre>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="panel" aria-labelledby="trace-heading">
-            <div className="panel-header">
-              <h2 id="trace-heading">
-                Traza de agentes (`agent_trace` · {traceSteps.length} pasos)
-              </h2>
-              <span className="badge">Contrato: agent_trace</span>
-            </div>
-            {traceSteps.length === 0 ? (
-              <p className="muted">
-                Envía una pregunta en el panel del Maestro de Medios para inspeccionar
-                cada delegación, herramienta, latencia y verificación del Auditor.
-              </p>
-            ) : (
-              <div className="table-scroll">
-                <table className="data-table" data-testid="trace-table">
-                  <thead>
-                    <tr>
-                      <th>Paso</th>
-                      <th>Agente</th>
-                      <th>Acción</th>
-                      <th>Herramienta</th>
-                      <th>Latencia</th>
-                      <th>Resumen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {traceSteps.map((s) => (
-                      <tr key={s.step}>
-                        <td>{s.step}</td>
-                        <td>
-                          <code>{s.agent}</code>
-                        </td>
-                        <td>
-                          <span className={`action-tag action-${s.action}`}>
-                            {s.action}
-                          </span>
-                        </td>
-                        <td>
-                          <code>{s.tool ?? "-"}</code>
-                        </td>
-                        <td>{s.latency_ms != null ? `${s.latency_ms} ms` : "-"}</td>
-                        <td className="trace-summary">{s.result_summary ?? "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                )}
+              </aside>
             )}
           </section>
         </div>

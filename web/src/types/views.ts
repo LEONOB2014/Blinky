@@ -37,13 +37,25 @@ export interface TemporalNodeEntry {
   label: string;
   label_es: string;
   etype: string;
+  ring: "ai" | "it" | "ai_domain";
+  domain?: string | null;
   x: number;
   y: number;
   show_label: boolean;
   deg_span: number;
   pagerank: (number | null)[];
+  importance: (number | null)[];
   pr_rank_delta: (number | null)[];
   deg_growth: (number | null)[];
+  momentum: (number | null)[];
+  betweenness: (number | null)[];
+  cross_ring_share: (number | null)[];
+  community_week: (number | null)[];
+  new_nbr_rate: (number | null)[];
+  kcore: (number | null)[];
+  tone: (number | null)[];
+  emotional_charge_pct: (number | null)[];
+  window_state: (string | null)[];
   rank: (number | null)[];
   decision: (DecisionValue | null)[];
 }
@@ -54,6 +66,9 @@ export interface TemporalEdgesColumnar {
   week: number[];
   n: number[];
   npmi: number[];
+  edge_state: ("new" | "growing" | "persisting" | "fading")[];
+  n_growth: number[];
+  cross_ring: boolean[];
 }
 
 export interface TemporalGraphData {
@@ -69,10 +84,24 @@ export interface StoryNodeAttributes {
   y: number;
   size: number;
   role: "topic" | "ring";
+  ring: "ai" | "it" | "ai_domain";
+  domain?: string | null;
   rank?: number;
   n?: number;
   npmi?: number;
   etype: "org" | "thm" | "loc" | string;
+  betweenness?: number | null;
+  cross_ring_share?: number | null;
+  community_week?: number | null;
+  importance?: number | null;
+  momentum?: number | null;
+  new_nbr_rate?: number | null;
+  pagerank?: number | null;
+  pr_rank_delta?: number | null;
+  deg_growth?: number | null;
+  kcore?: number | null;
+  edge_state?: "new" | "growing" | "persisting" | "fading";
+  n_growth?: number;
 }
 
 export interface StoryNodeEntry {
@@ -85,6 +114,9 @@ export interface StoryEdgeAttributes {
   npmi: number;
   size: number;
   kind: "ring" | "among";
+  edge_state?: "new" | "growing" | "persisting" | "fading";
+  n_growth?: number;
+  cross_ring?: boolean;
 }
 
 export interface StoryEdgeEntry {
@@ -158,6 +190,11 @@ export interface GraphWindowMetrics {
   story_rendered_ms?: number;
   story_center?: string;
   story_n_nodes?: number;
+  active_lens?: string;
+  fps_relayout?: number;
+  settle_time_ms?: number;
+  is_fullscreen?: boolean;
+  split_ratio?: number;
 }
 
 declare global {

@@ -8,9 +8,13 @@ import type {
   StoryGraphData,
 } from "../types/views";
 
-interface StoryGraphProps {
+export interface StoryGraphProps {
   focusTopic?: string | null;
   highlight?: string[];
+  colorBy?: string;
+  captionEs?: string | null;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   onSelectTopic?: (topicId: string) => void;
 }
 
@@ -21,10 +25,10 @@ const DECISION_LABELS_ES: Record<DecisionValue, string> = {
   no_es_tema_caliente: "No es tema caliente",
 };
 
-const ETYPE_COLORS: Record<string, string> = {
-  org: "#2563eb",
-  thm: "#059669",
-  loc: "#d97706",
+const RING_COLORS: Record<string, string> = {
+  ai: "#c026d3", // Fuchsia / purple for core AI
+  it: "#0284c7", // Sky blue for ICT / software
+  ai_domain: "#ea580c", // Orange for domain external
 };
 
 const EXTRA_THEME_LABELS_ES: Record<string, string> = {
@@ -100,10 +104,10 @@ function resolveStoryEntry(
       s.label_es.toLowerCase().includes(qNoPrefix),
   );
   if (partial) {
-    return { entry: partial, exactMatch: true, requestedClean: raw };
+    return { entry: partial, exactMatch: false, requestedClean: raw };
   }
 
-  // 3. Fallback to default (#1 ranked topic)
+  // 3. Fallback to default
   const fallback =
     (defaultTopic ? index.stories?.[defaultTopic] : undefined) ??
     index.top10?.[0] ??
@@ -114,6 +118,10 @@ function resolveStoryEntry(
 export function StoryGraph({
   focusTopic,
   highlight = [],
+  colorBy = "segment",
+  captionEs,
+  isFullscreen = false,
+  onToggleFullscreen,
   onSelectTopic,
 }: StoryGraphProps) {
   const sigmaContainerRef = useRef<HTMLDivElement | null>(null);
@@ -121,27 +129,31 @@ export function StoryGraph({
 
   const [indexData, setIndexData] = useState<StoriesIndexData | null>(null);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
-  const [unmatchedTopicNotice, setUnmatchedTopicNotice] = useState<
-    string | null
-  >(null);
   const [storyData, setStoryData] = useState<StoryGraphData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [unmatchedTopicNotice, setUnmatchedTopicNotice] = useState<string | null>(null);
+  const [activeLens, setActiveLens] = useState<string>(colorBy || "segment");
+
+  useEffect(() => {
+    if (colorBy) setActiveLens(colorBy);
+  }, [colorBy]);
 
   const highlightSet = useMemo(
     () => new Set(highlight.map((h) => h.toLowerCase())),
     [highlight],
   );
 
-  // Load stories_index.json once
+  // Fetch stories_index.json once
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
+
     fetch("/data/views/stories_index.json")
       .then(async (res) => {
         if (!res.ok) {
-          throw new Error(
-            `HTTP ${res.status} al cargar /data/views/stories_index.json`,
-          );
+          throw new Error(`HTTP ${res.status} al cargar /data/views/stories_index.json`);
         }
         const parsed = (await res.json()) as StoriesIndexData;
         if (cancelled) return;
@@ -273,13 +285,19 @@ export function StoryGraph({
       const angle = angleOffset + (2 * Math.PI * ringIdx) / ringTotal;
 
       const ratio = Math.sqrt((attr.n ?? 1) / maxNeighborN);
-      // Inner top-12 nodes get size >= 11.2 so their labels always render; outer 13..20 show label on hover
-      const nodeSize =
-        rk <= 12 ? 11.4 + ratio * 6.5 : 7.5 + ratio * 3.0;
+      const nodeSize = rk <= 12 ? 11.4 + ratio * 6.5 : 7.5 + ratio * 3.0;
       const isHighlighted = highlightSet.has(n.key.toLowerCase());
-      const nodeColor = isHighlighted
-        ? "#e11d48"
-        : ETYPE_COLORS[attr.etype] ?? "#2563eb";
+
+      let nodeColor = RING_COLORS[attr.ring] ?? "#ea580c";
+      if (activeLens === "bridge" && attr.cross_ring_share !== undefined && attr.cross_ring_share !== null) {
+        nodeColor = attr.cross_ring_share >= 0.5 ? "#f59e0b" : "#3b82f6";
+      } else if (activeLens === "momentum" && attr.momentum !== undefined && attr.momentum !== null) {
+        nodeColor = attr.momentum >= 0.8 ? "#ef4444" : attr.momentum >= 0.5 ? "#f97316" : "#60a5fa";
+      }
+
+      if (isHighlighted) {
+        nodeColor = "#e11d48";
+      }
 
       const lblEs = cleanSpanishLabel(n.key, attr.label_es || attr.label);
       const displayLabel = `#${rk} ${lblEs}`;
@@ -307,12 +325,23 @@ export function StoryGraph({
         continue;
       }
       const isSpoke = e.attributes.kind === "ring";
+      const isCross = e.attributes.cross_ring;
       const width = isSpoke
         ? 1.8 + Math.sqrt((e.attributes.n ?? 1) / maxSpokeN) * 5.2
         : 0.65;
+
+      let edgeColor = isSpoke ? "#94a3b8" : "#e2e8f0";
+      if (activeLens === "bridge" && isCross) {
+        edgeColor = "#f59e0b"; // Gold for cross-ring
+      } else if (activeLens === "momentum" && e.attributes.edge_state === "growing") {
+        edgeColor = "#f97316"; // Orange for growing
+      } else if (activeLens === "novelty" && e.attributes.edge_state === "new") {
+        edgeColor = "#06b6d4"; // Cyan for new
+      }
+
       g.addEdgeWithKey(e.key, e.source, e.target, {
         size: width,
-        color: isSpoke ? "#94a3b8" : "#f1f5f9",
+        color: edgeColor,
       });
     }
 
@@ -344,7 +373,7 @@ export function StoryGraph({
       renderer.kill();
       sigmaRef.current = null;
     };
-  }, [storyData, highlightSet]);
+  }, [storyData, highlightSet, activeLens]);
 
   const top10Stories = useMemo(() => indexData?.top10 ?? [], [indexData]);
   const referenceStories = useMemo(
@@ -364,7 +393,60 @@ export function StoryGraph({
   const wkLabel = indexData?._meta?.week ?? "2026-W42";
 
   return (
-    <div className="story-graph-container" data-testid="story-graph">
+    <div
+      className={`story-graph-container${isFullscreen ? " story-fullscreen" : ""}`}
+      data-testid="story-graph"
+    >
+      {/* Top Banner with Caption, Lens switcher, and Fullscreen Toggle */}
+      <div className="graph-lens-banner">
+        <div className="lens-banner-left">
+          <span className="lens-current-badge">
+            Historia de 1 salto: <strong>{storyData?._meta?.label_es ?? "Cargando..."}</strong>
+          </span>
+          {captionEs && <span className="lens-caption-text">{captionEs}</span>}
+        </div>
+        <div className="lens-pills-bar" role="group" aria-label="Lentes de historia">
+          <button
+            type="button"
+            className={`pill lens-pill${activeLens === "segment" ? " pill-active" : ""}`}
+            onClick={() => setActiveLens("segment")}
+          >
+            Anillos (IA/IT)
+          </button>
+          <button
+            type="button"
+            className={`pill lens-pill${activeLens === "bridge" ? " pill-active" : ""}`}
+            onClick={() => setActiveLens("bridge")}
+          >
+            Puente (Cross-ring)
+          </button>
+          <button
+            type="button"
+            className={`pill lens-pill${activeLens === "momentum" ? " pill-active" : ""}`}
+            onClick={() => setActiveLens("momentum")}
+          >
+            Momento
+          </button>
+          <button
+            type="button"
+            className={`pill lens-pill${activeLens === "novelty" ? " pill-active" : ""}`}
+            onClick={() => setActiveLens("novelty")}
+          >
+            Novedad
+          </button>
+          {onToggleFullscreen && (
+            <button
+              type="button"
+              className="pill fs-toggle-pill"
+              onClick={onToggleFullscreen}
+              title="Alternar pantalla completa (tecla F)"
+            >
+              {isFullscreen ? "🗗 Salir (Esc)" : "⛶ Pantalla completa (F)"}
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="story-selector-bar">
         <div className="story-selector-group">
           <span className="story-selector-title">Top 10 ({wkLabel}):</span>
@@ -439,56 +521,46 @@ export function StoryGraph({
             {scores?.rank != null && scores.rank <= 10
               ? `#${scores.rank} Top-10`
               : scores?.rank != null
-                ? `#${scores.rank} (fuera Top-10)`
+                ? `#${scores.rank}`
                 : "Referencia"}
           </span>
-          <strong className="story-center-title">
-            {storyData._meta.label_es ?? storyData._meta.topic_id}{" "}
-            <code className="topic-id">{storyData._meta.topic_id}</code>
-          </strong>
+          <span className="topic-title-lg">
+            {storyData._meta.label_es} (<code>{storyData._meta.topic_id}</code>)
+          </span>
           {scores?.decision && (
             <span className={`decision-badge decision-${scores.decision}`}>
-              {DECISION_LABELS_ES[scores.decision]}
+              {DECISION_LABELS_ES[scores.decision as DecisionValue] ??
+                scores.decision}
             </span>
           )}
-          {scores?.stage && <span className="chip">Etapa: {scores.stage}</span>}
+          {scores?.priority != null && (
+            <span className="chip">
+              Prioridad: <strong>{scores.priority.toFixed(3)}</strong> (medido)
+            </span>
+          )}
           {scores?.emergence_pct != null && (
             <span className="chip">
-              Emergencia:{" "}
-              <strong>{scores.emergence_pct.toFixed(1)} pct</strong> (medido)
-            </span>
-          )}
-          {scores?.saturation != null && (
-            <span className="chip">
-              Saturación:{" "}
-              <strong>{(scores.saturation * 100).toFixed(1)}%</strong> (medido)
+              Emergencia: <strong>{scores.emergence_pct.toFixed(1)} pct</strong>
             </span>
           )}
           {scores?.audience_fit != null && (
             <span className="chip">
-              Encaje LatAm:{" "}
-              <strong>{(scores.audience_fit * 100).toFixed(0)}%</strong>{" "}
-              (medido)
+              Encaje LatAm: <strong>{(scores.audience_fit * 100).toFixed(0)}%</strong>
             </span>
           )}
-          {scores?.emotional_charge_pct != null && (
+          {scores?.window?.state && (
             <span className="chip">
-              Carga emocional:{" "}
-              <strong>{scores.emotional_charge_pct.toFixed(0)} pct</strong>{" "}
-              (medido)
+              Ventana: <strong>{scores.window.state}</strong>
             </span>
-          )}
-          {scores?.framing_angle && (
-            <span className="chip">Ángulo: {scores.framing_angle}</span>
           )}
         </div>
       )}
 
-      <div className="story-split">
+      <div className="story-canvas-split">
         <div className="story-canvas-wrap">
           {loading && (
             <div className="graph-loading-overlay">
-              Cargando anillo de 1 salto (`sigma` 3.0.3)...
+              Cargando grafo de 1 salto (sigma.js 3)...
             </div>
           )}
           <div
@@ -496,72 +568,56 @@ export function StoryGraph({
             className="story-sigma-host"
             data-testid="story-sigma-host"
           />
-          <div className="graph-legend graph-legend-light">
+          <div className="graph-legend">
             <span className="legend-item">
-              <span
-                className="legend-dot"
-                style={{ backgroundColor: "#e11d48" }}
-              />{" "}
-              Tema central
+              <span className="legend-dot legend-focus" /> ★ Tema central
             </span>
             <span className="legend-item">
-              <span
-                className="legend-dot"
-                style={{ backgroundColor: "#2563eb" }}
-              />{" "}
-              Organización (`org:`)
+              <span className="legend-dot legend-ring-ai" /> Anillo 1 (IA núcleo)
             </span>
             <span className="legend-item">
-              <span
-                className="legend-dot"
-                style={{ backgroundColor: "#059669" }}
-              />{" "}
-              Tema GDELT (`thm:`)
+              <span className="legend-dot legend-ring-it" /> Anillo 2 (TIC / Software)
             </span>
             <span className="legend-item">
-              <span
-                className="legend-dot"
-                style={{ backgroundColor: "#d97706" }}
-              />{" "}
-              País / región (`loc:`)
-            </span>
-            <span className="legend-item muted">
-              Grosor de arista = co-menciones n (medido)
+              <span className="legend-dot legend-ring-dom" /> Anillo 3 (Dominio externo)
             </span>
           </div>
         </div>
 
         <aside
           className="story-neighbors-aside"
-          aria-label="Vecinos de 1 salto por rango"
+          aria-label="Vecinos del anillo de 1 salto"
         >
           <div className="movers-header">
-            <h4>
-              Anillo 1-salto ({neighborsList.length} vecinos · {wkLabel})
-            </h4>
+            <h4>Anillo de 1 salto ({neighborsList.length} vecinos)</h4>
             <span className="muted">
-              Ordenado por rango de NPMI · clic para explorar
+              Ordenados por NPMI descendente (medido en GDELT)
             </span>
           </div>
-          <ul className="movers-list">
-            {neighborsList.slice(0, 12).map((nb) => {
-              const attr = nb.attributes;
+          <ul className="story-neighbors-list">
+            {neighborsList.map((n) => {
+              const a = n.attributes;
+              const lbl = cleanSpanishLabel(n.key, a.label_es || a.label);
               return (
-                <li key={nb.key} className="mover-item">
-                  <div className="mover-top">
+                <li key={n.key} className="story-neighbor-item">
+                  <div className="story-neighbor-top">
+                    <span className="neighbor-rank">#{a.rank}</span>
                     <button
                       type="button"
-                      className="mover-link"
-                      onClick={() => onSelectTopic?.(nb.key)}
+                      className="neighbor-link"
+                      onClick={() => onSelectTopic?.(n.key)}
+                      title={`Seleccionar ${n.key}`}
                     >
-                      #{attr.rank}{" "}
-                      {cleanSpanishLabel(nb.key, attr.label_es || attr.label)}
+                      {lbl}
                     </button>
-                    <span className="chip">{attr.etype}</span>
+                    <span className={`badge ring-badge-${a.ring ?? "ai_domain"}`}>
+                      {(a.ring ?? "ai_domain").toUpperCase()}
+                    </span>
                   </div>
-                  <div className="mover-meta">
-                    <code>{nb.key}</code> · n=<strong>{attr.n ?? 0}</strong> ·
-                    NPMI <strong>{(attr.npmi ?? 0).toFixed(3)}</strong> (medido)
+                  <div className="story-neighbor-meta">
+                    <code>{n.key}</code> · n=<strong>{a.n}</strong> · NPMI=
+                    <strong>{a.npmi?.toFixed(4)}</strong>
+                    {a.edge_state && ` · ${a.edge_state}`}
                   </div>
                 </li>
               );
