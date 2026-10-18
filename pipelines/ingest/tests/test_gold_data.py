@@ -174,3 +174,14 @@ def test_topic_evidence_has_one_article_per_title():
         .filter(pl.col("len") > 1)
     )
     assert dup.select(pl.len()).collect().item() == 0
+
+
+def test_topic_evidence_has_no_site_suffix_duplicates():
+    from evidence_titles import title_key
+
+    frame = _gold("topic_evidence_weekly").select("topic_id", "week", "title").collect()
+    keys = frame.with_columns(
+        pl.col("title").map_elements(title_key, return_dtype=pl.String).alias("key")
+    ).filter(pl.col("key").is_not_null())
+    dup = keys.group_by(["topic_id", "week", "key"]).len().filter(pl.col("len") > 1)
+    assert dup.height == 0
