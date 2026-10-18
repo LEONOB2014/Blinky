@@ -1,74 +1,69 @@
 # WS4 status
 
-BLOCKED: switching to topic units needs a topic -> subtopic mapping that no contract provides.
-`topic_daily` (contract, and WS1's brief) has no subtopic column, and no other table carries one.
-Every remaining deliverable depends on topic units: the 150-400 ranked topics, a backtest that
-means something (on 12 subtopics a top 10 is the base rate) and the W42 editor sheet. Proposed
-fix, for the lead to decide: WS1 adds `topic_subtopic_daily` (`topic_id`, `subtopic`, `dt`,
-`lang_bucket`, `n_articles`: ring-1 articles of the topic that carry the subtopic), or a
-`subtopic` column in `topic_daily`. With it, the primary subtopic and the pooled window lags
-follow the design, and `models/build_scores.py` needs only its `topic` branch.
-
 Owner: claude-cacho · Directories: `models/`
 
 Updated before each sync (20:00, 22:00, 00:00, 07:00, 09:00, 10:30, UTC-5).
 
 ## Last update
 
-2026-10-17 21:30 UTC-5 · branch `feat/ws4-scores` (local commits, not pushed: the push and draft PR wait for the maintainer) · no PR yet
+2026-10-17 22:50 UTC-5 · branch `feat/ws4-scores` · draft PR #6 (into `develop`)
 
 ## Done
 
-- `models/features.py`: the S8 rolling view ported to Python at any grain (all languages, `eng`,
-  es+pt, WS1 topics). A test checks it against the real view on every comparable dev row.
-- Robust z (addendum): `z_7d_r` / `z_dow_r` floor the SD at 10% of the baseline mean (estimate);
-  the scores and the window chip read them. Note for the orchestrator: the addendum's row
-  (regulation_policy, spa, non-LatAm; the peak is on 2026-09-17, not 10-17) is a real burst, with
-  the 7-day share several times its baseline, not a tiny SD; the floor binds on the warm-up and
-  low-volume rows instead.
-- `models/scores.py`: Emergence, Stage and Saturation, Audience fit v1 (rules), Emotional charge
-  (§10.4 without the two GCAM terms), framing angle (§10.5), Priority (§12). Thresholds and weights
-  sit in one table at the top of the file, all hand-set (estimate).
-- `models/window.py`: the window chip as designed. The tests cover all four states on real dev
-  topics. `en_cualquier_momento` lowers the 3-onset threshold to 1. `dias_restantes` has no real
-  case in the slice even with the threshold lowered (every complete English -> es/pt pair has a
-  0-1 day lag except llms_models, 13 days), so its test lowers the threshold and pools that one
-  real lag. Both tests say so.
-- `models/decision.py`: one documented five-row table; a test covers every row.
-- `models/build_scores.py`: builds `topic_scores_weekly`, validates every row against the contract
-  and writes it to the lake on the full profile. The first 5 weeks of the span are warm-up and are
-  not scored.
-- `models/backtest.py`: the design's protocol (mapped topics only, top-quartile 2-week es+pt
-  pageview growth, precision@10 with base rate, raw-count-growth and persistence baselines,
-  paired bootstrap over weeks, lead time, evaluable-week counts, a verdict). It writes
-  `reports/backtest.md` on the full profile only. The tests run the mechanics on the dev slice
-  with the secondary label (es+pt GDELT growth).
-- `models/editor_sheet.py`: the blind sheet for 2026-W42 (overlap shown once, seeded order, key in
-  the git-ignored lake) and a `--tally`.
-- Gate: `ruff check`/`ruff format` clean on `models/`; `uv run pytest models` passes (70 tests).
-
-- Full profile, subtopics: `RADAR_PROFILE=full uv run python -m models.build_scores` wrote
-  `lake/gold/topic_scores_weekly.parquet`. 1,200 rows, every one valid against the contract: 100
-  weeks (2024-W47..2026-W42, after the 5 warm-up weeks) x 12 subtopics. The lake has
-  `daily_totals`, `daily_topic` and `daily_topic_rolling` for 2024-10-17..2026-10-18. The
-  `domain:*` and `it_all` rows of `daily_topic` are excluded from the ranking (segment != ai).
-  The agent runtime can read this table now; its top 10 is subtopics.
+- Unblocked by Addendum 2. Merged `origin/develop` (PR #8: `ranked_universe`,
+  `topic_subtopic_weekly`).
+- **Topic scores in the lake** (`RADAR_PROFILE=full uv run python -m models.build_scores`):
+  - `lake/gold/topic_scores_weekly.parquet`: 17,285 rows over 46 weeks (2025-W49..2026-W42) and
+    4,947 topics; every row is valid against the contract.
+  - Ranked universe from the taxonomy: org topics minus `org_deny`, plus `thm:TECH_*`, with at
+    least 20 ring-1 articles in the ISO week. Median 376 topics a week; 436 in 2026-W42.
+  - Primary subtopic from `topic_subtopic_weekly` over weeks t-3..t, ties broken by taxonomy order.
+    It is set for 415 of 436 topics in W42. A topic without one gets `primary_subtopic` = ""
+    (empty), a `sin_estimacion` chip, and a fit from its own series only.
+  - Window chip in W42: 216 of 436 topics have an estimate (138 `dias_restantes`, 68
+    `en_cualquier_momento`, 10 `ya_en_espanol`).
+  - The 12-subtopic table is kept, same contract, in `lake/gold/subtopic_scores_weekly.parquet`:
+    552 rows, 46 weeks.
+  - Run time 16 s, 2.4 GB peak.
+- **Fix:** the rolling calendar now starts at the input's own first day. `daily_topic` and
+  `topic_daily` start 2025-11-01, a year after `daily_totals`. The 21:28 subtopic build had
+  counted that year as zero articles. It is replaced.
+- **Editor sheet** for 2026-W42 in `reports/editor_test.md`: 9 radar items, 9 raw-count-growth
+  items, 1 on both lists. The key is in `lake/editor_test/2026-W42_key.json`; tally with
+  `--tally`.
+- The backtest runs on topics through the same scoring step. Its report states the coverage
+  (mapped / ranked) and that the evidence ids are empty. A smoke test at topic scale with the
+  secondary label ran in 10 s; its numbers are not reported.
+- Tests: `uv run pytest models -m "not data"`: 79 passed. Lake tests (`-m data`): the topic build
+  validates, and the primary subtopic is recounted by hand for `org:nvidia`, 2026-W41.
 
 ## In progress
 
-- Stopped (BLOCKED above). Still missing in the lake at 21:30: WS1 `topic_daily`, WS3
-  `node_metrics_weekly`, WS6 `topic_wikidata` and `wiki_pageviews_daily`.
-- Not run: `models.backtest` (needs pageviews, and on subtopics its top 10 would equal the base
-  rate) and `models.editor_sheet` (on 12 subtopics the two top 10s overlap almost entirely).
+- **Backtest:** waiting for WS6's `wiki_pageviews_daily`. WS6 is fetching pageviews at 22:36 after
+  an HTTP 429. Coverage so far: 278 of 4,947 ranked topics have an es or pt article. WS6 is still
+  resolving the 8,385 `topic_daily` extras.
 
 ## Blocked on
 
-- The topic -> subtopic mapping (BLOCKED, top of this file).
-- Evidence ids: `topic_scores_weekly.evidence_ids` is empty for now. No contract gives gkg_id per
-  topic in the lake; the dev `gkg_ai_sample` is a sample.
+- Nothing.
+
+## For the orchestrator (findings, W42 top 10 and editor sheet)
+
+- **Outlets and retailers still rank.** `org:big news network` (and the artefact
+  `org:big new network`), plus `org:king soopers`, `org:ralphs` and `org:fred meyer` (a Kroger
+  news cluster), are in the W42 lists. Adding them to `org_deny` is a taxonomy change (yours or
+  WS2's).
+- **New topics rank high.** A topic that appears from near zero gets a huge `growth_7d_log`:
+  `org:marsh mclennan`, rank 1 in W42, shows +25,815% share and has no z history. The Emergence
+  weights are hand-set placeholders (estimate). I will not retune them before the backtest
+  measures them.
+- `evidence_ids` stays empty (no contract tonight), and the backtest report says so.
 
 ## Numbers (each marked measured or estimate)
 
-- Full profile: 1,200 rows of `topic_scores_weekly`, 100 weeks x 12 subtopics, 0 contract
-  violations (measured). No backtest numbers yet.
-- All score weights and thresholds are hand-set (estimate), to be tuned on the backtest.
+- `topic_scores_weekly`: 17,285 rows, 46 weeks, 4,947 topics, 0 contract violations (measured).
+- Ranked topics a week: median 376; 436 in 2026-W42 (measured).
+- W42: primary subtopic for 415/436 and a window estimate for 216/436 (measured).
+- Wikipedia es/pt coverage so far: 278/4,947 ranked topics (measured, resolution in progress).
+- Editor sheet W42: 19 items = 9 radar + 9 baseline + 1 overlap (measured).
+- All score weights and thresholds are hand-set (estimate).
