@@ -1506,6 +1506,24 @@ body {
   width: min(420px, calc(100% - 1.5rem));
 }
 
+.chat-dock-pill {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10000;
+  height: 48px;
+  max-width: calc(100% - 2rem);
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid #334155;
+  background: rgba(15, 23, 42, 0.93);
+  color: #f8fafc;
+  font: 600 14px/1 var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
 .chat-dock-actions {
   display: flex;
   gap: 0.35rem;
