@@ -1084,6 +1084,9 @@ def gather(turn: Turn, agent: str, question: str, ctx: dict[str, Any]) -> list[d
 
 
 _TONE_Q = re.compile(r"tono|emoci|sentimiento|[aá]nimo|negativ|positiv", re.I)
+_POSTURA_Q = re.compile(
+    r"qui[eé]n se opone|se oponen|opositor|cr[ií]tic|regulaci[oó]n|postura", re.I
+)
 _WINDOW_Q = re.compile(r"ventana|espa[nñ]ol|portugu|llega|a punto|d[ií]as quedan", re.I)
 _BRIDGE_Q = re.compile(
     r"puente|conect|cruza|otros? (dominios?|sectores?)|cl[ií]ma|salud|educaci|empleo", re.I
@@ -1099,6 +1102,8 @@ def view_lens(question: str, entity: str | None) -> str:
     """The graph lens a question asks for (view_command.color_by), chosen by code."""
     if _TONE_Q.search(question):
         return "tone"
+    if _POSTURA_Q.search(question):
+        return "postura"
     if _WINDOW_Q.search(question):
         return "window"
     if _NOVELTY_Q.search(question):
@@ -1123,6 +1128,8 @@ def _lens_caption(lens: str, entity: str | None, leader: str | None) -> str:
         "bridge": "Los temas que conectan la IA con otros dominios (tamaño = cuánto conectan)",
         "momentum": "Los temas que más ganan centralidad esta semana",
         "novelty": "Las conexiones nuevas de esta semana",
+        "postura": "Promotores y críticos: el color es la postura y el tamaño es el tono absoluto",
+        "family": "Los temas de la semana, coloreados por familia del léxico",
     }.get(
         lens,
         f"Los temas de la semana por decisión del radar; el n.º 1 es {name}"
