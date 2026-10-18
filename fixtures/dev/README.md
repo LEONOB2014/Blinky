@@ -11,10 +11,15 @@ Source data: GDELT 2.0 GKG (open data, attribution: The GDELT Project, https://w
 | `daily_topic_rolling.parquet` | the S8 view over the same 8 weeks | 5,280 |
 | `edges_weekly.parquet` | top 1,500 edges per week by co-mentions, no person nodes | 12,000 |
 | `gkg_ai_sample.parquet` | 2026-10-11 .. 10-17: 900 ring-1, 300 ICT-only, 300 control rows | 1,500 |
+| `topic_daily.parquet` | 2026-08-24 .. 2026-10-17, ranked universe only (1,753 orgs not deny-listed + 4 `TECH_` themes reaching 20 articles in a week): all 1,757 topics, no cut | 42,133 |
+| `topic_subtopic_weekly.parquet` | the same 1,757 topics, 8 Monday weeks (2026-08-24 .. 2026-10-12) | 34,101 |
+| `topic_sources_weekly.parquet` | the same 1,757 topics and 8 Monday weeks as `topic_daily`: outlets per topic-week, source and pattern concentration (`--sources-from-lake`, 0 bytes billed) | 9,183 |
 
 Column allow-list (`src/radar/fixtures.py`, enforced by `tests/test_fixtures.py`): no URLs, titles,
 person names, locations, quotations or free text. Export cost: 1.68 GB billed (measured, in
-`reports/bq_ledger.csv`).
+`reports/bq_ledger.csv`). The two topic files were cut by WS1 on 2026-10-18 from the exported lake
+with `RADAR_PROFILE=full uv run python scripts/export_dev_slice.py --topics-from-lake` (no query, 0
+bytes billed); `org:` ids are organization names from GKG, never persons.
 
 Known gaps, by design of the current SQL (fixed in the GDELT loop, WS1/WS2):
 - `daily_topic` has no `segment`/`domain` yet: S4 builds ring 1 only, so its mock stays pending.

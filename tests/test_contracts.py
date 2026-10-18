@@ -16,7 +16,7 @@ from radar.contracts import (
 )
 
 SCHEMAS = schema_paths()
-PENDING = {"pending-dev-slice", "pending-first-agent-run"}
+PENDING = {"pending-dev-slice", "pending-first-agent-run", "private"}  # private: never mocked
 
 
 def _yaml(name):

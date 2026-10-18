@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar story view (smoke test)</title>
+<style>
+  :root { --bg: #f8fafc; --fg: #0f172a; --muted: #64748b; --panel: #ffffff; --line: #e2e8f0; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.45 system-ui, -apple-system, sans-serif; }
+  #wrap { display: grid; grid-template-columns: 1fr 340px; height: 100%; }
+  #graph { position: relative; height: 100%; }
+  #side { background: var(--panel); border-left: 1px solid var(--line); padding: 16px;
+    overflow: auto; }
+  #side h1 { font-size: 18px; margin: 0 0 4px; }
+  #side .id { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; }
+  #side dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 12px 0; }
+  #side dt { color: var(--muted); }
+  #side dd { margin: 0; }
+  #side ul { padding-left: 18px; margin: 6px 0; }
+  .muted { color: var(--muted); font-size: 12px; }
+  #err { color: #b91c1c; }
+  @media (max-width: 760px) { #wrap { grid-template-columns: 1fr; grid-template-rows: 60% 40%; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="graph"></div>
+  <aside id="side"><div id="panel">cargando…</div><div id="err"></div></aside>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/graphology@0.26.0/dist/graphology.umd.min.js"></script>
+<!-- sigma 3.0.3: sigma 4.0.3 filled the whole canvas with one node on this Mac (Chrome, ANGLE Metal). -->
+<script src="https://cdn.jsdelivr.net/npm/sigma@3.0.3/dist/sigma.min.js"></script>
+<script type="module">
+// Smoke test of the story view (WS3c): story.json from graph/export_views.py, drawn with sigma.js
+// (WebGL). The topic sits in the centre, its 1-hop ring around it (radial layout precomputed in
+// Python), edge width by co-mentions; the scores row is the side panel. No persons in the data.
+const params = new URLSearchParams(location.search);
+const M = (window.__metrics = { t0: performance.now() });
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const COLORS = { topic: "#2563eb", org: "#0f766e", thm: "#a16207", loc: "#7c3aed", other: "#64748b" };
+
+try {
+  const data = await (await fetch(params.get("data") || "story.json")).json();
+  M.t_fetch_ms = performance.now() - M.t0;
+  const GraphCtor = window.graphology.Graph || window.graphology;
+  const SigmaCtor = window.Sigma.Sigma || window.Sigma.default || window.Sigma;
+  const graph = new GraphCtor({ type: "undirected" });
+  for (const n of data.nodes) {
+    const a = n.attributes;
+    graph.addNode(n.key, {
+      ...a,
+      color: a.role === "topic" ? COLORS.topic : COLORS[a.etype] || COLORS.other,
+      label: a.role === "ring" ? `${a.rank}. ${a.label}` : a.label,
+    });
+  }
+  for (const e of data.edges) {
+    if (!graph.hasEdge(e.source, e.target)) {
+      graph.addEdgeWithKey(e.key, e.source, e.target, {
+        size: e.attributes.size,
+        color: e.attributes.kind === "ring" ? "#93c5fd" : "#cbd5e1",
+        n: e.attributes.n,
+      });
+    }
+  }
+  M.nodes = graph.order; M.edges = graph.size;
+  const renderer = new SigmaCtor(graph, $("graph"), { renderEdgeLabels: false, labelSize: 12, labelWeight: "500" });
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    M.story_rendered_ms = performance.now() - M.t0;
+  }));
+
+  const s = data.attributes.scores, meta = data._meta;
+  const kpi = (label, v, fmt = (x) => x) => (v == null ? "" : `<dt>${label}</dt><dd>${esc(fmt(v))}</dd>`);
+  $("panel").innerHTML = `
+    <h1>${esc(s?.label_es || meta.topic_id.split(":").slice(1).join(":"))}</h1>
+    <div class="id">${esc(meta.topic_id)} · ${esc(meta.week)}</div>
+    ${s ? `<dl>
+      ${kpi("Rank", s.rank)}
+      ${kpi("Decisión", s.decision)}
+      ${kpi("Etapa", s.stage)}
+      ${kpi("Emergencia", s.emergence_pct, (x) => `${x.toFixed(1)} pct`)}
+      ${kpi("Saturación", s.saturation, (x) => `${(x * 100).toFixed(1)}%`)}
+      ${kpi("Encaje LatAm", s.audience_fit, (x) => `${(x * 100).toFixed(0)}%`)}
+      ${kpi("Carga emocional", s.emotional_charge_pct, (x) => `${x.toFixed(0)} pct`)}
+      ${kpi("Ángulo", s.framing_angle)}
+      ${kpi("Ventana", s.window?.state)}
+    </dl>
+    ${(s.why || []).length ? `<strong>Por qué</strong><ul>${s.why.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}`
+    : `<p class="muted">Sin fila de puntajes para esta semana.</p>`}
+    <p class="muted">Anillo de 1 salto: ${meta.n_ring} vecinos (NPMI &gt; 0.1, n ≥ 3, sin hubs ni
+    personas) · ${meta.n_among_edges} aristas entre vecinos · ancho = co-menciones.</p>`;
+} catch (e) {
+  M.error = String(e && e.stack || e);
+  $("err").textContent = M.error;
+}
+</script>
+</body>
+</html>

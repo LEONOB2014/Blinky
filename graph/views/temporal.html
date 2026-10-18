@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar temporal graph (smoke test)</title>
+<style>
+  :root { --bg: #0b1020; --fg: #e5e7eb; --muted: #94a3b8; --panel: #111827; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, sans-serif; }
+  #graph { position: absolute; inset: 0; }
+  #bar { position: absolute; left: 16px; right: 16px; bottom: 16px; display: flex; gap: 12px;
+    align-items: center; background: var(--panel); padding: 10px 14px; border-radius: 8px;
+    opacity: 0.94; flex-wrap: wrap; }
+  #bar input[type=range] { flex: 1; min-width: 160px; }
+  #bar button { background: #2563eb; color: white; border: 0; border-radius: 6px; padding: 6px 14px;
+    font: inherit; cursor: pointer; }
+  #week { font-variant-numeric: tabular-nums; min-width: 190px; }
+  #legend { position: absolute; top: 16px; left: 16px; background: var(--panel); padding: 10px 14px;
+    border-radius: 8px; opacity: 0.94; max-width: 360px; }
+  #legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    margin: 0 4px 0 10px; }
+  #stats { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  #err { color: #fca5a5; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<div id="legend">
+  <strong>Radar · grafo temporal (13 semanas)</strong><br>
+  Tamaño: PageRank de la semana · Color: decisión del radar
+  <div>
+    <span class="sw" style="background:#22c55e"></span>publicar ahora
+    <span class="sw" style="background:#3b82f6"></span>preparar
+    <span class="sw" style="background:#f59e0b"></span>esperar
+    <span class="sw" style="background:#64748b"></span>no rankeado
+  </div>
+  <div id="stats">cargando…</div>
+  <div id="err"></div>
+</div>
+<div id="bar">
+  <button id="play" type="button">▶ Reproducir</button>
+  <input id="slider" type="range" min="0" max="0" value="0" aria-label="Semana">
+  <span id="week">—</span>
+</div>
+<!-- cosmos.gl's self-contained UMD build (luma.gl inside, global `Cosmos`). jsDelivr's +esm build
+     loads two luma.gl versions (engine@9.3.6 imports shadertools@9.3.5) and luma.gl refuses to start. -->
+<script src="https://unpkg.com/@cosmos.gl/graph@3.5.1/dist/index.min.js"></script>
+<script type="module">
+// Smoke test of the GPU temporal view (WS3c): cosmos.gl draws and lays out on the viewer's GPU.
+// Data: temporal.json from graph/export_views.py (fields in graph/README.md). Persons are not in it.
+const { Graph } = window.Cosmos;
+
+const params = new URLSearchParams(location.search);
+const DATA = params.get("data") || "temporal.json";
+const STEP_MS = Number(params.get("step") || 900);
+// The force layout runs on the GPU for LAYOUT_MS, then freezes so the sweep keeps a stable map.
+const LAYOUT_MS = Number(params.get("layout") || 10000);
+const M = (window.__metrics = { t0: performance.now(), data: DATA });
+const $ = (id) => document.getElementById(id);
+const DECISION_RGBA = {
+  publicar_ahora: [0.133, 0.773, 0.369, 1],
+  preparar: [0.231, 0.51, 0.965, 1],
+  esperar: [0.961, 0.62, 0.043, 1],
+  no_es_tema_caliente: [0.392, 0.455, 0.545, 1],
+};
+const IDLE_RGBA = [0.392, 0.455, 0.545, 0.55];
+const ABSENT_RGBA = [0.392, 0.455, 0.545, 0.08];
+
+function glRenderer() {
+  try {
+    const gl = document.createElement("canvas").getContext("webgl2");
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  } catch (e) { return "unavailable: " + e; }
+}
+
+try {
+  M.renderer = glRenderer();
+  const resp = await fetch(DATA);
+  const text = await resp.text();
+  M.t_fetch_ms = performance.now() - M.t0;
+  M.bytes = text.length;
+  const data = JSON.parse(text);
+  M.t_parse_ms = performance.now() - M.t0;
+
+  const nodes = data.nodes, E = data.edges, weeks = data._meta.iso_weeks;
+  const N = nodes.length, W = weeks.length;
+  M.nodes = N; M.edges_total = E.source.length; M.weeks = W;
+
+  // Per-week link buffers and widths, built once.
+  const byWeek = Array.from({ length: W }, () => []);
+  for (let i = 0; i < E.source.length; i++) byWeek[E.week[i]].push(i);
+  const links = byWeek.map((ix) => {
+    const a = new Float32Array(ix.length * 2);
+    ix.forEach((e, k) => { a[2 * k] = E.source[e]; a[2 * k + 1] = E.target[e]; });
+    return a;
+  });
+  const widths = byWeek.map((ix) => Float32Array.from(ix, (e) => 0.2 + Math.log10(E.n[e])));
+  M.edges_per_week = links.map((a) => a.length / 2);
+
+  // Layout links: the union of all weeks (unique pairs), so one stable layout serves the sweep.
+  const seen = new Set(), union = [];
+  for (let i = 0; i < E.source.length; i++) {
+    const s = E.source[i], t = E.target[i], key = s * N + t;
+    if (!seen.has(key)) { seen.add(key); union.push(s, t); }
+  }
+  M.union_links = union.length / 2;
+
+  const prMax = Math.max(...nodes.flatMap((n) => n.pagerank.filter((p) => p != null)), 1e-9);
+  const sizes = Array.from({ length: W }, (_, w) => Float32Array.from(nodes, (n) => {
+    const p = n.pagerank[w];
+    return p == null ? 0.5 : 1.5 + 10 * Math.sqrt(p / prMax);
+  }));
+  const colors = Array.from({ length: W }, (_, w) => {
+    const a = new Float32Array(N * 4);
+    nodes.forEach((n, i) => {
+      const c = n.decision[w] ? DECISION_RGBA[n.decision[w]] || IDLE_RGBA
+        : n.pagerank[w] == null ? ABSENT_RGBA : IDLE_RGBA;
+      a.set(c, 4 * i);
+    });
+    return a;
+  });
+
+  const positions = new Float32Array(N * 2);
+  // Real space coordinates (no rescaling): with rescaled tiny coordinates and fitViewOnInit the
+  // camera zoomed into empty space and nothing was visible.
+  for (let i = 0; i < N * 2; i++) positions[i] = 1024 + 2048 * Math.random();
+
+  let settled = false, layoutFrames = 0, tLayout = 0, layoutRaf = 0;
+  function countLayout() { layoutFrames++; layoutRaf = requestAnimationFrame(countLayout); }
+  function freeze(reason) {
+    if (settled) return;
+    settled = true;
+    cancelAnimationFrame(layoutRaf);
+    const secs = (performance.now() - tLayout) / 1000;
+    M.fps_layout = layoutFrames / secs; M.layout_seconds = secs; M.layout_end = reason;
+    M.t_layout_settled_ms = performance.now() - M.t0;
+    graph.setConfigPartial({ enableSimulation: false });
+    graph.fitView(0, 0.08);
+    showWeek(Number($("slider").value));
+    if (params.get("autoplay") === "1") play();
+  }
+  const graph = new Graph($("graph"), {
+    backgroundColor: "#0b1020",
+    spaceSize: 4096,
+    pointDefaultColor: "#64748b",
+    linkDefaultColor: "#94a3b8",
+    linkOpacity: 0.12,
+    linkWidthScale: 0.6,
+    linkBlending: false,
+    scalePointsOnZoom: false,
+    simulationDecay: 2500,
+    simulationRepulsion: 2.0,
+    simulationLinkSpring: 0.6,
+    simulationGravity: 0.15,
+    simulationFriction: 0.85,
+    rescalePositions: false,
+    fitViewOnInit: false,
+    transitionDuration: 250,
+    randomSeed: 42,
+    onSimulationEnd: () => freeze("simulation-end"),
+  });
+  graph.setPointPositions(positions);
+  graph.setLinks(new Float32Array(union));
+  graph.setPointSizes(sizes[W - 1]);
+  graph.setPointColors(colors[W - 1]);
+  graph.render();
+  await graph.ready;
+  M.t_ready_ms = performance.now() - M.t0;
+  graph.fitView(0, 0.08);
+  tLayout = performance.now(); layoutRaf = requestAnimationFrame(countLayout);
+  setTimeout(() => freeze("time-budget"), LAYOUT_MS);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    M.t_first_frame_ms = performance.now() - M.t0;
+  }));
+
+  const slider = $("slider");
+  slider.max = String(W - 1);
+  slider.value = String(W - 1);
+  M.week_switch_ms = [];
+  function showWeek(w) {
+    const t = performance.now();
+    graph.setLinks(links[w]);
+    graph.setLinkWidths(widths[w]);
+    graph.setPointSizes(sizes[w]);
+    graph.setPointColors(colors[w]);
+    graph.render();
+    M.week_switch_ms.push(performance.now() - t);
+    slider.value = String(w);
+    $("week").textContent = `${weeks[w]} · ${links[w].length / 2} aristas`;
+  }
+  slider.addEventListener("input", () => showWeek(Number(slider.value)));
+
+  // FPS while playing: requestAnimationFrame callbacks per second over the sweep.
+  let timer = null, frames = 0, tPlay = 0, rafId = 0;
+  function count() { frames++; rafId = requestAnimationFrame(count); }
+  function play() {
+    if (timer) return pause();
+    $("play").textContent = "⏸ Pausa";
+    frames = 0; tPlay = performance.now(); rafId = requestAnimationFrame(count);
+    let w = 0;
+    showWeek(w);
+    timer = setInterval(() => {
+      w += 1;
+      if (w >= W) { pause(); M.sweep_done = true; return; }
+      showWeek(w);
+    }, STEP_MS);
+  }
+  function pause() {
+    clearInterval(timer); timer = null; cancelAnimationFrame(rafId);
+    const secs = (performance.now() - tPlay) / 1000;
+    if (secs > 0.5) { M.play_seconds = secs; M.play_frames = frames; M.fps_playing = frames / secs; }
+    $("play").textContent = "▶ Reproducir";
+  }
+  $("play").addEventListener("click", play);
+  $("stats").textContent =
+    `${N.toLocaleString()} nodos · ${M.edges_total.toLocaleString()} aristas (13 sem) · ` +
+    `${M.union_links.toLocaleString()} pares únicos · GPU: ${M.renderer}`;
+  $("week").textContent = "acomodando el layout…";
+} catch (e) {
+  M.error = String(e && e.stack || e);
+  $("err").textContent = M.error;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+[
+ {
+  "topic_id": "org:nvidia",
+  "dt": "2026-08-24",
+  "lang_bucket": "eng",
+  "segment": "ai",
+  "n_articles": 701,
+  "share_of_day": 0.006972418663404251,
+  "mean_tone": -0.5172651282886594,
+  "mean_polarity": 5.897673744004875,
+  "is_missing": false
+ },
+ {
+  "topic_id": "org:nvidia",
+  "dt": "2026-08-24",
+  "lang_bucket": "other",
+  "segment": "ai",
+  "n_articles": 194,
+  "share_of_day": 0.00126051785192164,
+  "mean_tone": -1.3500563103578418,
+  "mean_polarity": 6.402587859692619,
+  "is_missing": false
+ },
+ {
+  "topic_id": "org:nvidia",
+  "dt": "2026-08-25",
+  "lang_bucket": "eng",
+  "segment": "ai",
+  "n_articles": 885,
+  "share_of_day": 0.007734323792877431,
+  "mean_tone": -0.014391400918029394,
+  "mean_polarity": 5.5135771512524325,
+  "is_missing": false
+ },
+ {
+  "topic_id": "org:nvidia",
+  "dt": "2026-08-25",
+  "lang_bucket": "other",
+  "segment": "ai",
+  "n_articles": 227,
+  "share_of_day": 0.0014158121897063594,
+  "mean_tone": -0.8041988188826023,
+  "mean_polarity": 6.648484388785634,
+  "is_missing": false
+ },
+ {
+  "topic_id": "org:nvidia",
+  "dt": "2026-08-26",
+  "lang_bucket": "eng",
+  "segment": "ai",
+  "n_articles": 1042,
+  "share_of_day": 0.00850369282245889,
+  "mean_tone": 0.28012162940355473,
+  "mean_polarity": 5.148764052070969,
+  "is_missing": false
+ },
+ {
+  "topic_id": "org:nvidia",
+  "dt": "2026-08-26",
+  "lang_bucket": "other",
+  "segment": "ai",
+  "n_articles": 267,
+  "share_of_day": 0.001681942738353964,
+  "mean_tone": -0.012927322085688156,
+  "mean_polarity": 5.417147356136098,
+  "is_missing": false
+ },
+ {
+  "topic_id": "org:nvidia",
+  "dt": "2026-08-27",
+  "lang_bucket": "eng",
+  "segment": "ai",
+  "n_articles": 1488,
+  "share_of_day": 0.01268509756783714,
+  "mean_tone": 0.6072311250809743,
+  "mean_polarity": 5.447752365332728,
+  "is_missing": false
+ },
+ {
+  "topic_id": "org:nvidia",
+  "dt": "2026-08-27",
+  "lang_bucket": "other",
+  "segment": "ai",
+  "n_articles": 483,
+  "share_of_day": 0.0030300178789874847,
+  "mean_tone": 0.4758347880378848,
+  "mean_polarity": 5.80193318599502,
+  "is_missing": false
+ }
+]
