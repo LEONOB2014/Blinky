@@ -5,7 +5,7 @@
   "description": "agents/ runtime -> API -> web trace panel; also written to lake/agent_traces/ for the evaluation",
   "type": "object",
   "x-owner": "orchestrator (agents/)",
-  "x-mock": "pending-first-agent-run",
+  "x-mock": "first-agent-run",
   "properties": {
     "conversation_id": {
       "type": "string"
