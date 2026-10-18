@@ -280,6 +280,71 @@ def get_topic_scores(topic_id: str, week: str | None = None) -> dict[str, Any]:
     return {"available": bool(rows), "week": label, "topic_id": topic_id, "rows": rows}
 
 
+def brief_available() -> bool:
+    """True when the Editor's pre-written briefs exist in the lake."""
+    return gold("topic_briefs_weekly").exists()
+
+
+def get_topic_brief(topic_id: str, week: str | None = None) -> dict[str, Any]:
+    """The Editor's pre-written Spanish brief of a top-10 topic (agents/briefs.py), Auditor-checked."""
+    path = gold("topic_briefs_weekly")
+    if not path.exists():
+        return _unavailable("topic_briefs_weekly")
+    topic_id = resolve_topic(topic_id)
+    frame = pl.read_parquet(path)
+    if week is None and frame.height:
+        week = frame["week"].max()
+    rows = frame.filter((pl.col("topic_id") == topic_id) & (pl.col("week") == week)).drop(
+        "generated_at", "model"
+    )
+    if not rows.height:
+        return {
+            "available": False,
+            "reason": f"no hay brief para {topic_id} en {week}: solo el top 10 de las últimas semanas",
+        }
+    return {"available": True, "week": week, "topic_id": topic_id, "brief": rows.to_dicts()[0]}
+
+
+def get_topic_evidence(topic_id: str, week: str | None = None) -> dict[str, Any]:
+    """Up to 5 representative articles behind a ranked topic in a week (WS1d), without URLs.
+
+    Returns outlet, date, language and title per article plus how many articles and outlets that is,
+    so an answer can say "según N artículos de M medios". The URL never reaches the model.
+    """
+    path = gold("topic_evidence_weekly")
+    if not path.exists():
+        return _unavailable("topic_evidence_weekly")
+    topic_id = resolve_topic(topic_id)
+    frame = pl.read_parquet(path).filter(pl.col("topic_id") == topic_id)
+    if week:
+        _, monday, _ = week_bounds(week)
+        frame = frame.filter(pl.col("week") == monday)
+    elif frame.height:
+        frame = frame.filter(pl.col("week") == frame["week"].max())
+    if not frame.height:
+        return {
+            "available": False,
+            "reason": f"no hay artículos de evidencia para {topic_id} en esa semana: solo el top 30",
+        }
+    rows = (
+        frame.sort("evidence_rank")
+        .head(5)
+        .select("evidence_rank", "dt", "source", "lang_bucket", "title")
+        .with_columns(pl.col("dt").cast(pl.String))
+        .to_dicts()
+    )
+    iso = frame["week"][0].isocalendar()
+    week_label = f"{iso.year}-W{iso.week:02d}"
+    return {
+        "available": True,
+        "topic_id": topic_id,
+        "week": week_label,
+        "n_articulos": len(rows),
+        "n_medios": len({r["source"] for r in rows}),
+        "articles": rows,
+    }
+
+
 # --- Cartographer -----------------------------------------------------------------------------
 
 
@@ -505,6 +570,28 @@ TOOLS: dict[str, Tool] = {
             get_top10,
             "El top 10 semanal con las seis puntuaciones y la decisión.",
             {"type": "object", "properties": {"week": WEEK}},
+        ),
+        Tool(
+            "get_topic_evidence",
+            get_topic_evidence,
+            "Hasta 5 artículos representativos de un tema en una semana: medio, fecha, idioma y "
+            "título (sin URL), con cuántos artículos y medios son.",
+            {
+                "type": "object",
+                "properties": {"topic_id": {"type": "string"}, "week": WEEK},
+                "required": ["topic_id"],
+            },
+        ),
+        Tool(
+            "get_topic_brief",
+            get_topic_brief,
+            "El brief de adaptación en español ya escrito para un tema del top 10 (titular, qué pasó, "
+            "por qué importa en LatAm, ángulo, gancho y formato), revisado por el Auditor.",
+            {
+                "type": "object",
+                "properties": {"topic_id": {"type": "string"}, "week": WEEK},
+                "required": ["topic_id"],
+            },
         ),
         Tool(
             "get_topic_scores",
