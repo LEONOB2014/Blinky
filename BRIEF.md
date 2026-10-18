@@ -1,0 +1,94 @@
+# BRIEF: G phase, the GPU temporal graph and the story view inside the UI, driven by the agents
+
+Account: **Gemini (Antigravity)** · Branch: `feat/ws5-graph-views` · Worktree: `../radar-worktrees/feat-ws5-graph-views`
+Written by the orchestrator, 2026-10-18 01:05 UTC-5. Read `AGENTS.md` (or `GEMINI.md`), then this file.
+
+## Goal
+
+The demo's closing moment, in the real UI: a live GPU-rendered temporal graph of about 90 days of AI
+news that plays week by week, and a story view of one topic's neighbourhood, both opened by the agents
+(the Cartographer's `view_command`) and by clicking a radar card. Business judges should understand
+what they see without explanation: few, readable edges, the ranked topics highlighted, Spanish labels.
+
+## Plan reference
+
+`docs/designs/radar-build-plan.md` ("G graph", demo step 5: "the live GPU temporal graph sweep over 90
+days, then the story view of the #1 topic"); `contracts/view_command.schema.json` (view `story` /
+`temporal` / `cards`, `week`, `focus_topic`, `highlight`, `color_by`, `filter`, `caption_es`);
+`status/WS3.md` section "WS3c" (measured sizes, fps, the pitfalls below).
+
+## Inputs (real)
+
+- `graph/export_views.py` writes `lake/views/temporal*.json` and `lake/views/story*.json` from the full
+  lake (13 weeks, top nodes, pruned edges, weekly PageRank, decisions; no `per:` nodes).
+- `graph/views/temporal.html` (cosmos.gl 3.5.1) and `graph/views/story.html` (sigma 3.0.3 +
+  graphology 0.26.0): working reference implementations measured on this Mac (full export plays at
+  107 fps; the live layout drops below 30 fps above ~200k unique links).
+- `web/` (Vite + React + TS, bun): the agent-controlled view area already receives `view_command`s
+  (`web/src/App.tsx`, `activeView`), and the cards panel exists.
+- WS4 is rebuilding `topic_scores_weekly` tonight (eligibility gate): never hard-code topics; read the
+  top 10 from the data.
+
+## Known pitfalls (measured in WS3c; do not rediscover them)
+
+1. cosmos.gl via jsDelivr `+esm` loads two luma.gl versions and throws. In `web/` install
+   `@cosmos.gl/graph@3.5.1` from npm and pin every `@luma.gl/*` package to one `~9.3` version.
+2. Blank canvas: use positions in space units, `rescalePositions: false`, call `fitView()` after
+   `ready` and after the layout freezes; do not rely on `fitViewOnInit`.
+3. sigma 4.0.3 fills the canvas with one node in Chrome on Metal: pin **sigma 3.0.3**.
+4. The full graph is a hairball (140k edges a week among 2,000 nodes) and the 10 s live layout does
+   not converge on 608k links.
+5. Headless Chrome screenshots miss WebGL layers: use a headed window.
+
+## Outputs
+
+1. **Readable exports** (`graph/export_views.py`, extend it):
+   - temporal: per week keep the top-k edges by NPMI per node (start at k = 3-5; measure edges/week),
+     a **precomputed frozen layout** for the whole span (positions computed once offline, for example
+     networkx/igraph force-directed on the union graph, or a GPU layout run once and saved), so the
+     sweep never re-lays out; node label for the top ~30 nodes by PageRank and every ranked top-10
+     topic; colour by decision.
+   - story: one file per ranked top-10 topic of the latest scored week (plus any topic the agents name,
+     generated on demand through an API call is out of scope: the 10 files are enough), Spanish labels.
+   - written to `lake/views/` and copied by the build into `web/public/data/views/` (git-ignored).
+2. **`web/` components:** `TemporalGraph` (cosmos.gl, play/pause, week slider, the week's top movers
+   listed beside it) and `StoryGraph` (sigma 3, topic in the centre, ring by rank, edge width by
+   co-mentions, the scores row beside it). Both open from:
+   - a `view_command` (`view: "temporal" | "story"`, `focus_topic`, `week`, `highlight`, `caption_es`);
+   - clicking a radar card (story of that topic).
+   Keep the existing panels working; the graph lives in the agent-controlled view area.
+3. **Measure** on this Mac, headed Chrome: first frame, fps while playing, week switch time, bundle
+   size added. Screenshots under `lake/views/` (not committed). Results in `status/WS5.md` (G section).
+4. Tell WS8 in `status/WS5.md` exactly which files the deploy must copy (`web/public/data/views/*`),
+   so the next Cloud Run/Netlify redeploy ships them.
+
+## Files you may touch
+
+`web/**`, `graph/export_views.py`, `graph/README.md`, `graph/tests/test_export_views.py`,
+`status/WS5.md`, the `graph` extra in `pyproject.toml`/`uv.lock`.
+
+## Out of scope
+
+Agents (`agents/**`: if the Cartographer should emit a field it does not, write it in the status and
+the orchestrator adds it), the API, contracts, deploy (WS8 redeploys), visual restyle beyond legibility.
+
+## Acceptance
+
+- `make check && make test` pass; `cd web && bun run build` passes; export tests on the dev slice check
+  no `per:` nodes and the top-k pruning.
+- A chat question such as "Muéstrame el grafo de la semana" opens the temporal view, and "¿Qué está
+  pasando con Nvidia? Muéstramelo en el grafo" opens Nvidia's story view (or says it is not in the 10
+  exported stories): screenshots of both.
+
+## Paid or outward actions needing approval
+
+None (local only; no uploads). `git push`, the PR and the deploy: the orchestrator and WS8.
+
+## Deadlines (UTC-5)
+
+Readable exports by **02:30**; both components working locally by **04:30**; measurements and
+screenshots by **05:30** (the redeploy follows).
+
+## If blocked
+
+`BLOCKED: <reason>` at the top of `status/WS5.md`, then stop.
